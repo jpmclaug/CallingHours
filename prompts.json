@@ -1,0 +1,10 @@
+[
+    {
+        "name": "Default Analysis",
+        "text": "Analyze the following lyrics for the song '{song}' by '{artist}'.\n\nLyrics:\n{lyrics_text}\n\nProvide an analysis of the themes, meaning, and poetic devices."
+    },
+    {
+        "name": "Top 5",
+        "text": "Please analyze the following song lyrics and provide a breakdown based on these 5 major characteristics:\r\n\r\nNarrative & Theme: What is the \"story\" being told? Identify the central message, any recurring motifs, and the underlying philosophy or conflict.\r\n\r\nEmotional Profile & Tone: Describe the primary emotions (e.g., angst, euphoria, nostalgia) and the \"vibe\" of the writing. Is it cynical, hopeful, aggressive, or vulnerable?\r\n\r\nLinguistic Style & Device: Analyze the use of metaphors, similes, personification, or wordplay. Note if the language is abstract and poetic or direct and conversational.\r\n\r\nStructural Rhythm: Even without the music, how does the lyricism flow? Look for unique rhyme schemes, alliteration, and how the syllable count builds tension or release.\r\n\r\nCultural or Genre Context: Based on the vocabulary and themes, what musical movement or cultural era does this likely belong to (e.g., 2000s metalcore, classic storytelling folk, modern abstract indie)?\r\n\r\nHere are the lyrics: {lyrics_text}"
+    }
+]
