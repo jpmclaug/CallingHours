@@ -99,11 +99,42 @@ def get_gemini_missing_message() -> str:
         )
     return '<div class="message">Set your GEMINI_API_KEY in calling_hours_secrets.py and reload to use analysis.</div>'
 
+def build_app_header(active_page: str = 'song') -> str:
+    song_active = ' active' if active_page == 'song' else ''
+    history_active = ' active' if active_page == 'history' else ''
+    prompts_active = ' active' if active_page == 'prompts' else ''
+    return f'''
+    <header class="app-header">
+        <div class="app-header-inner">
+            <a href="/" class="app-brand" title="Calling Hours">
+                <svg class="app-brand-logo" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
+                </svg>
+                <span class="app-brand-text">Calling Hours</span>
+            </a>
+            <nav class="app-nav" aria-label="Main Navigation">
+                <a href="/" class="app-nav-link{song_active}" id="nav-link-song">
+                    <span class="nav-icon">🎵</span>
+                    <span class="nav-text">Song</span>
+                </a>
+                <a href="/history" class="app-nav-link{history_active}" id="nav-link-history">
+                    <span class="nav-icon">📜</span>
+                    <span class="nav-text">Search History</span>
+                </a>
+                <a href="/prompts" class="app-nav-link{prompts_active}" id="nav-link-prompts">
+                    <span class="nav-icon">⚙️</span>
+                    <span class="nav-text">Prompts</span>
+                </a>
+            </nav>
+        </div>
+    </header>
+    '''
+
 PAGE_HTML = r'''<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Calling Hours</title>
     <link rel="manifest" href="/manifest.json">
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
@@ -123,15 +154,204 @@ PAGE_HTML = r'''<!DOCTYPE html>
             margin: 0;
             min-height: 100vh;
             display: flex;
-            align-items: flex-start;
-            justify-content: center;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
             font-family: 'Roboto Condensed', sans-serif;
             background: linear-gradient(to bottom, #050A14 0%, #0B1E3F 100%);
             color: #E1E8F0;
             position: relative;
             overflow-x: hidden;
-            padding: 40px 0;
+            padding: 0 0 40px 0;
             box-sizing: border-box;
+        }
+
+        /* Top App Header & Navigation */
+        .app-header {
+            position: sticky;
+            top: 0;
+            left: 0;
+            width: 100%;
+            z-index: 100;
+            background: rgba(5, 10, 20, 0.88);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border-bottom: 1px solid rgba(165, 200, 255, 0.16);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+            margin-bottom: 28px;
+            padding-top: max(0px, env(safe-area-inset-top));
+        }
+
+        .app-header-inner {
+            width: min(1560px, 96vw);
+            margin: 0 auto;
+            padding: 12px 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            box-sizing: border-box;
+        }
+
+        .app-brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            text-decoration: none;
+            color: #E1E8F0;
+            font-family: 'Montserrat', sans-serif;
+            font-weight: 800;
+            font-size: 1.25rem;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            transition: opacity 0.2s ease;
+        }
+
+        .app-brand:hover {
+            opacity: 0.9;
+        }
+
+        .app-brand-logo {
+            width: 24px;
+            height: 24px;
+            fill: #A5C8FF;
+            filter: drop-shadow(0 0 8px rgba(165, 200, 255, 0.5));
+            flex-shrink: 0;
+        }
+
+        .app-brand-text {
+            white-space: nowrap;
+        }
+
+        .app-nav {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .app-nav-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 16px;
+            border-radius: 20px;
+            color: #A5C8FF;
+            text-decoration: none;
+            font-family: 'Montserrat', sans-serif;
+            font-size: 0.82rem;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            border: 1px solid rgba(165, 200, 255, 0.15);
+            background: rgba(165, 200, 255, 0.05);
+            transition: all 0.2s ease;
+            white-space: nowrap;
+        }
+
+        .app-nav-link:hover {
+            background: rgba(165, 200, 255, 0.18);
+            color: #FFFFFF;
+            border-color: rgba(165, 200, 255, 0.35);
+        }
+
+        .app-nav-link.active {
+            background: #A5C8FF;
+            color: #050A14;
+            border-color: #A5C8FF;
+            box-shadow: 0 0 14px rgba(165, 200, 255, 0.35);
+        }
+
+        /* Workspace Tabs (Mobile Segmented Control) */
+        .workspace-tabs {
+            display: none; /* Hidden on desktop (>1080px) */
+            width: 100%;
+            background: rgba(11, 30, 63, 0.8);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(165, 200, 255, 0.22);
+            border-radius: 12px;
+            padding: 5px;
+            box-sizing: border-box;
+            gap: 6px;
+            margin-bottom: 20px;
+            position: sticky;
+            top: 70px;
+            z-index: 30;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+        }
+
+        .tab-btn {
+            flex: 1;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 10px 10px;
+            border: 1px solid transparent;
+            border-radius: 8px;
+            background: transparent;
+            color: #A5C8FF;
+            font-family: 'Montserrat', sans-serif;
+            font-size: 0.82rem;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: none;
+            margin: 0;
+            width: auto;
+            touch-action: manipulation;
+        }
+
+        .tab-btn:hover {
+            background: rgba(165, 200, 255, 0.12);
+            color: #FFFFFF;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .tab-btn.active {
+            background: #A5C8FF;
+            color: #050A14;
+            font-weight: 800;
+            box-shadow: 0 0 14px rgba(165, 200, 255, 0.35);
+        }
+
+        .tab-btn .tab-badge {
+            font-size: 0.68rem;
+            padding: 1px 6px;
+            border-radius: 10px;
+            background: rgba(5, 10, 20, 0.35);
+            color: inherit;
+        }
+
+        .tab-btn.active .tab-badge {
+            background: rgba(5, 10, 20, 0.2);
+            color: #050A14;
+        }
+
+        /* Mobile flow navigation helpers */
+        .mobile-flow-actions {
+            display: none;
+            margin-top: 20px;
+            padding-top: 14px;
+            border-top: 1px solid rgba(165, 200, 255, 0.12);
+        }
+
+        .flow-btn {
+            width: 100%;
+            padding: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            font-size: 0.92rem;
+        }
+
+        .flow-btn-back {
+            display: none;
         }
 
         /* Starfield background */
@@ -634,10 +854,45 @@ PAGE_HTML = r'''<!DOCTYPE html>
 
         /* Responsive & Mobile Enhancements */
         @media (max-width: 1080px) {
+            .workspace-tabs {
+                display: flex;
+            }
+
+            .mobile-flow-actions {
+                display: block;
+            }
+
+            .flow-btn-back {
+                display: inline-flex;
+            }
+
             .container {
                 flex-direction: column;
-                gap: 28px;
+                gap: 16px;
                 width: min(1560px, 94vw);
+                padding: 24px;
+            }
+
+            /* Container data-active-tab controls which panel is displayed on mobile */
+            .container[data-active-tab="search"] .tab-panel:not(#panel-search) {
+                display: none !important;
+            }
+            .container[data-active-tab="search"] #panel-search {
+                display: block !important;
+            }
+
+            .container[data-active-tab="lyrics"] .tab-panel:not(#panel-lyrics) {
+                display: none !important;
+            }
+            .container[data-active-tab="lyrics"] #panel-lyrics {
+                display: flex !important;
+            }
+
+            .container[data-active-tab="analysis"] .tab-panel:not(#panel-analysis) {
+                display: none !important;
+            }
+            .container[data-active-tab="analysis"] #panel-analysis {
+                display: flex !important;
             }
 
             .form-section, .lyrics-section, .analysis-section {
@@ -648,13 +903,43 @@ PAGE_HTML = r'''<!DOCTYPE html>
 
         @media (max-width: 768px) {
             body {
-                padding: 12px 8px 36px;
+                padding: 0 0 36px 0;
+            }
+
+            .app-header {
+                margin-bottom: 16px;
+            }
+
+            .app-header-inner {
+                padding: 10px 14px;
+            }
+
+            .app-brand-text {
+                font-size: 1.05rem;
+            }
+
+            .app-nav-link {
+                padding: 6px 12px;
+                font-size: 0.74rem;
+                gap: 5px;
+            }
+
+            .workspace-tabs {
+                top: 56px;
+                margin-bottom: 14px;
+                padding: 4px;
+            }
+
+            .tab-btn {
+                padding: 8px 6px;
+                font-size: 0.76rem;
+                gap: 4px;
             }
 
             .container {
                 width: 100%;
-                padding: 20px 14px;
-                gap: 20px;
+                padding: 18px 12px;
+                gap: 14px;
                 border-radius: 12px;
             }
 
@@ -663,7 +948,7 @@ PAGE_HTML = r'''<!DOCTYPE html>
             }
 
             h1 {
-                font-size: 1.7rem;
+                font-size: 1.6rem;
                 letter-spacing: 0.08em;
                 margin-bottom: 4px;
             }
@@ -692,7 +977,7 @@ PAGE_HTML = r'''<!DOCTYPE html>
             }
 
             .section-header-bar {
-                margin: 14px 0 8px;
+                margin: 10px 0 8px;
                 gap: 8px;
             }
 
@@ -718,8 +1003,8 @@ PAGE_HTML = r'''<!DOCTYPE html>
             }
 
             .lyrics-box, .lyrics-reader-box {
-                min-height: 280px;
-                max-height: 52vh;
+                min-height: 300px;
+                max-height: 65vh;
                 padding: 16px;
                 -webkit-overflow-scrolling: touch;
             }
@@ -741,8 +1026,8 @@ PAGE_HTML = r'''<!DOCTYPE html>
             }
 
             #analysis-result-wrapper {
-                min-height: 280px;
-                max-height: 55vh;
+                min-height: 300px;
+                max-height: 65vh;
                 -webkit-overflow-scrolling: touch;
             }
 
@@ -783,7 +1068,7 @@ PAGE_HTML = r'''<!DOCTYPE html>
             .analysis-raw-box {
                 padding: 14px;
                 font-size: 0.88rem;
-                max-height: 52vh;
+                max-height: 65vh;
                 -webkit-overflow-scrolling: touch;
             }
 
@@ -797,17 +1082,49 @@ PAGE_HTML = r'''<!DOCTYPE html>
 
         @media (max-width: 480px) {
             body {
-                padding: 8px 4px 28px;
+                padding: 0 0 28px 0;
+            }
+
+            .app-header-inner {
+                padding: 8px 10px;
+            }
+
+            .app-brand-text {
+                font-size: 0.92rem;
+            }
+
+            .app-brand-logo {
+                width: 20px;
+                height: 20px;
+            }
+
+            .app-nav {
+                gap: 4px;
+            }
+
+            .app-nav-link {
+                padding: 5px 8px;
+                font-size: 0.7rem;
             }
 
             .container {
-                padding: 16px 12px;
+                padding: 14px 10px;
                 border-radius: 10px;
             }
 
             h1 {
-                font-size: 1.5rem;
+                font-size: 1.4rem;
                 letter-spacing: 0.05em;
+            }
+
+            .workspace-tabs {
+                top: 48px;
+                gap: 4px;
+            }
+
+            .tab-btn {
+                padding: 7px 4px;
+                font-size: 0.72rem;
             }
 
             .pill-btn {
@@ -820,8 +1137,27 @@ PAGE_HTML = r'''<!DOCTYPE html>
 <body>
     <div class="stars"></div>
     <div class="horizon"></div>
-    <div class="container">
-        <div class="form-section">
+    {app_header}
+    <div class="container" data-active-tab="search">
+        <!-- Mobile Workspace Segmented Tabs Bar -->
+        <nav class="workspace-tabs" id="workspace-tabs" aria-label="Song Workspace Sections">
+            <button type="button" class="tab-btn active" id="tab-btn-search" onclick="switchWorkspaceTab('search')" aria-selected="true">
+                <span class="tab-icon">🔍</span>
+                <span class="tab-text">Search</span>
+            </button>
+            <button type="button" class="tab-btn" id="tab-btn-lyrics" onclick="switchWorkspaceTab('lyrics')" aria-selected="false">
+                <span class="tab-icon">📝</span>
+                <span class="tab-text">Lyrics</span>
+                <span class="tab-badge" id="lyrics-tab-badge" style="{lyrics_badge_display}">●</span>
+            </button>
+            <button type="button" class="tab-btn" id="tab-btn-analysis" onclick="switchWorkspaceTab('analysis')" aria-selected="false">
+                <span class="tab-icon">🧠</span>
+                <span class="tab-text">Analysis</span>
+                <span class="tab-badge" id="analysis-tab-badge" style="{analysis_badge_display}">✦</span>
+            </button>
+        </nav>
+
+        <div class="form-section tab-panel" id="panel-search">
             <h1>Calling Hours</h1>
             <p>Enter an artist and a song title, then submit to post the details.</p>
 
@@ -869,7 +1205,7 @@ PAGE_HTML = r'''<!DOCTYPE html>
             </div>
         </div>
 
-        <div class="lyrics-section" style="{lyrics_display}">
+        <div class="lyrics-section tab-panel" id="panel-lyrics" style="{lyrics_display}">
             <div class="section-header-bar">
                 <span class="section-title">Lyrics</span>
                 <div class="view-controls">
@@ -880,15 +1216,22 @@ PAGE_HTML = r'''<!DOCTYPE html>
             </div>
             <div id="lyrics-reader" class="lyrics-reader-box"></div>
             <textarea id="lyrics" class="lyrics-box" placeholder="Paste or edit lyrics here..." style="display: none;" oninput="updateLyricsReader()">{lyrics_text}</textarea>
+
+            <div class="mobile-flow-actions" id="lyrics-mobile-actions">
+                <button type="button" class="pill-btn flow-btn" onclick="switchWorkspaceTab('analysis')">
+                    <span>⚡ Continue to Gemini Analysis</span> &rarr;
+                </button>
+            </div>
         </div>
         
-        <div class="analysis-section" style="{analysis_display}">
+        <div class="analysis-section tab-panel" id="panel-analysis" style="{analysis_display}">
             <div class="section-header-bar">
                 <span class="section-title">Analysis</span>
                 <div class="view-controls" id="analysis-controls" style="{analysis_controls_display}">
                     <button type="button" id="btn-copy-analysis" class="pill-btn secondary" onclick="copyAnalysis()">📋 Copy</button>
                     <button type="button" id="btn-raw-analysis" class="pill-btn secondary" onclick="toggleRawAnalysis()">Raw View</button>
                     <button type="button" class="pill-btn secondary" onclick="showAnalysisForm()">Re-Analyze</button>
+                    <button type="button" class="pill-btn secondary flow-btn-back" onclick="switchWorkspaceTab('lyrics')">&larr; Lyrics</button>
                 </div>
             </div>
             
@@ -909,6 +1252,10 @@ PAGE_HTML = r'''<!DOCTYPE html>
                     </select>
                     
                     <button type="submit" style="margin-top: 16px;">Perform Analysis</button>
+
+                    <div style="margin-top: 14px; text-align: center;">
+                        <button type="button" class="pill-btn secondary flow-btn-back" onclick="switchWorkspaceTab('lyrics')" style="width: auto; padding: 8px 16px;">&larr; Back to Lyrics</button>
+                    </div>
                 </form>
             </div>
             
@@ -916,8 +1263,9 @@ PAGE_HTML = r'''<!DOCTYPE html>
                 <div id="analysis-formatted" class="analysis-container"></div>
                 <pre id="analysis-raw" class="analysis-raw-box" style="display: none;">{analysis_result}</pre>
                 
-                <div style="margin-top: 20px; text-align: center;">
+                <div style="margin-top: 20px; text-align: center; display: flex; justify-content: center; gap: 10px; flex-wrap: wrap;">
                     <button type="button" onclick="showAnalysisForm()" style="background: transparent; border: 1px solid rgba(165, 200, 255, 0.4); color: #A5C8FF; padding: 10px 18px; font-size: 0.9rem; cursor: pointer; border-radius: 6px; font-family: inherit; width: auto;">Perform Another Analysis</button>
+                    <button type="button" class="flow-btn-back" onclick="switchWorkspaceTab('lyrics')" style="background: transparent; border: 1px solid rgba(165, 200, 255, 0.4); color: #A5C8FF; padding: 10px 18px; font-size: 0.9rem; cursor: pointer; border-radius: 6px; font-family: inherit; width: auto;">&larr; View Lyrics</button>
                 </div>
             </div>
         </div>
@@ -996,6 +1344,7 @@ PAGE_HTML = r'''<!DOCTYPE html>
             if (textarea && reader) {
                 reader.innerHTML = renderLyricsHtml(textarea.value);
             }
+            updateWorkspaceBadges();
         }
 
         function setLyricsMode(mode) {
@@ -1285,6 +1634,57 @@ PAGE_HTML = r'''<!DOCTYPE html>
             }
         }
 
+        function switchWorkspaceTab(tabName, shouldScroll = true) {
+            const container = document.querySelector('.container');
+            if (!container) return;
+            
+            container.setAttribute('data-active-tab', tabName);
+            
+            const tabBtns = document.querySelectorAll('.workspace-tabs .tab-btn');
+            tabBtns.forEach(btn => {
+                if (btn.id === 'tab-btn-' + tabName) {
+                    btn.classList.add('active');
+                    btn.setAttribute('aria-selected', 'true');
+                } else {
+                    btn.classList.remove('active');
+                    btn.setAttribute('aria-selected', 'false');
+                }
+            });
+
+            // If a panel was hidden with style="display: none;", unhide it so the active tab displays
+            const panel = document.getElementById('panel-' + tabName);
+            if (panel && panel.style.display === 'none') {
+                panel.style.display = (tabName === 'search') ? 'block' : 'flex';
+            }
+
+            if (tabName === 'lyrics') {
+                const textarea = document.getElementById('lyrics');
+                if (textarea && !textarea.value.trim()) {
+                    setLyricsMode('edit');
+                }
+            }
+
+            if (shouldScroll && window.innerWidth <= 1080) {
+                const tabsBar = document.getElementById('workspace-tabs');
+                if (tabsBar) {
+                    tabsBar.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            }
+        }
+
+        function updateWorkspaceBadges() {
+            const textarea = document.getElementById('lyrics');
+            const lyricsBadge = document.getElementById('lyrics-tab-badge');
+            if (lyricsBadge && textarea) {
+                lyricsBadge.style.display = textarea.value.trim() ? 'inline-block' : 'none';
+            }
+            const rawEl = document.getElementById('analysis-raw');
+            const analysisBadge = document.getElementById('analysis-tab-badge');
+            if (analysisBadge && rawEl) {
+                analysisBadge.style.display = rawEl.textContent.trim() ? 'inline-block' : 'none';
+            }
+        }
+
         // Initialize on page load
         document.addEventListener('DOMContentLoaded', () => {
             const artistInput = document.getElementById('artist');
@@ -1300,27 +1700,20 @@ PAGE_HTML = r'''<!DOCTYPE html>
                 setLyricsMode('edit');
             }
             renderAnalysisCards();
+            updateWorkspaceBadges();
 
-            // Smooth scroll on mobile to active section
-            if (window.innerWidth <= 1080) {
-                const analysisWrapper = document.getElementById('analysis-result-wrapper');
-                const hasAnalysis = analysisWrapper && analysisWrapper.style.display !== 'none';
-                if (hasAnalysis) {
-                    const analysisSection = document.querySelector('.analysis-section');
-                    if (analysisSection) {
-                        setTimeout(() => {
-                            analysisSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                        }, 250);
-                    }
-                } else if (textarea && textarea.value.trim()) {
-                    const lyricsSection = document.querySelector('.lyrics-section');
-                    if (lyricsSection && lyricsSection.style.display !== 'none') {
-                        setTimeout(() => {
-                            lyricsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                        }, 250);
-                    }
-                }
+            // Auto-select workspace tab based on content
+            const analysisWrapper = document.getElementById('analysis-result-wrapper');
+            const hasAnalysis = analysisWrapper && analysisWrapper.style.display !== 'none' && analysisWrapper.textContent.trim() !== '';
+            const hasLyrics = textarea && textarea.value.trim() !== '';
+
+            let initialTab = 'search';
+            if (hasAnalysis) {
+                initialTab = 'analysis';
+            } else if (hasLyrics) {
+                initialTab = 'lyrics';
             }
+            switchWorkspaceTab(initialTab, false);
         });
     </script>
 </body>
@@ -1329,9 +1722,12 @@ PAGE_HTML = r'''<!DOCTYPE html>
 PROMPTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
     <div class="stars"></div>
     <div class="horizon"></div>
+    {app_header}
     <div class="container" style="flex-direction: column; width: min(800px, 94vw);">
-        <h1 style="font-size: 2rem;">Manage Prompts</h1>
-        <a href="/" style="color:#A5C8FF; text-decoration:none; margin-bottom:20px; display:inline-block;">&larr; Back to App</a>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 12px;">
+            <h1 style="font-size: 2rem; margin: 0;">Manage Prompts</h1>
+            <a href="/" style="color:#A5C8FF; text-decoration:none; font-size: 1rem; border-bottom: 1px dotted #A5C8FF;">&larr; Back to Song</a>
+        </div>
         
         <div style="{message_display}">
             {message_block}
@@ -1358,10 +1754,11 @@ PROMPTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
 HISTORY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
     <div class="stars"></div>
     <div class="horizon"></div>
+    {app_header}
     <div class="container" style="flex-direction: column; width: min(880px, 95vw);">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 12px;">
             <h1 style="font-size: 2rem; margin: 0; text-align: left;">Search History</h1>
-            <a href="/" style="color:#A5C8FF; text-decoration:none; font-size: 1rem; border-bottom: 1px dotted #A5C8FF;">&larr; Back to App</a>
+            <a href="/" style="color:#A5C8FF; text-decoration:none; font-size: 1rem; border-bottom: 1px dotted #A5C8FF;">&larr; Back to Song</a>
         </div>
 
         <div style="margin-bottom: 24px;">
@@ -1829,6 +2226,9 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             band_select_display = 'display: none;'
             band_count_text = '0 saved'
 
+        lyrics_badge_display = 'inline-block;' if lyrics_text.strip() else 'display: none;'
+        analysis_badge_display = 'inline-block;' if analysis_result.strip() else 'display: none;'
+
         lyrics_text_attr = html.escape(lyrics_text, quote=True)
         content = PAGE_HTML.replace('{message_block}', message)\
                            .replace('{lyrics_text}', html_escape(lyrics_text))\
@@ -1846,7 +2246,10 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                            .replace('{band_options}', band_options)\
                            .replace('{band_datalist_options}', band_datalist_options)\
                            .replace('{band_select_display}', band_select_display)\
-                           .replace('{band_count_text}', band_count_text)
+                           .replace('{band_count_text}', band_count_text)\
+                           .replace('{lyrics_badge_display}', lyrics_badge_display)\
+                           .replace('{analysis_badge_display}', analysis_badge_display)\
+                           .replace('{app_header}', build_app_header('song'))
         self.send_response(200)
         self.send_header('Content-Type', 'text/html; charset=utf-8')
         self.send_header('Content-Length', str(len(content.encode('utf-8'))))
@@ -1871,7 +2274,8 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
 
         content = PROMPTS_PAGE_HTML.replace('{message_block}', message)\
                                    .replace('{message_display}', message_display)\
-                                   .replace('{prompts_list}', prompts_list_html)
+                                   .replace('{prompts_list}', prompts_list_html)\
+                                   .replace('{app_header}', build_app_header('prompts'))
                                    
         self.send_response(200)
         self.send_header('Content-Type', 'text/html; charset=utf-8')
@@ -1915,7 +2319,8 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             cards.append('<div id="history-no-matches" style="display:none; text-align:center; color:#A5C8FF; padding:20px;">No matching songs found.</div>')
             history_list_html = '\n'.join(cards)
 
-        content = HISTORY_PAGE_HTML.replace('{history_list}', history_list_html)
+        content = HISTORY_PAGE_HTML.replace('{history_list}', history_list_html)\
+                                   .replace('{app_header}', build_app_header('history'))
         self.send_response(200)
         self.send_header('Content-Type', 'text/html; charset=utf-8')
         self.send_header('Content-Length', str(len(content.encode('utf-8'))))

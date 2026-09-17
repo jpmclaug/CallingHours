@@ -127,5 +127,59 @@ class TestAppIntegration(unittest.TestCase):
             data = json.loads(resp.read().decode('utf-8'))
             self.assertEqual(len(data["bands"]), 0)
 
+    def test_06_navigation_tabs_and_app_header(self):
+        # 1. Verify Home page has global app-header and workspace-tabs
+        with urllib.request.urlopen(f"{self.base_url}/") as resp:
+            self.assertEqual(resp.status, 200)
+            html = resp.read().decode('utf-8')
+            self.assertIn('class="app-header"', html)
+            self.assertIn('id="nav-link-song"', html)
+            self.assertIn('id="nav-link-history"', html)
+            self.assertIn('id="nav-link-prompts"', html)
+            self.assertIn('id="workspace-tabs"', html)
+            self.assertIn('id="tab-btn-search"', html)
+            self.assertIn('id="tab-btn-lyrics"', html)
+            self.assertIn('id="tab-btn-analysis"', html)
+            self.assertIn('switchWorkspaceTab', html)
+
+        # 2. Verify History page has global app-header with history link active
+        with urllib.request.urlopen(f"{self.base_url}/history") as resp:
+            self.assertEqual(resp.status, 200)
+            html = resp.read().decode('utf-8')
+            self.assertIn('class="app-header"', html)
+            self.assertIn('id="nav-link-history"', html)
+            self.assertIn('class="app-nav-link active" id="nav-link-history"', html)
+
+        # 3. Verify Prompts page has global app-header with prompts link active
+        with urllib.request.urlopen(f"{self.base_url}/prompts") as resp:
+            self.assertEqual(resp.status, 200)
+            html = resp.read().decode('utf-8')
+            self.assertIn('class="app-header"', html)
+            self.assertIn('id="nav-link-prompts"', html)
+            self.assertIn('class="app-nav-link active" id="nav-link-prompts"', html)
+
+        # 4. Save a song with analysis and verify workspace tabs, badges, and flow buttons
+        rec_id = database.save_search(
+            artist="Paramore",
+            song="Misery Business",
+            lyrics="I'm in the business of misery, let's take it from the top",
+            source="Genius",
+            db_path=self.db_path
+        )
+        database.save_analysis(
+            artist="Paramore",
+            song="Misery Business",
+            analysis="## Thematic Analysis\nPower and resentment.",
+            db_path=self.db_path
+        )
+        with urllib.request.urlopen(f"{self.base_url}/?id={rec_id}") as resp:
+            self.assertEqual(resp.status, 200)
+            html = resp.read().decode('utf-8')
+            self.assertIn('id="lyrics-tab-badge"', html)
+            self.assertIn('id="analysis-tab-badge"', html)
+            self.assertIn('⚡ Continue to Gemini Analysis', html)
+            self.assertIn('View Lyrics', html)
+
 if __name__ == "__main__":
     unittest.main()
+
