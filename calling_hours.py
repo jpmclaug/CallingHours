@@ -101,6 +101,16 @@ PAGE_HTML = r'''<!DOCTYPE html>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Calling Hours</title>
+    <link rel="manifest" href="/manifest.json">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Calling Hours">
+    <meta name="theme-color" content="#050A14">
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@700;800;900&family=Roboto+Condensed:wght@300;400;700&display=swap');
@@ -1251,6 +1261,54 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         if parsed.path == '/prompts':
             self.render_prompts_page()
             return
+
+        static_files = {
+            '/manifest.json': (os.path.join(SCRIPT_DIR, 'manifest.json'), 'application/manifest+json'),
+            '/apple-touch-icon.png': (os.path.join(SCRIPT_DIR, 'static', 'apple-touch-icon.png'), 'image/png'),
+            '/apple-touch-icon-precomposed.png': (os.path.join(SCRIPT_DIR, 'static', 'apple-touch-icon.png'), 'image/png'),
+            '/icon-192.png': (os.path.join(SCRIPT_DIR, 'static', 'icon-192.png'), 'image/png'),
+            '/icon-512.png': (os.path.join(SCRIPT_DIR, 'static', 'icon-512.png'), 'image/png'),
+            '/favicon-32x32.png': (os.path.join(SCRIPT_DIR, 'static', 'favicon-32x32.png'), 'image/png'),
+            '/favicon.ico': (os.path.join(SCRIPT_DIR, 'static', 'favicon.ico'), 'image/x-icon'),
+            '/favicon.svg': (os.path.join(SCRIPT_DIR, 'static', 'logo.svg'), 'image/svg+xml'),
+            '/logo.svg': (os.path.join(SCRIPT_DIR, 'static', 'logo.svg'), 'image/svg+xml'),
+        }
+        if parsed.path in static_files:
+            file_path, content_type = static_files[parsed.path]
+            if os.path.exists(file_path):
+                with open(file_path, 'rb') as f:
+                    content = f.read()
+                self.send_response(200)
+                self.send_header('Content-Type', content_type)
+                self.send_header('Content-Length', str(len(content)))
+                self.send_header('Cache-Control', 'public, max-age=86400')
+                self.end_headers()
+                self.wfile.write(content)
+                return
+
+        if parsed.path.startswith('/static/'):
+            filename = os.path.basename(parsed.path)
+            file_path = os.path.join(SCRIPT_DIR, 'static', filename)
+            if os.path.exists(file_path) and os.path.isfile(file_path):
+                ext = os.path.splitext(file_path)[1].lower()
+                mime_map = {
+                    '.png': 'image/png',
+                    '.jpg': 'image/jpeg',
+                    '.jpeg': 'image/jpeg',
+                    '.ico': 'image/x-icon',
+                    '.svg': 'image/svg+xml',
+                    '.json': 'application/json',
+                }
+                content_type = mime_map.get(ext, 'application/octet-stream')
+                with open(file_path, 'rb') as f:
+                    content = f.read()
+                self.send_response(200)
+                self.send_header('Content-Type', content_type)
+                self.send_header('Content-Length', str(len(content)))
+                self.send_header('Cache-Control', 'public, max-age=86400')
+                self.end_headers()
+                self.wfile.write(content)
+                return
 
         if parsed.path != '/':
             self.send_error(404, 'Not Found')
