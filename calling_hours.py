@@ -24,7 +24,7 @@ def load_prompts():
                 return json.load(f)
         except Exception:
             pass
-    return [{"name": "Default Analysis", "text": "Analyze the following lyrics for the song '{song}' by '{artist}'.\n\nLyrics:\n{lyrics_text}\n\nProvide an analysis of the themes, meaning, and poetic devices."}]
+    return [{"name": "Default Analysis", "text": "Analyze the following lyrics for the song '{song}' by '{artist}'.\n\nLyrics:\n{lyrics_text}\n\nProvide an in-depth analysis of the themes, meaning, and poetic devices. Format your response with clear Markdown headings (e.g. ## Core Themes, ## Meaning & Interpretation, ## Poetic Devices) and bullet points so it is structured and easy to read."}]
 
 def save_prompt(name, text):
     prompts = load_prompts()
@@ -95,14 +95,15 @@ def get_gemini_missing_message() -> str:
         )
     return '<div class="message">Set your GEMINI_API_KEY in calling_hours_secrets.py and reload to use analysis.</div>'
 
-PAGE_HTML = '''<!DOCTYPE html>
+PAGE_HTML = r'''<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Calling Hours</title>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@800;900&family=Roboto+Condensed:wght@300;400;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@700;800;900&family=Roboto+Condensed:wght@300;400;700&display=swap');
 
         body {
             margin: 0;
@@ -157,13 +158,13 @@ PAGE_HTML = '''<!DOCTYPE html>
         .container {
             position: relative;
             z-index: 2;
-            width: min(1400px, 95vw);
+            width: min(1560px, 96vw);
             display: flex;
             flex-direction: row;
-            gap: 40px;
-            padding: 40px;
+            gap: 32px;
+            padding: 36px;
             border-radius: 16px;
-            background: rgba(5, 10, 20, 0.45);
+            background: rgba(5, 10, 20, 0.5);
             backdrop-filter: blur(16px);
             -webkit-backdrop-filter: blur(16px);
             border: 1px solid rgba(165, 200, 255, 0.12);
@@ -171,34 +172,28 @@ PAGE_HTML = '''<!DOCTYPE html>
         }
 
         .form-section {
-            flex: 1;
+            flex: 0.9;
             min-width: 250px;
         }
 
         .lyrics-section {
-            flex: 1.5;
+            flex: 1.4;
             display: flex;
             flex-direction: column;
-            min-width: 300px;
+            min-width: 320px;
         }
         
         .analysis-section {
-            flex: 1.5;
+            flex: 1.7;
             display: flex;
             flex-direction: column;
-            min-width: 300px;
-        }
-
-        @media (max-width: 900px) {
-            .container {
-                flex-direction: column;
-            }
+            min-width: 340px;
         }
 
         h1 {
             margin-top: 0;
             font-family: 'Montserrat', sans-serif;
-            font-size: 2.5rem;
+            font-size: 2.3rem;
             text-align: center;
             letter-spacing: 0.12em;
             text-transform: uppercase;
@@ -211,9 +206,9 @@ PAGE_HTML = '''<!DOCTYPE html>
             line-height: 1.6;
             color: #A5C8FF;
             text-align: center;
-            font-size: 1.1rem;
+            font-size: 1.05rem;
             font-weight: 300;
-            margin-bottom: 30px;
+            margin-bottom: 24px;
         }
 
         label {
@@ -233,7 +228,7 @@ PAGE_HTML = '''<!DOCTYPE html>
             border-radius: 8px;
             background: rgba(11, 30, 63, 0.5);
             color: #E1E8F0;
-            font-size: 1.1rem;
+            font-size: 1.05rem;
             font-family: inherit;
             box-sizing: border-box;
             transition: all 0.3s ease;
@@ -309,28 +304,94 @@ PAGE_HTML = '''<!DOCTYPE html>
             border-bottom-color: #ffffff;
         }
 
-        .lyrics-area {
-            flex-grow: 1;
-            margin-top: 24px;
+        /* Section Header Bars & Controls */
+        .section-header-bar {
             display: flex;
-            flex-direction: column;
+            align-items: center;
+            justify-content: space-between;
+            margin: 20px 0 10px;
+            min-height: 36px;
+            gap: 8px;
+            flex-wrap: wrap;
         }
 
+        .section-title {
+            font-weight: 700;
+            color: #A5C8FF;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            font-size: 0.85rem;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .view-controls {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+
+        .pill-btn {
+            background: rgba(165, 200, 255, 0.08);
+            color: #A5C8FF;
+            border: 1px solid rgba(165, 200, 255, 0.22);
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 0.78rem;
+            font-family: inherit;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            font-weight: 700;
+            margin: 0;
+            box-shadow: none;
+            width: auto;
+            line-height: 1.2;
+        }
+
+        .pill-btn:hover {
+            background: rgba(165, 200, 255, 0.22);
+            color: #FFFFFF;
+            transform: none;
+            box-shadow: 0 0 10px rgba(165, 200, 255, 0.2);
+        }
+
+        .pill-btn.active {
+            background: #A5C8FF;
+            color: #050A14;
+            border-color: #A5C8FF;
+            box-shadow: 0 0 12px rgba(165, 200, 255, 0.35);
+        }
+
+        .pill-btn.secondary {
+            font-weight: 400;
+            opacity: 0.85;
+        }
+
+        .pill-btn.secondary:hover {
+            opacity: 1;
+        }
+
+        /* Lyrics Styling */
         .lyrics-box {
             flex-grow: 1;
             width: 100%;
-            min-height: 400px;
-            max-height: 70vh;
+            min-height: 480px;
+            max-height: 72vh;
             overflow-y: auto;
-            padding: 24px;
+            padding: 22px;
             border-radius: 8px;
             border: 1px solid rgba(165, 200, 255, 0.2);
-            background: rgba(5, 10, 20, 0.6);
+            background: rgba(5, 10, 20, 0.65);
             color: #E1E8F0;
             font-family: inherit;
-            font-size: 1rem;
+            font-size: 1.02rem;
             font-weight: 300;
-            line-height: 1.6;
+            line-height: 1.7;
             white-space: pre-wrap;
             box-sizing: border-box;
             resize: vertical;
@@ -342,41 +403,403 @@ PAGE_HTML = '''<!DOCTYPE html>
             box-shadow: 0 0 12px rgba(165, 200, 255, 0.25);
         }
 
-        .lyrics-box::placeholder {
-            color: rgba(225, 232, 240, 0.4);
-        }
-        
-        .lyrics-box::-webkit-scrollbar, .analysis-box::-webkit-scrollbar {
-            width: 8px;
-        }
-        
-        .lyrics-box::-webkit-scrollbar-track, .analysis-box::-webkit-scrollbar-track {
-            background: rgba(11, 30, 63, 0.5);
-            border-radius: 8px;
-        }
-        
-        .lyrics-box::-webkit-scrollbar-thumb, .analysis-box::-webkit-scrollbar-thumb {
-            background: rgba(165, 200, 255, 0.3);
-            border-radius: 8px;
-        }
-        
-        .lyrics-box::-webkit-scrollbar-thumb:hover, .analysis-box::-webkit-scrollbar-thumb:hover {
-            background: rgba(165, 200, 255, 0.5);
-        }
-
-        .analysis-box {
-            padding: 24px;
+        .lyrics-reader-box {
+            flex-grow: 1;
+            width: 100%;
+            min-height: 480px;
+            max-height: 72vh;
+            overflow-y: auto;
+            padding: 22px;
             border-radius: 8px;
             border: 1px solid rgba(165, 200, 255, 0.2);
-            background: rgba(5, 10, 20, 0.6);
-            color: #E1E8F0;
-            line-height: 1.6;
-            white-space: pre-wrap;
+            background: rgba(5, 10, 20, 0.65);
             box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .lyric-stanza {
+            background: rgba(11, 30, 63, 0.35);
+            border: 1px solid rgba(165, 200, 255, 0.09);
+            border-radius: 8px;
+            padding: 14px 18px;
+            transition: all 0.2s ease;
+        }
+
+        .lyric-stanza:hover {
+            background: rgba(11, 30, 63, 0.6);
+            border-color: rgba(165, 200, 255, 0.25);
+        }
+
+        .lyric-line {
+            font-size: 1.05rem;
+            line-height: 1.75;
+            color: #E1E8F0;
+            font-weight: 300;
+            letter-spacing: 0.01em;
+        }
+
+        .lyric-section-badge {
+            display: inline-flex;
+            align-items: center;
+            align-self: flex-start;
+            padding: 4px 12px;
+            margin: 10px 0 2px 0;
+            border-radius: 14px;
+            background: rgba(165, 200, 255, 0.14);
+            border: 1px solid rgba(165, 200, 255, 0.35);
+            color: #C4DFFF;
+            font-family: 'Montserrat', sans-serif;
+            font-size: 0.74rem;
+            font-weight: 800;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            box-shadow: 0 0 10px rgba(165, 200, 255, 0.12);
+        }
+
+        .backing-vocal {
+            color: #A5C8FF;
+            font-style: italic;
+            opacity: 0.85;
+        }
+
+        /* Analysis Box & Cards */
+        #analysis-result-wrapper {
+            flex-grow: 1;
+            min-height: 480px;
+            max-height: 72vh;
+            overflow-y: auto;
+            padding-right: 4px;
+        }
+
+        .analysis-container {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .analysis-card {
+            background: rgba(11, 30, 63, 0.42);
+            border: 1px solid rgba(165, 200, 255, 0.18);
+            border-radius: 10px;
+            padding: 18px 22px;
+            box-sizing: border-box;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+            transition: all 0.25s ease;
+        }
+
+        .analysis-card:hover {
+            border-color: rgba(165, 200, 255, 0.35);
+            box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5), 0 0 16px rgba(165, 200, 255, 0.08);
+        }
+
+        .analysis-card h1, .analysis-card h2, .analysis-card h3, .analysis-card h4 {
+            font-family: 'Montserrat', sans-serif;
+            margin-top: 0;
+            margin-bottom: 12px;
+            color: #FFFFFF;
+            font-weight: 800;
+            letter-spacing: 0.03em;
+            text-align: left;
+            text-transform: none;
+            text-shadow: none;
+        }
+
+        .analysis-card h1 {
+            font-size: 1.35rem;
+            color: #A5C8FF;
+            border-bottom: 1px solid rgba(165, 200, 255, 0.2);
+            padding-bottom: 8px;
+        }
+
+        .analysis-card h2 {
+            font-size: 1.18rem;
+            color: #C4DFFF;
+            border-bottom: 1px solid rgba(165, 200, 255, 0.16);
+            padding-bottom: 6px;
+        }
+
+        .analysis-card h3 {
+            font-size: 1.05rem;
+            color: #A5C8FF;
+        }
+
+        .analysis-card p {
+            font-size: 1.02rem;
+            line-height: 1.7;
+            color: #E1E8F0;
+            font-weight: 300;
+            text-align: left;
+            margin: 0 0 10px 0;
+        }
+
+        .analysis-card p:last-child {
+            margin-bottom: 0;
+        }
+
+        .analysis-card strong, .analysis-card b {
+            color: #FFFFFF;
+            font-weight: 700;
+        }
+
+        .analysis-card ul, .analysis-card ol {
+            margin: 8px 0 12px 20px;
+            padding: 0;
+            color: #E1E8F0;
+            font-size: 1rem;
+            line-height: 1.65;
+            font-weight: 300;
+        }
+
+        .analysis-card li {
+            margin-bottom: 6px;
+        }
+
+        .analysis-card li::marker {
+            color: #A5C8FF;
+        }
+
+        .analysis-card blockquote {
+            margin: 10px 0;
+            padding: 10px 16px;
+            border-left: 3px solid #A5C8FF;
+            background: rgba(165, 200, 255, 0.06);
+            border-radius: 0 8px 8px 0;
+            font-style: italic;
+            color: #C4DFFF;
+        }
+
+        .analysis-card code {
+            background: rgba(165, 200, 255, 0.12);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 0.9em;
+            color: #A5C8FF;
+        }
+
+        .analysis-raw-box {
+            white-space: pre-wrap;
+            font-family: inherit;
+            font-size: 0.95rem;
+            line-height: 1.65;
+            background: rgba(5, 10, 20, 0.65);
+            border: 1px solid rgba(165, 200, 255, 0.2);
+            border-radius: 8px;
+            padding: 20px;
+            color: #E1E8F0;
+            max-height: 72vh;
+            overflow-y: auto;
+            box-sizing: border-box;
+            margin: 0;
         }
 
         .analysis-form {
             margin-top: 16px;
+        }
+
+        /* Scrollbars */
+        .lyrics-box::-webkit-scrollbar, .lyrics-reader-box::-webkit-scrollbar, #analysis-result-wrapper::-webkit-scrollbar, .analysis-raw-box::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        .lyrics-box::-webkit-scrollbar-track, .lyrics-reader-box::-webkit-scrollbar-track, #analysis-result-wrapper::-webkit-scrollbar-track, .analysis-raw-box::-webkit-scrollbar-track {
+            background: rgba(11, 30, 63, 0.5);
+            border-radius: 8px;
+        }
+        
+        .lyrics-box::-webkit-scrollbar-thumb, .lyrics-reader-box::-webkit-scrollbar-thumb, #analysis-result-wrapper::-webkit-scrollbar-thumb, .analysis-raw-box::-webkit-scrollbar-thumb {
+            background: rgba(165, 200, 255, 0.3);
+            border-radius: 8px;
+        }
+        
+        .lyrics-box::-webkit-scrollbar-thumb:hover, .lyrics-reader-box::-webkit-scrollbar-thumb:hover, #analysis-result-wrapper::-webkit-scrollbar-thumb:hover, .analysis-raw-box::-webkit-scrollbar-thumb:hover {
+            background: rgba(165, 200, 255, 0.5);
+        }
+
+        /* Responsive & Mobile Enhancements */
+        @media (max-width: 1080px) {
+            .container {
+                flex-direction: column;
+                gap: 28px;
+                width: min(1560px, 94vw);
+            }
+
+            .form-section, .lyrics-section, .analysis-section {
+                min-width: 0;
+                width: 100%;
+            }
+        }
+
+        @media (max-width: 768px) {
+            body {
+                padding: 12px 8px 36px;
+            }
+
+            .container {
+                width: 100%;
+                padding: 20px 14px;
+                gap: 20px;
+                border-radius: 12px;
+            }
+
+            .horizon {
+                height: 10vh;
+            }
+
+            h1 {
+                font-size: 1.7rem;
+                letter-spacing: 0.08em;
+                margin-bottom: 4px;
+            }
+
+            p {
+                font-size: 0.95rem;
+                margin-bottom: 18px;
+            }
+
+            label {
+                margin: 14px 0 6px;
+                font-size: 0.8rem;
+            }
+
+            input[type="text"], textarea, select {
+                font-size: 16px; /* Prevents automatic iOS Safari zoom */
+                padding: 12px 14px;
+                border-radius: 6px;
+            }
+
+            button {
+                margin-top: 20px;
+                padding: 14px;
+                font-size: 0.95rem;
+                touch-action: manipulation;
+            }
+
+            .section-header-bar {
+                margin: 14px 0 8px;
+                gap: 8px;
+            }
+
+            .section-title {
+                font-size: 0.82rem;
+            }
+
+            .view-controls {
+                gap: 6px;
+                width: 100%;
+                justify-content: flex-start;
+            }
+
+            .pill-btn {
+                padding: 7px 12px;
+                font-size: 0.74rem;
+                min-height: 36px;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                white-space: nowrap;
+                touch-action: manipulation;
+            }
+
+            .lyrics-box, .lyrics-reader-box {
+                min-height: 280px;
+                max-height: 52vh;
+                padding: 16px;
+                -webkit-overflow-scrolling: touch;
+            }
+
+            .lyric-stanza {
+                padding: 12px 14px;
+                margin-bottom: 10px;
+            }
+
+            .lyric-line {
+                font-size: 0.98rem;
+                line-height: 1.65;
+            }
+
+            .lyric-section-badge {
+                font-size: 0.7rem;
+                padding: 3px 10px;
+                margin: 8px 0 2px 0;
+            }
+
+            #analysis-result-wrapper {
+                min-height: 280px;
+                max-height: 55vh;
+                -webkit-overflow-scrolling: touch;
+            }
+
+            .analysis-card {
+                padding: 14px 16px;
+                border-radius: 8px;
+                margin-bottom: 10px;
+            }
+
+            .analysis-card h1 {
+                font-size: 1.18rem;
+                padding-bottom: 6px;
+            }
+
+            .analysis-card h2 {
+                font-size: 1.08rem;
+                padding-bottom: 4px;
+            }
+
+            .analysis-card h3 {
+                font-size: 0.98rem;
+            }
+
+            .analysis-card p {
+                font-size: 0.95rem;
+                line-height: 1.6;
+            }
+
+            .analysis-card ul, .analysis-card ol {
+                margin: 6px 0 10px 16px;
+                font-size: 0.94rem;
+            }
+
+            .analysis-card li {
+                margin-bottom: 5px;
+            }
+
+            .analysis-raw-box {
+                padding: 14px;
+                font-size: 0.88rem;
+                max-height: 52vh;
+                -webkit-overflow-scrolling: touch;
+            }
+
+            .message {
+                margin-top: 16px;
+                padding: 12px;
+                font-size: 0.92rem;
+                word-break: break-word;
+            }
+        }
+
+        @media (max-width: 480px) {
+            body {
+                padding: 8px 4px 28px;
+            }
+
+            .container {
+                padding: 16px 12px;
+                border-radius: 10px;
+            }
+
+            h1 {
+                font-size: 1.5rem;
+                letter-spacing: 0.05em;
+            }
+
+            .pill-btn {
+                padding: 6px 10px;
+                font-size: 0.72rem;
+            }
         }
     </style>
 </head>
@@ -406,12 +829,28 @@ PAGE_HTML = '''<!DOCTYPE html>
         </div>
 
         <div class="lyrics-section" style="{lyrics_display}">
-            <label for="lyrics">Lyrics <span style="font-size: 0.8rem; font-weight: normal; opacity: 0.7;">(editable)</span></label>
-            <textarea id="lyrics" class="lyrics-box" placeholder="Paste or edit lyrics here...">{lyrics_text}</textarea>
+            <div class="section-header-bar">
+                <span class="section-title">Lyrics</span>
+                <div class="view-controls">
+                    <button type="button" id="btn-lyrics-reader" class="pill-btn active" onclick="setLyricsMode('reader')">Reader View</button>
+                    <button type="button" id="btn-lyrics-edit" class="pill-btn" onclick="setLyricsMode('edit')">Edit Lyrics</button>
+                    <button type="button" id="btn-lyrics-format" class="pill-btn secondary" title="Add spacing between stanzas" onclick="autoFormatStanzas()">Auto-Space</button>
+                </div>
+            </div>
+            <div id="lyrics-reader" class="lyrics-reader-box"></div>
+            <textarea id="lyrics" class="lyrics-box" placeholder="Paste or edit lyrics here..." style="display: none;" oninput="updateLyricsReader()">{lyrics_text}</textarea>
         </div>
         
         <div class="analysis-section" style="{analysis_display}">
-            <label>Analysis</label>
+            <div class="section-header-bar">
+                <span class="section-title">Analysis</span>
+                <div class="view-controls" id="analysis-controls" style="{analysis_controls_display}">
+                    <button type="button" id="btn-copy-analysis" class="pill-btn secondary" onclick="copyAnalysis()">📋 Copy</button>
+                    <button type="button" id="btn-raw-analysis" class="pill-btn secondary" onclick="toggleRawAnalysis()">Raw View</button>
+                    <button type="button" class="pill-btn secondary" onclick="showAnalysisForm()">Re-Analyze</button>
+                </div>
+            </div>
+            
             <div class="analysis-form" style="{analysis_form_display}">
                 <form id="analyze-form" method="post" action="/analyze" onsubmit="document.getElementById('form_lyrics').value = document.getElementById('lyrics').value;">
                     <input type="hidden" name="artist" value="{artist_value}">
@@ -432,21 +871,340 @@ PAGE_HTML = '''<!DOCTYPE html>
                 </form>
             </div>
             
-            <div class="analysis-box" style="{analysis_result_display}">
-{analysis_result}
+            <div id="analysis-result-wrapper" style="{analysis_result_display}">
+                <div id="analysis-formatted" class="analysis-container"></div>
+                <pre id="analysis-raw" class="analysis-raw-box" style="display: none;">{analysis_result}</pre>
+                
                 <div style="margin-top: 20px; text-align: center;">
-                    <button type="button" onclick="document.querySelector('.analysis-form').style.display='block'; this.closest('.analysis-box').style.display='none';" style="background: transparent; border: 1px solid rgba(165, 200, 255, 0.4); color: #A5C8FF; padding: 10px 18px; font-size: 0.9rem; margin-top: 10px; cursor: pointer; border-radius: 6px; font-family: inherit;">Perform Another Analysis</button>
+                    <button type="button" onclick="showAnalysisForm()" style="background: transparent; border: 1px solid rgba(165, 200, 255, 0.4); color: #A5C8FF; padding: 10px 18px; font-size: 0.9rem; cursor: pointer; border-radius: 6px; font-family: inherit; width: auto;">Perform Another Analysis</button>
                 </div>
             </div>
         </div>
     </div>
+
+    <script>
+        function escapeHtml(str) {
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        // Lyrics Reader Logic
+        function renderLyricsHtml(text) {
+            if (!text || !text.trim()) {
+                return '<div style="color: rgba(225,232,240,0.5); font-style: italic; text-align: center; padding: 40px;">No lyrics available. Paste or edit lyrics in Edit mode.</div>';
+            }
+            const rawLines = text.replace(/\r\n/g, '\n').split('\n');
+            const hasBlankLines = rawLines.some(l => l.trim() === '');
+            const hasSectionTags = rawLines.some(l => /^\[.*?\]$/.test(l.trim()));
+            
+            let html = '';
+            let currentStanzaLines = [];
+            let linesInStanzaCount = 0;
+            
+            function flushStanza() {
+                if (currentStanzaLines.length > 0) {
+                    html += '<div class="lyric-stanza">';
+                    for (const line of currentStanzaLines) {
+                        html += `<div class="lyric-line">${line}</div>`;
+                    }
+                    html += '</div>';
+                    currentStanzaLines = [];
+                    linesInStanzaCount = 0;
+                }
+            }
+            
+            for (let i = 0; i < rawLines.length; i++) {
+                const trimmed = rawLines[i].trim();
+                
+                // Section tags like [Verse 1], [Chorus]
+                const sectionMatch = trimmed.match(/^\[(.*?)\]$/);
+                if (sectionMatch) {
+                    flushStanza();
+                    const tag = escapeHtml(sectionMatch[1]);
+                    html += `<div class="lyric-section-badge"><span>${tag}</span></div>`;
+                    continue;
+                }
+                
+                if (trimmed === '') {
+                    flushStanza();
+                    continue;
+                }
+                
+                // If lyrics lack both blank lines and section tags, auto-group into 4 lines for readability
+                if (!hasBlankLines && !hasSectionTags && linesInStanzaCount >= 4) {
+                    flushStanza();
+                }
+                
+                let formattedLine = escapeHtml(trimmed);
+                // Backing vocals / parenthetical styling: (Yeah, yeah)
+                formattedLine = formattedLine.replace(/\(([^)]+)\)/g, '<span class="backing-vocal">($1)</span>');
+                currentStanzaLines.push(formattedLine);
+                linesInStanzaCount++;
+            }
+            flushStanza();
+            return html;
+        }
+
+        function updateLyricsReader() {
+            const textarea = document.getElementById('lyrics');
+            const reader = document.getElementById('lyrics-reader');
+            if (textarea && reader) {
+                reader.innerHTML = renderLyricsHtml(textarea.value);
+            }
+        }
+
+        function setLyricsMode(mode) {
+            const reader = document.getElementById('lyrics-reader');
+            const textarea = document.getElementById('lyrics');
+            const btnReader = document.getElementById('btn-lyrics-reader');
+            const btnEdit = document.getElementById('btn-lyrics-edit');
+            
+            if (mode === 'reader') {
+                updateLyricsReader();
+                if (reader) reader.style.display = 'flex';
+                if (textarea) textarea.style.display = 'none';
+                if (btnReader) btnReader.classList.add('active');
+                if (btnEdit) btnEdit.classList.remove('active');
+            } else {
+                if (reader) reader.style.display = 'none';
+                if (textarea) {
+                    textarea.style.display = 'block';
+                    textarea.focus();
+                }
+                if (btnReader) btnReader.classList.remove('active');
+                if (btnEdit) btnEdit.classList.add('active');
+            }
+        }
+
+        function autoFormatStanzas() {
+            const textarea = document.getElementById('lyrics');
+            if (!textarea) return;
+            const text = textarea.value.replace(/\r\n/g, '\n');
+            if (!text.trim()) return;
+            
+            const lines = text.split('\n');
+            const newLines = [];
+            let count = 0;
+            
+            for (let i = 0; i < lines.length; i++) {
+                const trimmed = lines[i].trim();
+                if (/^\[.*?\]$/.test(trimmed)) {
+                    if (newLines.length > 0 && newLines[newLines.length - 1] !== '') {
+                        newLines.push('');
+                    }
+                    newLines.push(trimmed);
+                    count = 0;
+                } else if (trimmed === '') {
+                    if (newLines.length > 0 && newLines[newLines.length - 1] !== '') {
+                        newLines.push('');
+                    }
+                    count = 0;
+                } else {
+                    newLines.push(trimmed);
+                    count++;
+                    if (count >= 4 && i < lines.length - 1 && lines[i+1].trim() !== '') {
+                        newLines.push('');
+                        count = 0;
+                    }
+                }
+            }
+            textarea.value = newLines.join('\n');
+            updateLyricsReader();
+            setLyricsMode('reader');
+        }
+
+        // Analysis Formatting Logic
+        function fallbackMarkdown(md) {
+            if (!md) return '';
+            let text = md.replace(/\r\n/g, '\n');
+            text = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            
+            text = text.replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>');
+            text = text.replace(/`([^`]+)`/g, '<code>$1</code>');
+            
+            text = text.replace(/^#### (.*$)/gim, '<h4>$1</h4>');
+            text = text.replace(/^### (.*$)/gim, '<h3>$1</h3>');
+            text = text.replace(/^## (.*$)/gim, '<h2>$1</h2>');
+            text = text.replace(/^# (.*$)/gim, '<h1>$1</h1>');
+            
+            text = text.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+            text = text.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+            text = text.replace(/^> (.*$)/gim, '<blockquote>$1</blockquote>');
+            
+            text = text.replace(/^\s*[-*]\s+(.*$)/gim, '<li>$1</li>');
+            text = text.replace(/(<li>[\s\S]*?<\/li>)/g, '<ul>$1</ul>');
+            text = text.replace(/<\/ul>\s*<ul>/g, '');
+            
+            const paras = text.split(/\n{2,}/);
+            return paras.map(p => {
+                p = p.trim();
+                if (/^<(h[1-6]|ul|ol|blockquote|pre)/.test(p)) return p;
+                return `<p>${p.replace(/\n/g, '<br>')}</p>`;
+            }).join('\n');
+        }
+
+        function parseMarkdown(md) {
+            if (window.marked && typeof window.marked.parse === 'function') {
+                try {
+                    return window.marked.parse(md);
+                } catch (e) {
+                    console.warn('Marked parse error, using fallback:', e);
+                }
+            }
+            return fallbackMarkdown(md);
+        }
+
+        function renderAnalysisCards() {
+            const rawEl = document.getElementById('analysis-raw');
+            const formattedContainer = document.getElementById('analysis-formatted');
+            if (!rawEl || !formattedContainer) return;
+            const rawText = rawEl.textContent || '';
+            if (!rawText.trim()) return;
+            
+            const parsedHtml = parseMarkdown(rawText);
+            const temp = document.createElement('div');
+            temp.innerHTML = parsedHtml;
+            
+            const headings = temp.querySelectorAll('h1, h2, h3, h4');
+            if (headings.length === 0) {
+                formattedContainer.innerHTML = `<div class="analysis-card">${parsedHtml}</div>`;
+                return;
+            }
+            
+            formattedContainer.innerHTML = '';
+            let currentCard = null;
+            
+            Array.from(temp.childNodes).forEach(node => {
+                if (node.nodeType === Node.TEXT_NODE && !node.textContent.trim()) {
+                    return;
+                }
+                const isHeading = node.nodeType === Node.ELEMENT_NODE && ['H1', 'H2', 'H3', 'H4'].includes(node.tagName);
+                if (isHeading || !currentCard) {
+                    currentCard = document.createElement('div');
+                    currentCard.className = 'analysis-card';
+                    formattedContainer.appendChild(currentCard);
+                }
+                currentCard.appendChild(node.cloneNode(true));
+            });
+        }
+
+        function copyAnalysis() {
+            const rawEl = document.getElementById('analysis-raw');
+            const btn = document.getElementById('btn-copy-analysis');
+            if (!rawEl) return;
+            const text = rawEl.textContent || '';
+
+            function showSuccess() {
+                if (btn) {
+                    const original = btn.innerHTML;
+                    btn.innerHTML = '✅ Copied!';
+                    setTimeout(() => { btn.innerHTML = original; }, 2000);
+                }
+            }
+
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text).then(showSuccess).catch(() => {
+                    fallbackCopyText(text);
+                    showSuccess();
+                });
+            } else {
+                fallbackCopyText(text);
+                showSuccess();
+            }
+        }
+
+        function fallbackCopyText(text) {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.position = 'fixed';
+            ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.focus();
+            ta.select();
+            try {
+                document.execCommand('copy');
+            } catch (e) {
+                console.warn('Fallback copy failed:', e);
+            }
+            document.body.removeChild(ta);
+        }
+
+        let isRawView = false;
+        function toggleRawAnalysis() {
+            const formatted = document.getElementById('analysis-formatted');
+            const raw = document.getElementById('analysis-raw');
+            const btn = document.getElementById('btn-raw-analysis');
+            isRawView = !isRawView;
+            if (isRawView) {
+                if (formatted) formatted.style.display = 'none';
+                if (raw) raw.style.display = 'block';
+                if (btn) {
+                    btn.classList.add('active');
+                    btn.textContent = 'Formatted';
+                }
+            } else {
+                if (formatted) formatted.style.display = 'flex';
+                if (raw) raw.style.display = 'none';
+                if (btn) {
+                    btn.classList.remove('active');
+                    btn.textContent = 'Raw View';
+                }
+            }
+        }
+
+        function showAnalysisForm() {
+            const form = document.querySelector('.analysis-form');
+            const resultWrapper = document.getElementById('analysis-result-wrapper');
+            const controls = document.getElementById('analysis-controls');
+            if (form) form.style.display = 'block';
+            if (resultWrapper) resultWrapper.style.display = 'none';
+            if (controls) controls.style.display = 'none';
+        }
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            const textarea = document.getElementById('lyrics');
+            if (textarea && textarea.value.trim()) {
+                updateLyricsReader();
+                setLyricsMode('reader');
+            } else {
+                setLyricsMode('edit');
+            }
+            renderAnalysisCards();
+
+            // Smooth scroll on mobile to active section
+            if (window.innerWidth <= 1080) {
+                const analysisWrapper = document.getElementById('analysis-result-wrapper');
+                const hasAnalysis = analysisWrapper && analysisWrapper.style.display !== 'none';
+                if (hasAnalysis) {
+                    const analysisSection = document.querySelector('.analysis-section');
+                    if (analysisSection) {
+                        setTimeout(() => {
+                            analysisSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        }, 250);
+                    }
+                } else if (textarea && textarea.value.trim()) {
+                    const lyricsSection = document.querySelector('.lyrics-section');
+                    if (lyricsSection && lyricsSection.style.display !== 'none') {
+                        setTimeout(() => {
+                            lyricsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        }, 250);
+                    }
+                }
+            }
+        });
+    </script>
 </body>
 </html>'''
 
 PROMPTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
     <div class="stars"></div>
     <div class="horizon"></div>
-    <div class="container" style="flex-direction: column; width: min(800px, 90vw);">
+    <div class="container" style="flex-direction: column; width: min(800px, 94vw);">
         <h1 style="font-size: 2rem;">Manage Prompts</h1>
         <a href="/" style="color:#A5C8FF; text-decoration:none; margin-bottom:20px; display:inline-block;">&larr; Back to App</a>
         
@@ -715,7 +1473,8 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         lyrics_display = '' if show_sections else 'display: none;'
         analysis_display = '' if show_sections else 'display: none;'
         analysis_form_display = 'display: none;' if analysis_result else ''
-        analysis_result_display = 'display: none;' if not analysis_result else 'flex-grow: 1; overflow-y: auto; margin-top: 16px;'
+        analysis_result_display = 'display: none;' if not analysis_result else ''
+        analysis_controls_display = 'display: flex;' if analysis_result else 'display: none;'
         
         model_options = ''
         for m in AVAILABLE_GEMINI_MODELS:
@@ -739,6 +1498,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                            .replace('{analysis_display}', analysis_display)\
                            .replace('{analysis_form_display}', analysis_form_display)\
                            .replace('{analysis_result_display}', analysis_result_display)\
+                           .replace('{analysis_controls_display}', analysis_controls_display)\
                            .replace('{analysis_result}', html_escape(analysis_result))\
                            .replace('{model_options}', model_options)\
                            .replace('{prompt_options}', prompt_options)
