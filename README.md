@@ -4,7 +4,8 @@ Calling Hours is a web application that fetches song lyrics via the Genius API a
 
 ## Features
 
-- **Genius Lyric Search & Scraping**: Search for songs by artist and title, and fetch lyrics with automatic Genius OAuth flow.
+- **Genius & Open Lyrics Search**: Search for songs by artist and title via Genius with seamless automatic fallback to the **LRCLIB** open database (resilient to Cloudflare 403 blocks on cloud hosts like Cloud Run).
+- **Editable & Custom Lyrics**: An editable lyrics workspace allowing users to review, edit, or paste lyrics manually if needed.
 - **Gemini-Powered Analysis**: Deep lyric analysis analyzing themes, narrative, emotional tone, and poetic devices.
 - **Newest Gemini Free-Tier Models**:
   - `gemini-3.8-flash`: Default flagship Flash model for high-intelligence, multimodal analysis on the free tier.
@@ -41,36 +42,64 @@ Calling Hours is a web application that fetches song lyrics via the Genius API a
 
 Calling Hours includes a production-ready `Dockerfile` and `.dockerignore` for deploying directly to Google Cloud Run.
 
-### 1. Direct Source Deploy with gcloud
+> **Note**: `calling_hours_secrets.py` is intentionally excluded by `.dockerignore` to prevent leaking API keys into container images. In production, credentials must be supplied via **Environment Variables** (or Secret Manager).
 
-You can build and deploy the application in a single command using Google Cloud Build (no local Docker daemon required):
+### 1. Direct Source Deploy with gcloud (Recommended)
+
+The simplest and most reliable deployment uses your **Genius Client Access Token** (`GENIUS_ACCESS_TOKEN`), which allows Genius searches immediately without needing OAuth redirect setup:
 
 ```bash
 gcloud run deploy callinghours \
   --source . \
   --region us-central1 \
   --allow-unauthenticated \
-  --set-env-vars GEMINI_API_KEY="your_gemini_api_key",GENIUS_CLIENT_ID="your_genius_client_id",GENIUS_CLIENT_SECRET="your_genius_client_secret"
+  --set-env-vars GEMINI_API_KEY="your_gemini_api_key",GENIUS_ACCESS_TOKEN="your_genius_access_token"
 ```
 
-### 2. Environment Variables
+> **Where to get `GENIUS_ACCESS_TOKEN`**: On your [Genius API Clients](https://genius.com/api-clients) dashboard, click **"Generate Access Token"**.
 
-| Variable | Description | Default |
+### 2. Updating an Existing Deployment
+
+If your service is already deployed on Cloud Run, you can set the environment variables directly without rebuilding:
+
+```bash
+gcloud run services update callinghours \
+  --region us-central1 \
+  --set-env-vars GEMINI_API_KEY="your_gemini_api_key",GENIUS_ACCESS_TOKEN="your_genius_access_token"
+```
+
+Or via Google Cloud Console:
+1. Go to **Cloud Run** &rarr; click your **`callinghours`** service.
+2. Click **Edit & Deploy New Revision**.
+3. Under the **Variables & Secrets** tab, add `GEMINI_API_KEY` and `GENIUS_ACCESS_TOKEN`.
+4. Click **Deploy**.
+
+### 3. Environment Variables
+
+| Variable | Description | Recommended for Prod |
 |---|---|---|
-| `PORT` | Container listen port (injected automatically by Cloud Run) | `8080` (or `8000` locally) |
-| `HOST` | Bind address | `0.0.0.0` in Cloud Run (`127.0.0.1` locally) |
-| `GEMINI_API_KEY` | Google Gemini API Key | Falling back to `calling_hours_secrets.py` |
-| `GENIUS_CLIENT_ID` | Genius Application Client ID | Falling back to `calling_hours_secrets.py` |
-| `GENIUS_CLIENT_SECRET` | Genius Application Client Secret | Falling back to `calling_hours_secrets.py` |
-| `GENIUS_ACCESS_TOKEN` | Pre-generated Genius Bearer Token (optional) | Falling back to `calling_hours_secrets.py` |
-| `GENIUS_REDIRECT_URI` | Explicit Genius OAuth callback URL (e.g. `https://your-service.run.app/callback`) | Dynamically resolved from host header |
-| `NO_BROWSER` | Set to `1` to disable browser auto-launch | `1` on Cloud Run (`0` locally) |
+| `GENIUS_ACCESS_TOKEN` | Genius Client Access Token (from Genius dashboard) | **Yes** (avoids OAuth flow) |
+| `GEMINI_API_KEY` | Google Gemini API Key (from AI Studio) | **Yes** |
+| `GENIUS_CLIENT_ID` | Genius Client ID (only needed if using OAuth) | Optional |
+| `GENIUS_CLIENT_SECRET` | Genius Client Secret (only needed if using OAuth) | Optional |
+| `PORT` | Container listen port (injected by Cloud Run) | `8080` |
+| `HOST` | Bind address | `0.0.0.0` in Cloud Run |
+| `GENIUS_REDIRECT_URI` | Explicit Genius OAuth callback URL (e.g. `https://your-service.run.app/callback`) | Dynamically resolved |
+| `NO_BROWSER` | Set to `1` to disable browser auto-launch | Automatically `1` on Cloud Run |
 | `PROMPTS_FILE_PATH` | Path to prompt templates JSON | `/app/prompts.json` |
 
-### 3. Configuring Genius OAuth on Cloud Run
+### 4. Alternative: Using Genius OAuth Flow on Cloud Run
 
-When your service is deployed, Google Cloud Run will assign a URL like `https://callinghours-<hash>-uc.a.run.app`.
-1. Go to your [Genius API Clients](https://genius.com/api-clients) dashboard.
-2. Add `https://<your-cloud-run-url>/callback` to the **Redirect URI** field.
-3. Save the changes. You can now authenticate Genius directly from your Cloud Run deployment.
+If you prefer using the full OAuth authorization redirect flow instead of a static access token:
+1. Deploy with `GENIUS_CLIENT_ID` and `GENIUS_CLIENT_SECRET`:
+   ```bash
+   gcloud run deploy callinghours \
+     --source . \
+     --region us-central1 \
+     --allow-unauthenticated \
+     --set-env-vars GEMINI_API_KEY="your_gemini_api_key",GENIUS_CLIENT_ID="your_genius_client_id",GENIUS_CLIENT_SECRET="your_genius_client_secret"
+   ```
+2. Go to your [Genius API Clients](https://genius.com/api-clients) dashboard.
+3. Add `https://<your-cloud-run-url>/callback` to the **Redirect URI** field and save.
+4. Open the service URL and click **Authorize Genius**.
 

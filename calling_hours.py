@@ -77,6 +77,24 @@ PORT = int(os.environ.get('PORT', 8080 if IS_CLOUD_RUN else 8000))
 HOST = os.environ.get('HOST', '0.0.0.0' if IS_CLOUD_RUN else '127.0.0.1')
 OAUTH_PORT = PORT
 
+def get_genius_missing_message(action='authorize') -> str:
+    if IS_CLOUD_RUN or not os.path.exists(os.path.join(SCRIPT_DIR, 'calling_hours_secrets.py')):
+        return (
+            '<div class="message">Genius credentials not found. '
+            'In production, configure <code>GENIUS_ACCESS_TOKEN</code> (recommended) '
+            'or <code>GENIUS_CLIENT_ID</code> and <code>GENIUS_CLIENT_SECRET</code> as environment variables.</div>'
+        )
+    verb = 'before authorizing' if action == 'authorizing' else 'and reload to authorize Genius'
+    return f'<div class="message">Set your Genius credentials in calling_hours_secrets.py {verb}.</div>'
+
+def get_gemini_missing_message() -> str:
+    if IS_CLOUD_RUN or not os.path.exists(os.path.join(SCRIPT_DIR, 'calling_hours_secrets.py')):
+        return (
+            '<div class="message">Gemini API key not found. '
+            'In production, configure <code>GEMINI_API_KEY</code> as an environment variable.</div>'
+        )
+    return '<div class="message">Set your GEMINI_API_KEY in calling_hours_secrets.py and reload to use analysis.</div>'
+
 PAGE_HTML = '''<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -315,10 +333,17 @@ PAGE_HTML = '''<!DOCTYPE html>
             line-height: 1.6;
             white-space: pre-wrap;
             box-sizing: border-box;
+            resize: vertical;
         }
-        
-        .lyrics-box:empty {
-            display: none;
+
+        .lyrics-box:focus {
+            outline: none;
+            border-color: #A5C8FF;
+            box-shadow: 0 0 12px rgba(165, 200, 255, 0.25);
+        }
+
+        .lyrics-box::placeholder {
+            color: rgba(225, 232, 240, 0.4);
         }
         
         .lyrics-box::-webkit-scrollbar, .analysis-box::-webkit-scrollbar {
@@ -381,17 +406,17 @@ PAGE_HTML = '''<!DOCTYPE html>
         </div>
 
         <div class="lyrics-section" style="{lyrics_display}">
-            <label for="lyrics">Lyrics</label>
-            <div id="lyrics" class="lyrics-box">{lyrics_text}</div>
+            <label for="lyrics">Lyrics <span style="font-size: 0.8rem; font-weight: normal; opacity: 0.7;">(editable)</span></label>
+            <textarea id="lyrics" class="lyrics-box" placeholder="Paste or edit lyrics here...">{lyrics_text}</textarea>
         </div>
         
         <div class="analysis-section" style="{analysis_display}">
             <label>Analysis</label>
             <div class="analysis-form" style="{analysis_form_display}">
-                <form method="post" action="/analyze">
+                <form id="analyze-form" method="post" action="/analyze" onsubmit="document.getElementById('form_lyrics').value = document.getElementById('lyrics').value;">
                     <input type="hidden" name="artist" value="{artist_value}">
                     <input type="hidden" name="song" value="{song_value}">
-                    <input type="hidden" name="lyrics" value="{lyrics_text}">
+                    <input type="hidden" id="form_lyrics" name="lyrics" value="{lyrics_text_attr}">
                     
                     <label for="model_name">Select Gemini Model</label>
                     <select name="model_name" id="model_name">
@@ -481,7 +506,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                     '</div>'
                 )
             else:
-                message = '<div class="message">Set your Genius credentials in calling_hours_secrets.py and reload to authorize Genius.</div>'
+                message = get_genius_missing_message()
         else:
             message = ''
 
@@ -512,40 +537,80 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             song = data.get('song', [''])[0].strip()
             lyrics_text = ''
             message = ''
+            show_editor = False
 
             if not artist or not song:
                 message = '<div class="message">Please enter both artist name and song title.</div>'
-            elif not ACCESS_TOKEN:
-                if GENIUS_CLIENT_ID and GENIUS_CLIENT_SECRET:
+            else:
+                song_url = None
+                genius_error = None
+
+                # 1. Attempt Genius song search if credentials or access token are present
+                if ACCESS_TOKEN:
+                    try:
+                        song_url = search_genius_song(artist, song)
+                    except Exception as e:
+                        print(f"Genius search error: {e}")
+                        genius_error = str(e)
+                elif GENIUS_CLIENT_ID and GENIUS_CLIENT_SECRET:
+                    try:
+                        song_url = search_genius_song(artist, song)
+                    except Exception as e:
+                        print(f"Genius web search error: {e}")
+                        genius_error = str(e)
+
+                lyrics = None
+                source = ""
+
+                # 2. Try scraping Genius if song URL was resolved
+                if song_url:
+                    try:
+                        lyrics = fetch_genius_lyrics(song_url)
+                        if lyrics:
+                            source = "Genius"
+                    except Exception as e:
+                        print(f"Genius scraping failed ({e}), attempting LRCLIB fallback...")
+                        genius_error = str(e)
+
+                # 3. Fallback to LRCLIB open database if Genius didn't provide lyrics
+                if not lyrics:
+                    try:
+                        lyrics = fetch_lrclib_lyrics(artist, song)
+                        if lyrics:
+                            source = "LRCLIB"
+                    except Exception as e:
+                        print(f"LRCLIB fallback error: {e}")
+
+                if lyrics:
+                    lyrics_text = lyrics
+                    show_editor = True
+                    genius_link = f' <a href="{html_escape(song_url)}" target="_blank" style="color:#A8D2FF; text-decoration:underline;">View on Genius</a>' if song_url else ''
+                    note = ' (via LRCLIB fallback - Genius web access blocked)' if (source == 'LRCLIB' and song_url) else (f' (via {source})' if source == 'LRCLIB' else '')
                     message = (
-                        '<div class="message">Genius is not authorized yet. '
-                        '<a href="/authorize" style="color:#A8D2FF; text-decoration:underline;">Authorize Genius</a>'
+                        '<div class="message">'
+                        f'Successfully found lyrics for <strong>{html_escape(artist)}</strong> - <strong>{html_escape(song)}</strong>{note}.'
+                        f'{genius_link}'
                         '</div>'
                     )
                 else:
-                    message = '<div class="message">Set your Genius credentials in calling_hours_secrets.py and reload to authorize Genius.</div>'
-            else:
-                try:
-                    song_url = search_genius_song(artist, song)
-                    if song_url:
-                        lyrics = fetch_genius_lyrics(song_url)
-                        if lyrics:
-                            lyrics_text = html_escape(lyrics)
-                            message = (
-                                '<div class="message">'
-                                f'Successfully found lyrics for <strong>{html_escape(artist)}</strong> - <strong>{html_escape(song)}</strong>. '
-                                f'<a href="{html_escape(song_url)}" target="_blank" style="color:#A8D2FF; text-decoration:underline;">View on Genius</a>'
-                                '</div>'
-                            )
-                        else:
-                            message = '<div class="message">Lyrics page found, but the lyrics could not be extracted.</div>'
-                    else:
-                        message = '<div class="message">No Genius match found for that artist and song.</div>'
-                except Exception as e:
-                    lyrics_text = ''
-                    message = '<div class="message">Genius lookup failed: {}</div>'.format(html_escape(str(e)))
+                    show_editor = True
+                    reason_msg = f" (Genius returned: {html_escape(genius_error)})" if genius_error else ""
+                    genius_link = f' <a href="{html_escape(song_url)}" target="_blank" style="color:#A8D2FF; text-decoration:underline;">View on Genius</a>' if song_url else ''
+                    message = (
+                        '<div class="message">'
+                        f'Could not automatically retrieve lyrics for <strong>{html_escape(artist)}</strong> - <strong>{html_escape(song)}</strong>{reason_msg}.'
+                        f'{genius_link}<br>'
+                        'You can paste or edit the lyrics in the box below to run Gemini analysis.'
+                        '</div>'
+                    )
 
-            self.render_page(message=message, lyrics_text=lyrics_text, artist_value=html_escape(artist), song_value=html_escape(song))
+            self.render_page(
+                message=message,
+                lyrics_text=lyrics_text,
+                artist_value=html_escape(artist),
+                song_value=html_escape(song),
+                show_editor=show_editor
+            )
             
         elif self.path == '/analyze':
             artist = data.get('artist', [''])[0].strip()
@@ -572,7 +637,9 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 prompt_idx = 0
             
             if not GEMINI_API_KEY:
-                message = '<div class="message">Set your GEMINI_API_KEY in calling_hours_secrets.py and reload to use analysis.</div>'
+                message = get_gemini_missing_message()
+            elif not lyrics_text:
+                message = '<div class="message">Please paste or enter lyrics in the lyrics box before running analysis.</div>'
             else:
                 try:
                     client = genai.Client(api_key=GEMINI_API_KEY)
@@ -594,13 +661,14 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 song_value=html_escape(song),
                 analysis_result=analysis_result,
                 selected_model=model_name,
-                selected_prompt=prompt_idx
+                selected_prompt=prompt_idx,
+                show_editor=True
             )
 
     def handle_authorize(self):
         if not GENIUS_CLIENT_ID or not GENIUS_CLIENT_SECRET:
             self.render_page(
-                message='<div class="message">Set your Genius credentials in calling_hours_secrets.py before authorizing.</div>',
+                message=get_genius_missing_message(action='authorizing'),
                 lyrics_text=''
             )
             return
@@ -642,9 +710,10 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
 
         self.render_page(message=message, lyrics_text='')
 
-    def render_page(self, message: str, lyrics_text: str, artist_value: str = '', song_value: str = '', analysis_result: str = '', selected_model: str = DEFAULT_GEMINI_MODEL, selected_prompt: int = 0):
-        lyrics_display = 'display: none;' if not lyrics_text else ''
-        analysis_display = 'display: none;' if not lyrics_text else ''
+    def render_page(self, message: str, lyrics_text: str, artist_value: str = '', song_value: str = '', analysis_result: str = '', selected_model: str = DEFAULT_GEMINI_MODEL, selected_prompt: int = 0, show_editor: bool = False):
+        show_sections = bool(lyrics_text or show_editor)
+        lyrics_display = '' if show_sections else 'display: none;'
+        analysis_display = '' if show_sections else 'display: none;'
         analysis_form_display = 'display: none;' if analysis_result else ''
         analysis_result_display = 'display: none;' if not analysis_result else 'flex-grow: 1; overflow-y: auto; margin-top: 16px;'
         
@@ -654,14 +723,16 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             model_options += f'<option value="{html_escape(m["id"])}"{selected_attr}>{html_escape(m["name"])}</option>\n'
 
         prompt_options = ''
-        if lyrics_text:
+        if show_sections:
             prompts = load_prompts()
             for idx, p in enumerate(prompts):
                 selected_attr = ' selected' if idx == selected_prompt else ''
                 prompt_options += f'<option value="{idx}"{selected_attr}>{html_escape(p["name"])}</option>\n'
 
+        lyrics_text_attr = html.escape(lyrics_text, quote=True)
         content = PAGE_HTML.replace('{message_block}', message)\
-                           .replace('{lyrics_text}', lyrics_text)\
+                           .replace('{lyrics_text}', html_escape(lyrics_text))\
+                           .replace('{lyrics_text_attr}', lyrics_text_attr)\
                            .replace('{artist_value}', artist_value)\
                            .replace('{song_value}', song_value)\
                            .replace('{lyrics_display}', lyrics_display)\
@@ -709,16 +780,74 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
 def html_escape(text: str) -> str:
     return html.escape(text)
 
-def build_genius_headers():
+def build_genius_api_headers():
     headers = {
         'User-Agent': 'CallingHours/1.0',
-        'Accept': 'application/json, text/html, */*',
+        'Accept': 'application/json',
     }
     if ACCESS_TOKEN:
         headers['Authorization'] = f'Bearer {ACCESS_TOKEN}'
     elif GENIUS_CLIENT_ID:
         headers['X-Genius-Client-Id'] = GENIUS_CLIENT_ID
     return headers
+
+def build_genius_headers():
+    return build_genius_api_headers()
+
+def build_browser_headers():
+    return {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Sec-Ch-Ua': '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+        'Sec-Ch-Ua-Mobile': '?0',
+        'Sec-Ch-Ua-Platform': '"Windows"',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-User': '?1',
+        'Upgrade-Insecure-Requests': '1',
+    }
+
+def fetch_lrclib_lyrics(artist: str, song: str) -> str | None:
+    headers = {
+        'User-Agent': 'CallingHours/1.0 (https://github.com/callinghours)'
+    }
+    # 1. Exact match endpoint
+    try:
+        resp = requests.get(
+            'https://lrclib.net/api/get',
+            params={'artist_name': artist, 'track_name': song},
+            headers=headers,
+            timeout=8
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            lyrics = data.get('plainLyrics')
+            if lyrics and lyrics.strip():
+                return lyrics.strip()
+    except Exception as e:
+        print(f"LRCLIB direct fetch failed: {e}")
+
+    # 2. Search endpoint fallback
+    try:
+        resp = requests.get(
+            'https://lrclib.net/api/search',
+            params={'q': f"{artist} {song}"},
+            headers=headers,
+            timeout=8
+        )
+        if resp.status_code == 200:
+            results = resp.json()
+            if isinstance(results, list):
+                for item in results:
+                    lyrics = item.get('plainLyrics')
+                    if lyrics and lyrics.strip():
+                        return lyrics.strip()
+    except Exception as e:
+        print(f"LRCLIB search fallback failed: {e}")
+
+    return None
 
 def get_redirect_uri(host_header: str | None = None) -> str:
     # Explicit override via environment variable
@@ -793,7 +922,7 @@ def search_genius_song(artist: str, song: str) -> str | None:
     return None
 
 def fetch_genius_lyrics(song_url: str) -> str | None:
-    response = requests.get(song_url, headers=build_genius_headers(), timeout=10)
+    response = requests.get(song_url, headers=build_browser_headers(), timeout=10)
     response.raise_for_status()
     html_text = response.text
 
