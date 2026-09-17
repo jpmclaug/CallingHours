@@ -17,7 +17,17 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPT_DIR)
 
 # Initialize database
-database.init_db()
+try:
+    database.init_db()
+    backend = database.get_backend_name()
+    print(f"Database initialized successfully using {backend}.")
+except Exception as e:
+    print(f"Warning: Database initialization failed ({e}). Falling back to local SQLite.")
+    try:
+        database.init_db(database.DEFAULT_SQLITE_PATH)
+    except Exception as sqle:
+        print(f"SQLite fallback error: {sqle}")
+
 
 PROMPTS_FILE = os.environ.get('PROMPTS_FILE_PATH') or os.path.join(SCRIPT_DIR, 'prompts.json')
 
@@ -2330,8 +2340,10 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         return
 
-def html_escape(text: str) -> str:
-    return html.escape(text)
+def html_escape(text: Any) -> str:
+    if text is None:
+        return ""
+    return html.escape(str(text))
 
 def build_genius_api_headers():
     headers = {

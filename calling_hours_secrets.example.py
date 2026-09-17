@@ -10,3 +10,8 @@ GENIUS_ACCESS_TOKEN = ""
 # Google Gemini API key
 # Obtain a free key from https://aistudio.google.com/
 GEMINI_API_KEY = "your_gemini_api_key_here"
+
+# Neon PostgreSQL Database URL (optional, falls back to local SQLite if empty)
+# Example: postgresql://neondb_owner:password@ep-xyz-pooler.us-east-1.aws.neon.tech/neondb?sslmode=require
+NEON_DATABASE_URL = ""
+
