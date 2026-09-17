@@ -3,6 +3,10 @@ calling_hours_secrets.py
 *.env
 .env*
 
+# SQLite database
+*.db
+calling_hours.db
+
 # Git and IDE
 .git
 .gitignore

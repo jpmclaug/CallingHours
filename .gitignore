@@ -3,6 +3,10 @@ calling_hours_secrets.py
 *.env
 .env*
 
+# SQLite database
+*.db
+calling_hours.db
+
 # Python bytecode and cache
 __pycache__/
 *.py[cod]

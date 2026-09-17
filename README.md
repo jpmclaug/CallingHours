@@ -5,6 +5,8 @@ Calling Hours is a web application that fetches song lyrics via the Genius API a
 ## Features
 
 - **Genius & Open Lyrics Search**: Search for songs by artist and title via Genius with seamless automatic fallback to the **LRCLIB** open database (resilient to Cloudflare 403 blocks on cloud hosts like Cloud Run).
+- **Search Results Database & Band History**: Automatically saves searches, retrieved lyrics, and Gemini analyses in an embedded SQLite database. Select from previously searched bands via dropdown or autocomplete, browse past tracks for any band, and instantly load saved results without network latency.
+- **Search History Dashboard**: Dedicated `/history` view to browse, filter, quick-load, and manage previously searched songs and analyses.
 - **Editable & Custom Lyrics**: An editable lyrics workspace allowing users to review, edit, or paste lyrics manually if needed.
 - **Gemini-Powered Analysis**: Deep lyric analysis analyzing themes, narrative, emotional tone, and poetic devices.
 - **Newest Gemini Free-Tier Models**:
@@ -87,6 +89,7 @@ Or via Google Cloud Console:
 | `GENIUS_REDIRECT_URI` | Explicit Genius OAuth callback URL (e.g. `https://your-service.run.app/callback`) | Dynamically resolved |
 | `NO_BROWSER` | Set to `1` to disable browser auto-launch | Automatically `1` on Cloud Run |
 | `PROMPTS_FILE_PATH` | Path to prompt templates JSON | `/app/prompts.json` |
+| `DATABASE_PATH` | Path to SQLite database file | `/app/calling_hours.db` |
 
 ### 4. Alternative: Using Genius OAuth Flow on Cloud Run
 

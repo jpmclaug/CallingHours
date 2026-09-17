@@ -11,9 +11,13 @@ import json
 
 import requests
 from google import genai
+import database
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPT_DIR)
+
+# Initialize database
+database.init_db()
 
 PROMPTS_FILE = os.environ.get('PROMPTS_FILE_PATH') or os.path.join(SCRIPT_DIR, 'prompts.json')
 
@@ -821,9 +825,35 @@ PAGE_HTML = r'''<!DOCTYPE html>
             <h1>Calling Hours</h1>
             <p>Enter an artist and a song title, then submit to post the details.</p>
 
-            <form method="post" action="/submit">
+            <form method="post" action="/submit" id="search-form">
+                <input type="hidden" name="refresh" id="force_refresh" value="0">
+
+                <div id="band-history-group" style="{band_select_display} margin-bottom: 14px;">
+                    <label for="band_select" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <span>Previous Bands</span>
+                        <span style="font-size: 0.72rem; color: #A5C8FF; background: rgba(165, 200, 255, 0.15); padding: 2px 8px; border-radius: 10px; font-weight: 400;">{band_count_text}</span>
+                    </label>
+                    <select id="band_select" onchange="onBandSelected(this.value)">
+                        <option value="">-- Select a previous band --</option>
+                        {band_options}
+                    </select>
+                </div>
+
                 <label for="artist">Artist Name</label>
-                <input type="text" id="artist" name="artist" placeholder="e.g. Adele" value="{artist_value}" required>
+                <input type="text" id="artist" name="artist" placeholder="e.g. Adele" value="{artist_value}" list="bands-datalist" autocomplete="off" required onchange="fetchBandSongs(this.value)">
+                <datalist id="bands-datalist">
+                    {band_datalist_options}
+                </datalist>
+
+                <div id="band-songs-group" style="display: none; margin-top: 14px; margin-bottom: 8px;">
+                    <label for="band_song_select" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <span>Previous Songs</span>
+                        <button type="button" id="btn-quick-load" class="pill-btn secondary" style="font-size: 0.7rem; padding: 2px 8px; display: none;" onclick="loadSelectedSavedSong()">⚡ Load Result</button>
+                    </label>
+                    <select id="band_song_select" onchange="onPreviousSongSelected(this)">
+                        <option value="">-- Or pick a previous song --</option>
+                    </select>
+                </div>
 
                 <label for="song">Song Title</label>
                 <input type="text" id="song" name="song" placeholder="e.g. Hello" value="{song_value}" required>
@@ -833,7 +863,8 @@ PAGE_HTML = r'''<!DOCTYPE html>
 
             {message_block}
             
-            <div style="text-align: center; margin-top: 30px;">
+            <div style="text-align: center; margin-top: 30px; display: flex; justify-content: center; gap: 20px;">
+                <a href="/history" style="color: #A5C8FF; text-decoration: none; border-bottom: 1px dotted #A5C8FF;">Search History</a>
                 <a href="/prompts" style="color: #A5C8FF; text-decoration: none; border-bottom: 1px dotted #A5C8FF;">Manage Prompts</a>
             </div>
         </div>
@@ -1175,8 +1206,92 @@ PAGE_HTML = r'''<!DOCTYPE html>
             if (controls) controls.style.display = 'none';
         }
 
+        // Previous Bands & Songs handling
+        function onBandSelected(band) {
+            const artistInput = document.getElementById('artist');
+            if (artistInput && band) {
+                artistInput.value = band;
+            }
+            fetchBandSongs(band);
+        }
+
+        function fetchBandSongs(band) {
+            const songsGroup = document.getElementById('band-songs-group');
+            const songSelect = document.getElementById('band_song_select');
+            const quickLoadBtn = document.getElementById('btn-quick-load');
+            if (!songsGroup || !songSelect) return;
+
+            if (!band || !band.trim()) {
+                songsGroup.style.display = 'none';
+                if (quickLoadBtn) quickLoadBtn.style.display = 'none';
+                return;
+            }
+
+            fetch('/api/songs?artist=' + encodeURIComponent(band.trim()))
+                .then(r => r.json())
+                .then(data => {
+                    if (data.songs && data.songs.length > 0) {
+                        songSelect.innerHTML = '<option value="">-- Or pick a previous song (' + data.songs.length + ') --</option>';
+                        data.songs.forEach(s => {
+                            const opt = document.createElement('option');
+                            opt.value = s.id;
+                            let label = s.song;
+                            if (s.has_analysis) {
+                                label += ' ✦ (analyzed)';
+                            } else if (s.has_lyrics) {
+                                label += ' (cached)';
+                            }
+                            opt.textContent = label;
+                            opt.dataset.song = s.song;
+                            songSelect.appendChild(opt);
+                        });
+                        songsGroup.style.display = 'block';
+                    } else {
+                        songsGroup.style.display = 'none';
+                        if (quickLoadBtn) quickLoadBtn.style.display = 'none';
+                    }
+                })
+                .catch(err => console.error('Error fetching band songs:', err));
+        }
+
+        function onPreviousSongSelected(selectEl) {
+            const quickLoadBtn = document.getElementById('btn-quick-load');
+            const songInput = document.getElementById('song');
+            const selectedOpt = selectEl.options[selectEl.selectedIndex];
+            if (!selectedOpt || !selectedOpt.value) {
+                if (quickLoadBtn) quickLoadBtn.style.display = 'none';
+                return;
+            }
+            if (songInput && selectedOpt.dataset.song) {
+                songInput.value = selectedOpt.dataset.song;
+            }
+            if (quickLoadBtn) {
+                quickLoadBtn.style.display = 'inline-block';
+            }
+        }
+
+        function loadSelectedSavedSong() {
+            const songSelect = document.getElementById('band_song_select');
+            if (!songSelect || !songSelect.value) return;
+            window.location.href = '/?id=' + encodeURIComponent(songSelect.value);
+        }
+
+        function forceRefreshSearch() {
+            const refreshInput = document.getElementById('force_refresh');
+            const form = document.getElementById('search-form');
+            if (refreshInput && form) {
+                refreshInput.value = '1';
+                form.submit();
+            }
+        }
+
         // Initialize on page load
         document.addEventListener('DOMContentLoaded', () => {
+            const artistInput = document.getElementById('artist');
+            if (artistInput && artistInput.value.trim()) {
+                fetchBandSongs(artistInput.value.trim());
+            }
+
             const textarea = document.getElementById('lyrics');
             if (textarea && textarea.value.trim()) {
                 updateLyricsReader();
@@ -1240,6 +1355,44 @@ PROMPTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
 </body>
 </html>'''
 
+HISTORY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
+    <div class="stars"></div>
+    <div class="horizon"></div>
+    <div class="container" style="flex-direction: column; width: min(880px, 95vw);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 12px;">
+            <h1 style="font-size: 2rem; margin: 0; text-align: left;">Search History</h1>
+            <a href="/" style="color:#A5C8FF; text-decoration:none; font-size: 1rem; border-bottom: 1px dotted #A5C8FF;">&larr; Back to App</a>
+        </div>
+
+        <div style="margin-bottom: 24px;">
+            <input type="text" id="history-filter" placeholder="Filter history by artist or song title..." oninput="filterHistory(this.value)">
+        </div>
+
+        <div id="history-list" style="display: flex; flex-direction: column; gap: 14px;">
+            {history_list}
+        </div>
+    </div>
+
+    <script>
+        function filterHistory(query) {
+            const q = (query || '').toLowerCase().trim();
+            const cards = document.querySelectorAll('.history-card');
+            let visible = 0;
+            cards.forEach(card => {
+                const text = card.textContent.toLowerCase();
+                const match = text.includes(q);
+                card.style.display = match ? 'flex' : 'none';
+                if (match) visible++;
+            });
+            const noMatchEl = document.getElementById('history-no-matches');
+            if (noMatchEl) {
+                noMatchEl.style.display = (visible === 0 && cards.length > 0) ? 'block' : 'none';
+            }
+        }
+    </script>
+</body>
+</html>'''
+
 class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
@@ -1260,6 +1413,48 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
 
         if parsed.path == '/prompts':
             self.render_prompts_page()
+            return
+
+        if parsed.path == '/history':
+            self.render_history_page()
+            return
+
+        if parsed.path == '/history/delete':
+            params = urllib.parse.parse_qs(parsed.query)
+            search_id = params.get('id', [''])[0].strip()
+            if search_id.isdigit():
+                database.delete_search(int(search_id))
+            self.send_response(302)
+            self.send_header('Location', '/history')
+            self.end_headers()
+            return
+
+        if parsed.path == '/api/bands':
+            bands = database.get_distinct_bands()
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(json.dumps({'bands': bands}).encode('utf-8'))
+            return
+
+        if parsed.path == '/api/songs':
+            params = urllib.parse.parse_qs(parsed.query)
+            artist = params.get('artist', [''])[0].strip()
+            songs = database.get_songs_by_band(artist) if artist else []
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(json.dumps({'songs': songs}).encode('utf-8'))
+            return
+
+        if parsed.path == '/api/search':
+            params = urllib.parse.parse_qs(parsed.query)
+            search_id = params.get('id', [''])[0].strip()
+            record = database.get_search_by_id(int(search_id)) if search_id.isdigit() else None
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(json.dumps({'search': record}).encode('utf-8'))
             return
 
         static_files = {
@@ -1310,9 +1505,40 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 self.wfile.write(content)
                 return
 
-        if parsed.path != '/':
+        if parsed.path not in ('/', '/load'):
             self.send_error(404, 'Not Found')
             return
+
+        params = urllib.parse.parse_qs(parsed.query)
+        load_id = params.get('id', [''])[0].strip()
+        if load_id.isdigit():
+            rec = database.get_search_by_id(int(load_id))
+            if rec:
+                artist = rec['artist']
+                song = rec['song']
+                lyrics = rec['lyrics'] or ''
+                analysis = rec['analysis'] or ''
+                source = rec['source'] or 'Database'
+                model_name = rec['model_name'] or DEFAULT_GEMINI_MODEL
+                song_url = rec.get('song_url')
+                genius_link = f' <a href="{html_escape(song_url)}" target="_blank" style="color:#A8D2FF; text-decoration:underline;">View on Genius</a>' if song_url else ''
+                has_analysis_msg = ' with saved analysis' if analysis else ''
+                message = (
+                    f'<div class="message">'
+                    f'Loaded saved search for <strong>{html_escape(artist)}</strong> - <strong>{html_escape(song)}</strong> from database{has_analysis_msg}.'
+                    f'{genius_link}'
+                    f'</div>'
+                )
+                self.render_page(
+                    message=message,
+                    lyrics_text=lyrics,
+                    artist_value=html_escape(artist),
+                    song_value=html_escape(song),
+                    analysis_result=analysis,
+                    selected_model=model_name,
+                    show_editor=bool(lyrics or analysis)
+                )
+                return
 
         if not ACCESS_TOKEN:
             if GENIUS_CLIENT_ID and GENIUS_CLIENT_SECRET:
@@ -1351,61 +1577,87 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         if self.path == '/submit':
             artist = data.get('artist', [''])[0].strip()
             song = data.get('song', [''])[0].strip()
+            force_refresh = data.get('refresh', ['0'])[0] == '1'
             lyrics_text = ''
             message = ''
             show_editor = False
+            cached_analysis = ''
+            cached_model = DEFAULT_GEMINI_MODEL
 
             if not artist or not song:
                 message = '<div class="message">Please enter both artist name and song title.</div>'
             else:
+                lyrics = None
+                source = ""
                 song_url = None
                 genius_error = None
 
-                # 1. Attempt Genius song search if credentials or access token are present
-                if ACCESS_TOKEN:
-                    try:
-                        song_url = search_genius_song(artist, song)
-                    except Exception as e:
-                        print(f"Genius search error: {e}")
-                        genius_error = str(e)
-                elif GENIUS_CLIENT_ID and GENIUS_CLIENT_SECRET:
-                    try:
-                        song_url = search_genius_song(artist, song)
-                    except Exception as e:
-                        print(f"Genius web search error: {e}")
-                        genius_error = str(e)
+                # Check database cache first if not forcing a refresh
+                if not force_refresh:
+                    cached = database.get_search(artist, song)
+                    if cached and cached.get('lyrics') and cached['lyrics'].strip():
+                        lyrics = cached['lyrics']
+                        source = cached.get('source') or 'Database'
+                        song_url = cached.get('song_url')
+                        cached_analysis = cached.get('analysis') or ''
+                        cached_model = cached.get('model_name') or DEFAULT_GEMINI_MODEL
 
-                lyrics = None
-                source = ""
-
-                # 2. Try scraping Genius if song URL was resolved
-                if song_url:
-                    try:
-                        lyrics = fetch_genius_lyrics(song_url)
-                        if lyrics:
-                            source = "Genius"
-                    except Exception as e:
-                        print(f"Genius scraping failed ({e}), attempting LRCLIB fallback...")
-                        genius_error = str(e)
-
-                # 3. Fallback to LRCLIB open database if Genius didn't provide lyrics
                 if not lyrics:
-                    try:
-                        lyrics = fetch_lrclib_lyrics(artist, song)
-                        if lyrics:
-                            source = "LRCLIB"
-                    except Exception as e:
-                        print(f"LRCLIB fallback error: {e}")
+                    # 1. Attempt Genius song search if credentials or access token are present
+                    if ACCESS_TOKEN:
+                        try:
+                            song_url = search_genius_song(artist, song)
+                        except Exception as e:
+                            print(f"Genius search error: {e}")
+                            genius_error = str(e)
+                    elif GENIUS_CLIENT_ID and GENIUS_CLIENT_SECRET:
+                        try:
+                            song_url = search_genius_song(artist, song)
+                        except Exception as e:
+                            print(f"Genius web search error: {e}")
+                            genius_error = str(e)
 
+                    # 2. Try scraping Genius if song URL was resolved
+                    if song_url:
+                        try:
+                            lyrics = fetch_genius_lyrics(song_url)
+                            if lyrics:
+                                source = "Genius"
+                        except Exception as e:
+                            print(f"Genius scraping failed ({e}), attempting LRCLIB fallback...")
+                            genius_error = str(e)
+
+                    # 3. Fallback to LRCLIB open database if Genius didn't provide lyrics
+                    if not lyrics:
+                        try:
+                            lyrics = fetch_lrclib_lyrics(artist, song)
+                            if lyrics:
+                                source = "LRCLIB"
+                        except Exception as e:
+                            print(f"LRCLIB fallback error: {e}")
+
+                    # 4. Save search result into SQLite database
+                    try:
+                        database.save_search(
+                            artist=artist,
+                            song=song,
+                            lyrics=lyrics,
+                            source=source if lyrics else None,
+                            song_url=song_url
+                        )
+                    except Exception as e:
+                        print(f"Database save error: {e}")
+
+                refresh_link = ' <a href="#" onclick="forceRefreshSearch(); return false;" style="color:#A8D2FF; text-decoration:underline; font-size:0.85em; margin-left:8px;">[Re-fetch fresh]</a>'
                 if lyrics:
                     lyrics_text = lyrics
                     show_editor = True
                     genius_link = f' <a href="{html_escape(song_url)}" target="_blank" style="color:#A8D2FF; text-decoration:underline;">View on Genius</a>' if song_url else ''
-                    note = ' (via LRCLIB fallback - Genius web access blocked)' if (source == 'LRCLIB' and song_url) else (f' (via {source})' if source == 'LRCLIB' else '')
+                    note = ' (via LRCLIB fallback - Genius web access blocked)' if (source == 'LRCLIB' and song_url) else (f' (via {source})' if source in ('LRCLIB', 'Database') else '')
                     message = (
                         '<div class="message">'
                         f'Successfully found lyrics for <strong>{html_escape(artist)}</strong> - <strong>{html_escape(song)}</strong>{note}.'
-                        f'{genius_link}'
+                        f'{genius_link}{refresh_link}'
                         '</div>'
                     )
                 else:
@@ -1425,6 +1677,8 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 lyrics_text=lyrics_text,
                 artist_value=html_escape(artist),
                 song_value=html_escape(song),
+                analysis_result=cached_analysis,
+                selected_model=cached_model,
                 show_editor=show_editor
             )
             
@@ -1467,6 +1721,20 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                     analysis_result = interaction.output_text or ''
                     model_display_name = next((m['name'] for m in AVAILABLE_GEMINI_MODELS if m['id'] == model_name), model_name)
                     message = f'<div class="message">Analysis complete using {html_escape(model_display_name)}.</div>'
+
+                    # Save analysis to database
+                    prompt_name = prompts[prompt_idx]['name'] if (prompts and 0 <= prompt_idx < len(prompts)) else "Default Analysis"
+                    try:
+                        database.save_analysis(
+                            artist=artist,
+                            song=song,
+                            analysis=analysis_result,
+                            model_name=model_name,
+                            prompt_name=prompt_name
+                        )
+                    except Exception as e:
+                        print(f"Error saving analysis to database: {e}")
+
                 except Exception as e:
                     message = f'<div class="message">Analysis failed: {html_escape(str(e))}</div>'
                     
@@ -1546,6 +1814,21 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 selected_attr = ' selected' if idx == selected_prompt else ''
                 prompt_options += f'<option value="{idx}"{selected_attr}>{html_escape(p["name"])}</option>\n'
 
+        bands = database.get_distinct_bands()
+        band_options = ''
+        band_datalist_options = ''
+        if bands:
+            band_select_display = ''
+            band_count_text = f'{len(bands)} saved'
+            for b in bands:
+                sel = ' selected' if b['artist'].lower() == artist_value.lower() else ''
+                songs_label = f"{b['song_count']} song" if b['song_count'] == 1 else f"{b['song_count']} songs"
+                band_options += f'<option value="{html_escape(b["artist"])}"{sel}>{html_escape(b["artist"])} ({songs_label})</option>\n'
+                band_datalist_options += f'<option value="{html_escape(b["artist"])}">\n'
+        else:
+            band_select_display = 'display: none;'
+            band_count_text = '0 saved'
+
         lyrics_text_attr = html.escape(lyrics_text, quote=True)
         content = PAGE_HTML.replace('{message_block}', message)\
                            .replace('{lyrics_text}', html_escape(lyrics_text))\
@@ -1559,7 +1842,11 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                            .replace('{analysis_controls_display}', analysis_controls_display)\
                            .replace('{analysis_result}', html_escape(analysis_result))\
                            .replace('{model_options}', model_options)\
-                           .replace('{prompt_options}', prompt_options)
+                           .replace('{prompt_options}', prompt_options)\
+                           .replace('{band_options}', band_options)\
+                           .replace('{band_datalist_options}', band_datalist_options)\
+                           .replace('{band_select_display}', band_select_display)\
+                           .replace('{band_count_text}', band_count_text)
         self.send_response(200)
         self.send_header('Content-Type', 'text/html; charset=utf-8')
         self.send_header('Content-Length', str(len(content.encode('utf-8'))))
@@ -1586,6 +1873,49 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                                    .replace('{message_display}', message_display)\
                                    .replace('{prompts_list}', prompts_list_html)
                                    
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/html; charset=utf-8')
+        self.send_header('Content-Length', str(len(content.encode('utf-8'))))
+        self.end_headers()
+        self.wfile.write(content.encode('utf-8'))
+
+    def render_history_page(self):
+        searches = database.get_recent_searches(limit=200)
+        if not searches:
+            history_list_html = '<p style="text-align: center; color: #A5C8FF; padding: 40px; font-style: italic;">No search history yet. Search for songs to build your collection!</p>'
+        else:
+            cards = []
+            for s in searches:
+                artist_esc = html_escape(s['artist'])
+                song_esc = html_escape(s['song'])
+                source_val = html_escape(s['source'] or 'Manual')
+                source_badge = f'<span style="background: rgba(165, 200, 255, 0.15); color: #A5C8FF; padding: 2px 8px; border-radius: 6px; font-size: 0.78rem;">{source_val}</span>'
+                lyrics_badge = '<span style="color: #5af0a5; font-size: 0.78rem;">● Lyrics</span>' if s['has_lyrics'] else '<span style="color: #f08c5a; font-size: 0.78rem;">○ No lyrics</span>'
+                analysis_badge = '<span style="background: rgba(120, 90, 255, 0.3); color: #C5B8FF; padding: 2px 8px; border-radius: 6px; font-size: 0.78rem;">✦ Analyzed</span>' if s['has_analysis'] else ''
+                date_str = html_escape(s['updated_at'] or '')
+                cards.append(f'''
+                <div class="history-card" style="background: rgba(11, 30, 63, 0.6); padding: 14px 18px; border-radius: 10px; border: 1px solid rgba(165, 200, 255, 0.15); display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;">
+                    <div style="flex: 1; min-width: 220px;">
+                        <div style="font-size: 1.1rem; font-weight: 700; color: #E1E8F0;">
+                            {artist_esc} <span style="font-weight: 300; color: #A5C8FF;">&mdash;</span> {song_esc}
+                        </div>
+                        <div style="display: flex; gap: 8px; align-items: center; margin-top: 6px; flex-wrap: wrap;">
+                            {source_badge}
+                            {lyrics_badge}
+                            {analysis_badge}
+                            <span style="font-size: 0.75rem; color: rgba(225, 232, 240, 0.45);">{date_str}</span>
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <a href="/?id={s['id']}" style="background: #194685; color: #fff; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-size: 0.85rem; font-weight: 500;">Load Song</a>
+                        <a href="/history/delete?id={s['id']}" onclick="return confirm('Delete this saved song?');" style="background: transparent; color: #f08c5a; border: 1px solid rgba(240, 140, 90, 0.3); padding: 6px 10px; border-radius: 6px; text-decoration: none; font-size: 0.82rem;" title="Delete">&times;</a>
+                    </div>
+                </div>
+                ''')
+            cards.append('<div id="history-no-matches" style="display:none; text-align:center; color:#A5C8FF; padding:20px;">No matching songs found.</div>')
+            history_list_html = '\n'.join(cards)
+
+        content = HISTORY_PAGE_HTML.replace('{history_list}', history_list_html)
         self.send_response(200)
         self.send_header('Content-Type', 'text/html; charset=utf-8')
         self.send_header('Content-Length', str(len(content.encode('utf-8'))))
