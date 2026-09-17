@@ -1,0 +1,26 @@
+# Secrets and environment files
+calling_hours_secrets.py
+*.env
+.env*
+
+# Git and IDE
+.git
+.gitignore
+.dockerignore
+.idea
+.vscode
+
+# Python bytecode & virtualenvs
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.venv
+venv
+env
+
+# Tests and temporary files
+tests/
+genius_test.html
+*.tmp
+*.bak

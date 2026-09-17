@@ -15,7 +15,7 @@ from google import genai
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPT_DIR)
 
-PROMPTS_FILE = os.path.join(SCRIPT_DIR, 'prompts.json')
+PROMPTS_FILE = os.environ.get('PROMPTS_FILE_PATH') or os.path.join(SCRIPT_DIR, 'prompts.json')
 
 def load_prompts():
     if os.path.exists(PROMPTS_FILE):
@@ -29,8 +29,11 @@ def load_prompts():
 def save_prompt(name, text):
     prompts = load_prompts()
     prompts.append({"name": name, "text": text})
-    with open(PROMPTS_FILE, 'w', encoding='utf-8') as f:
-        json.dump(prompts, f, indent=4)
+    try:
+        with open(PROMPTS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(prompts, f, indent=4)
+    except (OSError, IOError) as e:
+        print(f"Warning: Could not save prompt to file ({e}).")
 
 AVAILABLE_GEMINI_MODELS = [
     {
@@ -44,17 +47,21 @@ AVAILABLE_GEMINI_MODELS = [
 ]
 DEFAULT_GEMINI_MODEL = "gemini-3.8-flash"
 
+# Load local secrets file if present (for local development)
+_local_secrets = {}
 try:
-    from calling_hours_secrets import GENIUS_CLIENT_ID, GENIUS_CLIENT_SECRET, GENIUS_ACCESS_TOKEN
-    try:
-        from calling_hours_secrets import GEMINI_API_KEY
-    except ImportError:
-        GEMINI_API_KEY = None
+    import calling_hours_secrets
+    for attr in ('GENIUS_CLIENT_ID', 'GENIUS_CLIENT_SECRET', 'GENIUS_ACCESS_TOKEN', 'GEMINI_API_KEY'):
+        if hasattr(calling_hours_secrets, attr):
+            _local_secrets[attr] = getattr(calling_hours_secrets, attr)
 except ImportError:
-    GENIUS_CLIENT_ID = None
-    GENIUS_CLIENT_SECRET = None
-    GENIUS_ACCESS_TOKEN = None
-    GEMINI_API_KEY = None
+    pass
+
+# Environment variables take precedence (standard for Cloud Run/Docker), falling back to local secrets
+GENIUS_CLIENT_ID = os.environ.get('GENIUS_CLIENT_ID') or _local_secrets.get('GENIUS_CLIENT_ID')
+GENIUS_CLIENT_SECRET = os.environ.get('GENIUS_CLIENT_SECRET') or _local_secrets.get('GENIUS_CLIENT_SECRET')
+GENIUS_ACCESS_TOKEN = os.environ.get('GENIUS_ACCESS_TOKEN') or _local_secrets.get('GENIUS_ACCESS_TOKEN')
+GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY') or _local_secrets.get('GEMINI_API_KEY')
 
 ACCESS_TOKEN = GENIUS_ACCESS_TOKEN
 SERVER_PORT = None
@@ -64,8 +71,11 @@ GENIUS_TOKEN_URL = 'https://api.genius.com/oauth/token'
 GENIUS_API_SEARCH_URL = 'https://api.genius.com/search'
 GENIUS_WEB_SEARCH_URL = 'https://genius.com/api/search/multi'
 
-OAUTH_PORT = 8000
-HOST = '127.0.0.1'
+# Cloud Run injects K_SERVICE and PORT (default 8080)
+IS_CLOUD_RUN = bool(os.environ.get('K_SERVICE'))
+PORT = int(os.environ.get('PORT', 8080 if IS_CLOUD_RUN else 8000))
+HOST = os.environ.get('HOST', '0.0.0.0' if IS_CLOUD_RUN else '127.0.0.1')
+OAUTH_PORT = PORT
 
 PAGE_HTML = '''<!DOCTYPE html>
 <html lang="en">
@@ -440,6 +450,13 @@ PROMPTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
 class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
+        if parsed.path == '/healthz':
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/plain; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(b'OK')
+            return
+
         if parsed.path == '/authorize':
             self.handle_authorize()
             return
@@ -588,7 +605,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             )
             return
 
-        redirect_uri = get_redirect_uri()
+        redirect_uri = get_redirect_uri(self.headers.get('Host'))
         auth_url = (
             f'{GENIUS_AUTH_URL}?client_id={urllib.parse.quote(GENIUS_CLIENT_ID)}'
             f'&redirect_uri={urllib.parse.quote(redirect_uri)}&scope=me&response_type=code'
@@ -611,7 +628,8 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             return
 
         try:
-            token = exchange_genius_code(code, get_redirect_uri())
+            redirect_uri = get_redirect_uri(self.headers.get('Host'))
+            token = exchange_genius_code(code, redirect_uri)
             if token:
                 global ACCESS_TOKEN
                 ACCESS_TOKEN = token
@@ -702,8 +720,17 @@ def build_genius_headers():
         headers['X-Genius-Client-Id'] = GENIUS_CLIENT_ID
     return headers
 
-def get_redirect_uri() -> str:
-    return f'http://{HOST}:{OAUTH_PORT}/callback'
+def get_redirect_uri(host_header: str | None = None) -> str:
+    # Explicit override via environment variable
+    if os.environ.get('GENIUS_REDIRECT_URI'):
+        return os.environ['GENIUS_REDIRECT_URI']
+
+    if host_header:
+        scheme = 'https' if (IS_CLOUD_RUN or 'run.app' in host_header) else 'http'
+        return f'{scheme}://{host_header}/callback'
+
+    display_host = '127.0.0.1' if HOST == '0.0.0.0' else HOST
+    return f'http://{display_host}:{SERVER_PORT or PORT}/callback'
 
 def exchange_genius_code(code: str, redirect_uri: str) -> str | None:
     if not GENIUS_CLIENT_ID or not GENIUS_CLIENT_SECRET:
@@ -726,16 +753,19 @@ def save_access_token(token: str):
     if not os.path.exists(secrets_path):
         return
 
-    with open(secrets_path, 'r', encoding='utf-8') as file:
-        content = file.read()
+    try:
+        with open(secrets_path, 'r', encoding='utf-8') as file:
+            content = file.read()
 
-    if 'GENIUS_ACCESS_TOKEN' in content:
-        content = re.sub(r'GENIUS_ACCESS_TOKEN\s*=\s*.*', f'GENIUS_ACCESS_TOKEN = "{token}"', content, count=1)
-    else:
-        content += f'\nGENIUS_ACCESS_TOKEN = "{token}"\n'
+        if 'GENIUS_ACCESS_TOKEN' in content:
+            content = re.sub(r'GENIUS_ACCESS_TOKEN\s*=\s*.*', f'GENIUS_ACCESS_TOKEN = "{token}"', content, count=1)
+        else:
+            content += f'\nGENIUS_ACCESS_TOKEN = "{token}"\n'
 
-    with open(secrets_path, 'w', encoding='utf-8') as file:
-        file.write(content)
+        with open(secrets_path, 'w', encoding='utf-8') as file:
+            file.write(content)
+    except (OSError, IOError) as e:
+        print(f"Warning: Could not write access token to file ({e}). Token is stored in-memory.")
 
 def search_genius_song(artist: str, song: str) -> str | None:
     query = f"{artist} {song}".strip()
@@ -813,19 +843,25 @@ def fetch_genius_lyrics(song_url: str) -> str | None:
 
 def run_server():
     global SERVER_PORT
-    port = OAUTH_PORT
+    port = PORT
     try:
-        with socketserver.TCPServer((HOST, port), CallingHoursRequestHandler) as httpd:
+        server_address = (HOST, port)
+        with http.server.ThreadingHTTPServer(server_address, CallingHoursRequestHandler) as httpd:
             SERVER_PORT = port
-            print(f'Calling Hours app running at http://{HOST}:{port}')
-            threading.Timer(0.5, lambda: webbrowser.open(f'http://{HOST}:{port}')).start()
+            display_host = '127.0.0.1' if HOST == '0.0.0.0' else HOST
+            print(f'Calling Hours app running at http://{display_host}:{port} (listening on {HOST}:{port})')
+            
+            # Open browser automatically only if running locally (not in Cloud Run/Docker/headless)
+            no_browser = os.environ.get('NO_BROWSER', '').lower() in ('1', 'true', 'yes')
+            if not IS_CLOUD_RUN and not no_browser:
+                threading.Timer(0.5, lambda: webbrowser.open(f'http://{display_host}:{port}')).start()
+
             try:
                 httpd.serve_forever()
             except KeyboardInterrupt:
                 print('\nServer stopped')
-    except OSError:
-        print(f'Unable to bind to port {port}. Genius OAuth needs this fixed port for the redirect URI.')
-        print(f'Free port {port} or update your Genius app redirect URI to http://{HOST}:{port}/callback and restart.')
+    except OSError as e:
+        print(f'Unable to bind to {HOST}:{port}: {e}')
         return
 
 if __name__ == '__main__':
