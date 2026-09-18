@@ -190,30 +190,30 @@ def build_app_header(active_page: str = 'song', user: Optional[Dict[str, Any]] =
     return f'''
     <header class="app-header">
         <div class="app-header-inner">
-            <a href="/" class="app-brand" title="Calling Hours">
-                <svg class="app-brand-logo" viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
-                </svg>
-                <span class="app-brand-text">Calling Hours</span>
-            </a>
-            <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
-                <nav class="app-nav" aria-label="Main Navigation">
-                    <a href="/" class="app-nav-link{song_active}" id="nav-link-song">
-                        <span class="nav-icon">🎵</span>
-                        <span class="nav-text">Song</span>
-                    </a>
-                    <a href="/history" class="app-nav-link{history_active}" id="nav-link-history">
-                        <span class="nav-icon">📜</span>
-                        <span class="nav-text">Search History</span>
-                    </a>
-                    <a href="/prompts" class="app-nav-link{prompts_active}" id="nav-link-prompts">
-                        <span class="nav-icon">⚙️</span>
-                        <span class="nav-text">Prompts</span>
-                    </a>
-                    {admin_nav_link}
-                </nav>
+            <div class="app-header-top">
+                <a href="/" class="app-brand" title="Calling Hours">
+                    <svg class="app-brand-logo" viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
+                    </svg>
+                    <span class="app-brand-text">Calling Hours</span>
+                </a>
                 {user_menu_html}
             </div>
+            <nav class="app-nav" aria-label="Main Navigation">
+                <a href="/" class="app-nav-link{song_active}" id="nav-link-song">
+                    <span class="nav-icon">🎵</span>
+                    <span class="nav-text">Song</span>
+                </a>
+                <a href="/history" class="app-nav-link{history_active}" id="nav-link-history">
+                    <span class="nav-icon">📜</span>
+                    <span class="nav-text">Search History</span>
+                </a>
+                <a href="/prompts" class="app-nav-link{prompts_active}" id="nav-link-prompts">
+                    <span class="nav-icon">⚙️</span>
+                    <span class="nav-text">Prompts</span>
+                </a>
+                {admin_nav_link}
+            </nav>
         </div>
     </header>
     '''
@@ -238,6 +238,15 @@ PAGE_HTML = r'''<!DOCTYPE html>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@700;800;900&family=Roboto+Condensed:wght@300;400;700&display=swap');
 
+        *, *::before, *::after {
+            box-sizing: border-box;
+        }
+
+        html, body {
+            max-width: 100vw;
+            overflow-x: hidden;
+        }
+
         body {
             margin: 0;
             min-height: 100vh;
@@ -249,9 +258,7 @@ PAGE_HTML = r'''<!DOCTYPE html>
             background: linear-gradient(to bottom, #050A14 0%, #0B1E3F 100%);
             color: #E1E8F0;
             position: relative;
-            overflow-x: hidden;
             padding: 0 0 40px 0;
-            box-sizing: border-box;
         }
 
         /* Top App Header & Navigation */
@@ -281,6 +288,10 @@ PAGE_HTML = r'''<!DOCTYPE html>
             box-sizing: border-box;
         }
 
+        .app-header-top {
+            display: contents; /* On desktop, brand and user-bar act as direct flex items of app-header-inner */
+        }
+
         .app-brand {
             display: flex;
             align-items: center;
@@ -293,6 +304,7 @@ PAGE_HTML = r'''<!DOCTYPE html>
             letter-spacing: 0.1em;
             text-transform: uppercase;
             transition: opacity 0.2s ease;
+            order: 1;
         }
 
         .app-brand:hover {
@@ -316,6 +328,8 @@ PAGE_HTML = r'''<!DOCTYPE html>
             align-items: center;
             gap: 8px;
             flex-wrap: wrap;
+            order: 2;
+            margin-left: auto;
         }
 
         .app-nav-link {
@@ -355,6 +369,8 @@ PAGE_HTML = r'''<!DOCTYPE html>
             display: flex;
             align-items: center;
             gap: 10px;
+            order: 3;
+            flex-shrink: 0;
         }
         .user-profile-badge {
             display: flex;
@@ -421,6 +437,189 @@ PAGE_HTML = r'''<!DOCTYPE html>
             color: #f08c5a;
             border-color: rgba(240, 140, 90, 0.4);
             background: rgba(240, 140, 90, 0.08);
+        }
+
+        /* Analysis Loading & Non-Dismissible Overlay */
+        .analysis-loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 99999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            box-sizing: border-box;
+            pointer-events: all;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        .analysis-loading-backdrop {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(5, 10, 20, 0.88);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+        }
+
+        .analysis-loading-modal {
+            position: relative;
+            z-index: 2;
+            width: min(460px, 92vw);
+            background: rgba(11, 30, 63, 0.92);
+            border: 1px solid rgba(165, 200, 255, 0.35);
+            border-radius: 18px;
+            box-shadow: 0 24px 60px rgba(0, 0, 0, 0.8), 0 0 35px rgba(165, 200, 255, 0.2);
+            padding: 36px 26px;
+            text-align: center;
+            box-sizing: border-box;
+            animation: modal-pop-in 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        @keyframes modal-pop-in {
+            from {
+                opacity: 0;
+                transform: scale(0.92) translateY(12px);
+            }
+            to {
+                opacity: 1;
+                transform: scale(1) translateY(0);
+            }
+        }
+
+        .analysis-cosmic-spinner {
+            position: relative;
+            width: 76px;
+            height: 76px;
+            margin: 0 auto 20px auto;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .spinner-ring {
+            position: absolute;
+            border-radius: 50%;
+            border: 2px solid transparent;
+        }
+
+        .spinner-ring.ring-1 {
+            width: 72px;
+            height: 72px;
+            border-top-color: #A5C8FF;
+            border-right-color: rgba(165, 200, 255, 0.3);
+            animation: ring-rotate 1.6s linear infinite;
+            box-shadow: 0 0 16px rgba(165, 200, 255, 0.4);
+        }
+
+        .spinner-ring.ring-2 {
+            width: 52px;
+            height: 52px;
+            border-bottom-color: #5af0a5;
+            border-left-color: rgba(90, 240, 165, 0.25);
+            animation: ring-rotate-rev 2.2s linear infinite;
+            box-shadow: 0 0 12px rgba(90, 240, 165, 0.3);
+        }
+
+        .spinner-core {
+            font-size: 1.6rem;
+            color: #FFFFFF;
+            text-shadow: 0 0 14px #A5C8FF, 0 0 24px #5af0a5;
+            animation: core-pulse 1.8s ease-in-out infinite;
+        }
+
+        @keyframes ring-rotate {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        @keyframes ring-rotate-rev {
+            from { transform: rotate(360deg); }
+            to { transform: rotate(0deg); }
+        }
+
+        @keyframes core-pulse {
+            0%, 100% { transform: scale(0.88); opacity: 0.8; }
+            50% { transform: scale(1.15); opacity: 1; }
+        }
+
+        .analysis-loading-title {
+            font-family: 'Montserrat', sans-serif;
+            font-size: 1.35rem;
+            font-weight: 800;
+            letter-spacing: 0.04em;
+            color: #FFFFFF;
+            margin: 0 0 6px 0;
+            text-shadow: 0 2px 10px rgba(0,0,0,0.6);
+        }
+
+        .analysis-loading-song {
+            font-size: 0.95rem;
+            color: #A5C8FF;
+            margin-bottom: 22px;
+            font-weight: 400;
+            min-height: 1.2em;
+        }
+
+        .analysis-loading-bar-wrapper {
+            width: 100%;
+            height: 6px;
+            background: rgba(165, 200, 255, 0.12);
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 18px;
+            position: relative;
+        }
+
+        .analysis-loading-bar-inner {
+            width: 45%;
+            height: 100%;
+            background: linear-gradient(90deg, #194685, #A5C8FF, #5af0a5);
+            border-radius: 4px;
+            position: absolute;
+            animation: loading-bar-scan 2s ease-in-out infinite;
+            box-shadow: 0 0 12px rgba(165, 200, 255, 0.6);
+        }
+
+        @keyframes loading-bar-scan {
+            0% { left: -45%; }
+            50% { left: 45%; }
+            100% { left: 100%; }
+        }
+
+        .analysis-loading-status {
+            font-size: 0.92rem;
+            color: #E1E8F0;
+            margin-bottom: 22px;
+            font-weight: 400;
+            min-height: 24px;
+            transition: opacity 0.25s ease;
+        }
+
+        .analysis-loading-notice {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            background: rgba(240, 140, 90, 0.12);
+            border: 1px solid rgba(240, 140, 90, 0.35);
+            border-radius: 10px;
+            padding: 10px 14px;
+            font-size: 0.8rem;
+            color: #ffb88c;
+            line-height: 1.4;
+            text-align: left;
+        }
+
+        .notice-lock-icon {
+            font-size: 1.1rem;
+            flex-shrink: 0;
         }
 
         /* Login Card & Auth Styles */
@@ -657,6 +856,19 @@ PAGE_HTML = r'''<!DOCTYPE html>
         .btn-action-danger:hover {
             background: rgba(240, 140, 90, 0.15);
             color: #ff9d6e;
+        }
+
+        .admin-add-user-form {
+            display: grid;
+            grid-template-columns: 2fr 1.5fr 1fr auto;
+            gap: 12px;
+            align-items: end;
+        }
+        @media (max-width: 768px) {
+            .admin-add-user-form {
+                grid-template-columns: 1fr;
+                gap: 10px;
+            }
         }
 
 
@@ -1310,20 +1522,88 @@ PAGE_HTML = r'''<!DOCTYPE html>
 
             .app-header-inner {
                 padding: 10px 14px;
+                flex-direction: column;
+                align-items: stretch;
+                gap: 10px;
+                width: 100%;
+                box-sizing: border-box;
+            }
+
+            .app-header-top {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                width: 100%;
+                gap: 8px;
+                order: 1;
+            }
+
+            .app-brand {
+                order: 1;
+                flex-shrink: 1;
+                min-width: 0;
             }
 
             .app-brand-text {
-                font-size: 1.05rem;
+                font-size: 1.1rem;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+
+            .app-user-bar {
+                order: 2;
+                margin-left: 0;
+                flex-shrink: 0;
+                gap: 8px;
+                justify-content: flex-end;
+            }
+
+            .user-profile-badge {
+                padding: 3px 8px 3px 5px;
+                gap: 6px;
+                font-size: 0.8rem;
+            }
+
+            .user-display-name {
+                max-width: 90px;
+            }
+
+            .btn-logout {
+                padding: 5px 10px;
+                font-size: 0.78rem;
+                white-space: nowrap;
+                flex-shrink: 0;
+            }
+
+            .app-nav {
+                order: 2;
+                margin-left: 0;
+                width: 100%;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 6px;
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+                padding-bottom: 2px;
+            }
+
+            .app-nav::-webkit-scrollbar {
+                display: none;
             }
 
             .app-nav-link {
-                padding: 6px 12px;
+                flex: 1 1 auto;
+                justify-content: center;
+                padding: 7px 6px;
                 font-size: 0.74rem;
-                gap: 5px;
+                gap: 4px;
+                white-space: nowrap;
             }
 
             .workspace-tabs {
-                top: 56px;
+                top: 86px;
                 margin-bottom: 14px;
                 padding: 4px;
             }
@@ -1335,10 +1615,12 @@ PAGE_HTML = r'''<!DOCTYPE html>
             }
 
             .container {
-                width: 100%;
-                padding: 18px 12px;
+                width: 100% !important;
+                max-width: 100% !important;
+                padding: 18px 12px !important;
                 gap: 14px;
                 border-radius: 12px;
+                box-sizing: border-box;
             }
 
             .horizon {
@@ -1485,10 +1767,11 @@ PAGE_HTML = r'''<!DOCTYPE html>
 
             .app-header-inner {
                 padding: 8px 10px;
+                gap: 8px;
             }
 
             .app-brand-text {
-                font-size: 0.92rem;
+                font-size: 0.95rem;
             }
 
             .app-brand-logo {
@@ -1496,17 +1779,27 @@ PAGE_HTML = r'''<!DOCTYPE html>
                 height: 20px;
             }
 
+            .user-display-name {
+                max-width: 65px;
+            }
+
+            .btn-logout {
+                padding: 4px 8px;
+                font-size: 0.74rem;
+            }
+
             .app-nav {
                 gap: 4px;
             }
 
             .app-nav-link {
-                padding: 5px 8px;
+                padding: 6px 4px;
                 font-size: 0.7rem;
+                gap: 3px;
             }
 
             .container {
-                padding: 14px 10px;
+                padding: 14px 10px !important;
                 border-radius: 10px;
             }
 
@@ -1516,7 +1809,7 @@ PAGE_HTML = r'''<!DOCTYPE html>
             }
 
             .workspace-tabs {
-                top: 48px;
+                top: 80px;
                 gap: 4px;
             }
 
@@ -1535,6 +1828,30 @@ PAGE_HTML = r'''<!DOCTYPE html>
 <body>
     <div class="stars"></div>
     <div class="horizon"></div>
+    <!-- Analysis Loading & Anti-Interruption Overlay -->
+    <div id="analysis-loading-overlay" class="analysis-loading-overlay" style="display: none;" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="analysis-loading-title">
+        <div class="analysis-loading-backdrop"></div>
+        <div class="analysis-loading-modal">
+            <div class="analysis-cosmic-spinner" aria-hidden="true">
+                <div class="spinner-ring ring-1"></div>
+                <div class="spinner-ring ring-2"></div>
+                <div class="spinner-core">✦</div>
+            </div>
+            <h2 id="analysis-loading-title" class="analysis-loading-title">Analyzing with Gemini...</h2>
+            <div class="analysis-loading-song" id="analysis-loading-song"></div>
+            
+            <div class="analysis-loading-bar-wrapper">
+                <div class="analysis-loading-bar-inner"></div>
+            </div>
+            
+            <div class="analysis-loading-status" id="analysis-loading-status">Connecting to Gemini AI...</div>
+            
+            <div class="analysis-loading-notice">
+                <span class="notice-lock-icon">🔒</span>
+                <span>Please keep this page open. Leaving or navigating away will cancel the analysis.</span>
+            </div>
+        </div>
+    </div>
     {app_header}
     <div class="container" data-active-tab="search">
         <!-- Mobile Workspace Segmented Tabs Bar -->
@@ -1559,7 +1876,7 @@ PAGE_HTML = r'''<!DOCTYPE html>
             <h1>Calling Hours</h1>
             <p>Enter an artist and a song title, then submit to post the details.</p>
 
-            <form method="post" action="/submit" id="search-form">
+            <form method="post" action="/submit" id="search-form" onsubmit="onSearchSubmit()">
                 <input type="hidden" name="refresh" id="force_refresh" value="0">
 
                 <div id="band-history-group" style="{band_select_display} margin-bottom: 14px;">
@@ -1592,7 +1909,7 @@ PAGE_HTML = r'''<!DOCTYPE html>
                 <label for="song">Song Title</label>
                 <input type="text" id="song" name="song" placeholder="e.g. Hello" value="{song_value}" required>
 
-                <button type="submit">Post Song</button>
+                <button type="submit" id="btn-post-song">Post Song</button>
             </form>
 
             {message_block}
@@ -1634,7 +1951,7 @@ PAGE_HTML = r'''<!DOCTYPE html>
             </div>
             
             <div class="analysis-form" style="{analysis_form_display}">
-                <form id="analyze-form" method="post" action="/analyze" onsubmit="document.getElementById('form_lyrics').value = document.getElementById('lyrics').value;">
+                <form id="analyze-form" method="post" action="/analyze" onsubmit="return startAnalysisSubmit(event);">
                     <input type="hidden" name="artist" value="{artist_value}">
                     <input type="hidden" name="song" value="{song_value}">
                     <input type="hidden" id="form_lyrics" name="lyrics" value="{lyrics_text_attr}">
@@ -1649,7 +1966,7 @@ PAGE_HTML = r'''<!DOCTYPE html>
                         {prompt_options}
                     </select>
                     
-                    <button type="submit" style="margin-top: 16px;">Perform Analysis</button>
+                    <button type="submit" id="btn-perform-analysis" style="margin-top: 16px;">Perform Analysis</button>
 
                     <div style="margin-top: 14px; text-align: center;">
                         <button type="button" class="pill-btn secondary flow-btn-back" onclick="switchWorkspaceTab('lyrics')" style="width: auto; padding: 8px 16px;">&larr; Back to Lyrics</button>
@@ -2083,6 +2400,113 @@ PAGE_HTML = r'''<!DOCTYPE html>
             }
         }
 
+        let analysisStatusTimer = null;
+        const ANALYSIS_STATUS_STEPS = [
+            'Connecting to Gemini AI...',
+            'Reading lyrics structure and verse flow...',
+            'Identifying poetic devices, metaphors & motifs...',
+            'Analyzing emotional themes, tone & subtext...',
+            'Synthesizing in-depth literary analysis...',
+            'Finalizing formatted interpretation & insights...'
+        ];
+
+        function onSearchSubmit() {
+            const btn = document.getElementById('btn-post-song') || document.querySelector('#search-form button[type="submit"]');
+            if (btn) {
+                btn.textContent = '⏳ Finding Lyrics...';
+                setTimeout(() => {
+                    btn.style.opacity = '0.7';
+                }, 50);
+            }
+            return true;
+        }
+
+        function startAnalysisSubmit(event) {
+            const textarea = document.getElementById('lyrics');
+            const formLyrics = document.getElementById('form_lyrics');
+            if (textarea && formLyrics) {
+                formLyrics.value = textarea.value;
+            }
+
+            const lyricsVal = textarea ? textarea.value.trim() : '';
+            if (!lyricsVal) {
+                alert('Please enter or paste lyrics in the lyrics box before running analysis.');
+                if (event) {
+                    event.preventDefault();
+                }
+                return false;
+            }
+
+            showAnalysisLoadingOverlay();
+            return true;
+        }
+
+        function showAnalysisLoadingOverlay() {
+            const overlay = document.getElementById('analysis-loading-overlay');
+            const songEl = document.getElementById('analysis-loading-song');
+            const statusEl = document.getElementById('analysis-loading-status');
+            const btnSubmit = document.getElementById('btn-perform-analysis');
+            const artistInput = document.getElementById('artist');
+            const songInput = document.getElementById('song');
+
+            const artist = artistInput ? artistInput.value.trim() : '';
+            const song = songInput ? songInput.value.trim() : '';
+            if (songEl) {
+                if (artist && song) {
+                    songEl.textContent = `${artist} — ${song}`;
+                } else if (song) {
+                    songEl.textContent = song;
+                } else {
+                    songEl.textContent = 'Song Lyric Analysis';
+                }
+            }
+
+            if (btnSubmit) {
+                btnSubmit.disabled = true;
+                btnSubmit.style.opacity = '0.7';
+                btnSubmit.style.cursor = 'not-allowed';
+                btnSubmit.textContent = '⏳ Analyzing Lyrics...';
+            }
+
+            if (overlay) {
+                overlay.style.display = 'flex';
+                overlay.setAttribute('aria-hidden', 'false');
+            }
+
+            // Lock document scrolling so user cannot interact with page below
+            document.body.style.overflow = 'hidden';
+
+            let stepIndex = 0;
+            if (statusEl) {
+                statusEl.textContent = ANALYSIS_STATUS_STEPS[0];
+                if (analysisStatusTimer) clearInterval(analysisStatusTimer);
+                analysisStatusTimer = setInterval(() => {
+                    stepIndex++;
+                    if (stepIndex < ANALYSIS_STATUS_STEPS.length) {
+                        statusEl.style.opacity = '0';
+                        setTimeout(() => {
+                            statusEl.textContent = ANALYSIS_STATUS_STEPS[stepIndex];
+                            statusEl.style.opacity = '1';
+                        }, 200);
+                    }
+                }, 2800);
+            }
+
+            try {
+                history.pushState({ isAnalyzing: true }, '');
+            } catch (e) {}
+
+            window.addEventListener('popstate', handleAnalysisPopState);
+        }
+
+        function handleAnalysisPopState(e) {
+            const overlay = document.getElementById('analysis-loading-overlay');
+            if (overlay && overlay.style.display !== 'none') {
+                history.pushState({ isAnalyzing: true }, '');
+                alert('Gemini analysis is currently running. Please stay on this page until it completes.');
+            }
+        }
+
         // Initialize on page load
         document.addEventListener('DOMContentLoaded', () => {
             const artistInput = document.getElementById('artist');
@@ -2290,7 +2714,7 @@ ADMIN_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             <p style="color: rgba(225, 232, 240, 0.7); font-size: 0.9rem; margin-top: 4px; margin-bottom: 16px;">
                 Add a Google email address to allow that user to sign in immediately.
             </p>
-            <form method="post" action="/admin/user/add" style="display: grid; grid-template-columns: 2fr 1.5fr 1fr auto; gap: 12px; align-items: end;">
+            <form method="post" action="/admin/user/add" class="admin-add-user-form">
                 <div>
                     <label for="new_email" style="display: block; font-size: 0.85rem; color: #A5C8FF; margin-bottom: 4px;">Google Email *</label>
                     <input type="email" id="new_email" name="email" placeholder="e.g. friend@gmail.com" required style="width: 100%; box-sizing: border-box;">

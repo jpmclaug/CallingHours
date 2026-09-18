@@ -296,6 +296,33 @@ class TestAppIntegration(unittest.TestCase):
         # Verify session was deleted
         self.assertIsNone(database.get_session_user(temp_token, db_path=self.db_path))
 
+    def test_14_analysis_loading_feedback_and_mobile_responsiveness(self):
+        with self.authed_get("/") as resp:
+            self.assertEqual(resp.status, 200)
+            html = resp.read().decode('utf-8')
+
+            # 1. Loading overlay elements for non-dismissible analysis feedback
+            self.assertIn('id="analysis-loading-overlay"', html)
+            self.assertIn('class="analysis-loading-backdrop"', html)
+            self.assertIn('class="analysis-loading-modal"', html)
+            self.assertIn('class="analysis-cosmic-spinner"', html)
+            self.assertIn('id="analysis-loading-title"', html)
+            self.assertIn('id="analysis-loading-song"', html)
+            self.assertIn('id="analysis-loading-status"', html)
+            self.assertIn('Please keep this page open', html)
+
+            # 2. Form submission hook and button ID
+            self.assertIn('id="btn-perform-analysis"', html)
+            self.assertIn('startAnalysisSubmit', html)
+            self.assertIn('showAnalysisLoadingOverlay', html)
+
+            # 3. Mobile responsive 2-row header elements and safeguards
+            self.assertIn('class="app-header-top"', html)
+            self.assertIn('class="btn-logout"', html)
+            self.assertIn('class="app-user-bar"', html)
+            self.assertIn('max-width: 100vw;', html)
+            self.assertIn('overflow-x: hidden;', html)
+
 if __name__ == "__main__":
     unittest.main()
 
