@@ -125,5 +125,71 @@ class TestDatabase(unittest.TestCase):
         self.assertTrue(deleted)
         self.assertIsNone(database.get_search_by_id(rec_id, db_path=self.db_path))
 
+    def test_primary_admin_seeded_on_init(self):
+        user = database.get_user("jpmclaug@gmail.com", db_path=self.db_path)
+        self.assertIsNotNone(user)
+        self.assertEqual(user["email"], "jpmclaug@gmail.com")
+        self.assertTrue(user["is_admin"])
+        self.assertTrue(user["is_active"])
+
+    def test_user_crud_and_roles(self):
+        # Insert new user
+        uid = database.upsert_user("alice@example.com", name="Alice", is_admin=False, is_active=True, db_path=self.db_path)
+        self.assertGreater(uid, 0)
+
+        user = database.get_user("alice@example.com", db_path=self.db_path)
+        self.assertIsNotNone(user)
+        self.assertEqual(user["name"], "Alice")
+        self.assertFalse(user["is_admin"])
+        self.assertTrue(user["is_active"])
+
+        # Promote to admin
+        success = database.set_user_admin_role("alice@example.com", True, db_path=self.db_path)
+        self.assertTrue(success)
+        user = database.get_user("alice@example.com", db_path=self.db_path)
+        self.assertTrue(user["is_admin"])
+
+        # Deactivate
+        success = database.set_user_active_status("alice@example.com", False, db_path=self.db_path)
+        self.assertTrue(success)
+        user = database.get_user("alice@example.com", db_path=self.db_path)
+        self.assertFalse(user["is_active"])
+
+        # Delete
+        success = database.delete_user("alice@example.com", db_path=self.db_path)
+        self.assertTrue(success)
+        self.assertIsNone(database.get_user("alice@example.com", db_path=self.db_path))
+
+    def test_primary_admin_safeguards(self):
+        # Cannot deactivate primary admin
+        self.assertFalse(database.set_user_active_status("jpmclaug@gmail.com", False, db_path=self.db_path))
+        user = database.get_user("jpmclaug@gmail.com", db_path=self.db_path)
+        self.assertTrue(user["is_active"])
+
+        # Cannot demote primary admin
+        self.assertFalse(database.set_user_admin_role("jpmclaug@gmail.com", False, db_path=self.db_path))
+        user = database.get_user("jpmclaug@gmail.com", db_path=self.db_path)
+        self.assertTrue(user["is_admin"])
+
+        # Cannot delete primary admin
+        self.assertFalse(database.delete_user("jpmclaug@gmail.com", db_path=self.db_path))
+        user = database.get_user("jpmclaug@gmail.com", db_path=self.db_path)
+        self.assertIsNotNone(user)
+
+    def test_session_lifecycle(self):
+        token = database.create_session("jpmclaug@gmail.com", duration_days=7, db_path=self.db_path)
+        self.assertTrue(bool(token))
+
+        # Retrieve user by session
+        session_user = database.get_session_user(token, db_path=self.db_path)
+        self.assertIsNotNone(session_user)
+        self.assertEqual(session_user["email"], "jpmclaug@gmail.com")
+        self.assertTrue(session_user["is_admin"])
+
+        # Delete session
+        database.delete_session(token, db_path=self.db_path)
+        self.assertIsNone(database.get_session_user(token, db_path=self.db_path))
+
 if __name__ == "__main__":
     unittest.main()
+

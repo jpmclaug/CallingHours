@@ -11,6 +11,14 @@ GENIUS_ACCESS_TOKEN = ""
 # Obtain a free key from https://aistudio.google.com/
 GEMINI_API_KEY = "your_gemini_api_key_here"
 
+# Google OAuth 2.0 credentials (for Google Sign-In authentication)
+# Obtain these from https://console.cloud.google.com/apis/credentials
+# Authorized redirect URI: http://127.0.0.1:8000/auth/google/callback (or your Cloud Run domain in production)
+GOOGLE_CLIENT_ID = ""
+GOOGLE_CLIENT_SECRET = ""
+# Optional: explicitly set callback redirect URI (defaults to dynamic detection)
+# GOOGLE_REDIRECT_URI = "http://127.0.0.1:8000/auth/google/callback"
+
 # Neon PostgreSQL Database URL (optional, falls back to local SQLite if empty)
 # Example: postgresql://neondb_owner:password@ep-xyz-pooler.us-east-1.aws.neon.tech/neondb?sslmode=require
 NEON_DATABASE_URL = ""

@@ -4,8 +4,10 @@ Calling Hours is a web application that fetches song lyrics via the Genius API a
 
 ## Features
 
+- **Google Account Authentication**: Secure sign-in using your Google account via OAuth 2.0. By default, access is strictly limited to authorized users (initially seeded for `jpmclaug@gmail.com`), with an Access Restricted page protecting unauthorized sign-ins.
+- **Admin User Management**: A dedicated `/admin` control center for administrators to grant access to other Google accounts, manage roles (Administrator vs Standard User), activate/suspend accounts, or remove users, with built-in safeguards protecting the primary superadmin.
 - **Genius & Open Lyrics Search**: Search for songs by artist and title via Genius with seamless automatic fallback to the **LRCLIB** open database (resilient to Cloudflare 403 blocks on cloud hosts like Cloud Run).
-- **Neon Serverless PostgreSQL Persistence**: Automatically saves searches, retrieved lyrics, and Gemini analyses in **Neon PostgreSQL** so search history persists permanently across devices, sessions, and cloud restarts (with graceful fallback to local SQLite when offline). Select from previously searched bands via dropdown or autocomplete, browse past tracks for any band, and instantly load saved results without network latency.
+- **Neon Serverless PostgreSQL Persistence**: Automatically saves searches, retrieved lyrics, users, sessions, and Gemini analyses in **Neon PostgreSQL** so data persists permanently across devices, sessions, and cloud restarts (with graceful fallback to local SQLite when offline). Select from previously searched bands via dropdown or autocomplete, browse past tracks for any band, and instantly load saved results without network latency.
 - **Search History Dashboard**: Dedicated `/history` view to browse, filter, quick-load, and manage previously searched songs and analyses.
 - **Editable & Custom Lyrics**: An editable lyrics workspace allowing users to review, edit, or paste lyrics manually if needed.
 - **Gemini-Powered Analysis**: Deep lyric analysis analyzing themes, narrative, emotional tone, and poetic devices.
@@ -80,6 +82,9 @@ Or via Google Cloud Console:
 
 | Variable | Description | Recommended for Prod |
 |---|---|---|
+| `GOOGLE_CLIENT_ID` | Google OAuth 2.0 Client ID (from Google Cloud Console) | **Yes** (enables Google login) |
+| `GOOGLE_CLIENT_SECRET` | Google OAuth 2.0 Client Secret (from Google Cloud Console) | **Yes** (enables Google login) |
+| `GOOGLE_REDIRECT_URI` | Explicit Google OAuth callback URL (e.g. `https://your-service.run.app/auth/google/callback`) | Dynamically resolved |
 | `GENIUS_ACCESS_TOKEN` | Genius Client Access Token (from Genius dashboard) | **Yes** (avoids OAuth flow) |
 | `GEMINI_API_KEY` | Google Gemini API Key (from AI Studio) | **Yes** |
 | `GENIUS_CLIENT_ID` | Genius Client ID (only needed if using OAuth) | Optional |

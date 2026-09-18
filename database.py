@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import os
 import sqlite3
+import secrets
 from contextlib import contextmanager
-from datetime import datetime, date
+from datetime import datetime, date, timedelta, timezone
 from typing import Optional, List, Dict, Any
+
+PRIMARY_ADMIN_EMAIL = "jpmclaug@gmail.com"
 
 try:
     import psycopg2
@@ -81,6 +84,20 @@ def _format_search_record(rec: Any) -> Optional[Dict[str, Any]]:
         d['has_analysis'] = bool(d['analysis'] and str(d['analysis']).strip())
     return d
 
+def _format_user_record(rec: Any) -> Optional[Dict[str, Any]]:
+    if not rec:
+        return None
+    d = dict(rec)
+    if 'created_at' in d and d['created_at'] is not None:
+        d['created_at'] = _format_datetime(d['created_at'])
+    if 'last_login_at' in d and d['last_login_at'] is not None:
+        d['last_login_at'] = _format_datetime(d['last_login_at'])
+    if 'is_admin' in d:
+        d['is_admin'] = bool(d['is_admin'])
+    if 'is_active' in d:
+        d['is_active'] = bool(d['is_active'])
+    return d
+
 @contextmanager
 def get_connection(db_path: Optional[str] = None):
     """Context manager for database connections (Neon PostgreSQL or SQLite)."""
@@ -149,6 +166,43 @@ def init_db(db_path: Optional[str] = None) -> None:
                 CREATE INDEX IF NOT EXISTS idx_searches_updated_at 
                 ON searches(updated_at DESC);
             """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    id SERIAL PRIMARY KEY,
+                    email TEXT NOT NULL UNIQUE,
+                    name TEXT,
+                    picture TEXT,
+                    is_admin BOOLEAN DEFAULT FALSE,
+                    is_active BOOLEAN DEFAULT TRUE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    last_login_at TIMESTAMP
+                );
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_users_email 
+                ON users(email);
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS sessions (
+                    session_id TEXT PRIMARY KEY,
+                    email TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    expires_at TIMESTAMP NOT NULL
+                );
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_sessions_email 
+                ON sessions(email);
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_sessions_expires_at 
+                ON sessions(expires_at);
+            """)
+            cursor.execute("""
+                INSERT INTO users (email, is_admin, is_active, created_at)
+                VALUES (%s, TRUE, TRUE, CURRENT_TIMESTAMP)
+                ON CONFLICT (email) DO UPDATE SET is_admin = TRUE, is_active = TRUE;
+            """, (PRIMARY_ADMIN_EMAIL.lower().strip(),))
         else:
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS searches (
@@ -176,6 +230,43 @@ def init_db(db_path: Optional[str] = None) -> None:
                 CREATE INDEX IF NOT EXISTS idx_searches_updated_at 
                 ON searches(updated_at DESC);
             """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    email TEXT NOT NULL UNIQUE,
+                    name TEXT,
+                    picture TEXT,
+                    is_admin INTEGER DEFAULT 0,
+                    is_active INTEGER DEFAULT 1,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    last_login_at TIMESTAMP
+                );
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_users_email 
+                ON users(email);
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS sessions (
+                    session_id TEXT PRIMARY KEY,
+                    email TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    expires_at TIMESTAMP NOT NULL
+                );
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_sessions_email 
+                ON sessions(email);
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_sessions_expires_at 
+                ON sessions(expires_at);
+            """)
+            cursor.execute("""
+                INSERT INTO users (email, is_admin, is_active, created_at)
+                VALUES (?, 1, 1, CURRENT_TIMESTAMP)
+                ON CONFLICT (email) DO UPDATE SET is_admin = 1, is_active = 1;
+            """, (PRIMARY_ADMIN_EMAIL.lower().strip(),))
 
 def normalize_text(text: str) -> str:
     return text.strip().lower() if text else ""
@@ -462,4 +553,255 @@ def delete_search(search_id: int, db_path: Optional[str] = None) -> bool:
         ph = "%s" if is_postgres(target) else "?"
         cursor.execute(f"DELETE FROM searches WHERE id = {ph}", (search_id,))
         return cursor.rowcount > 0
+
+
+# ==========================================
+# User & Session Management
+# ==========================================
+
+def get_user(email: str, db_path: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """Retrieve user record by email."""
+    clean_email = email.lower().strip()
+    target = get_db_target(db_path)
+    with get_connection(target) as conn:
+        if is_postgres(target):
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cursor.execute("SELECT * FROM users WHERE email = %s", (clean_email,))
+        else:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM users WHERE email = ?", (clean_email,))
+        row = cursor.fetchone()
+        return _format_user_record(row) if row else None
+
+
+def get_all_users(db_path: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Retrieve all users ordered by admin status and creation date."""
+    target = get_db_target(db_path)
+    with get_connection(target) as conn:
+        if is_postgres(target):
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        else:
+            cursor = conn.cursor()
+        cursor.execute("SELECT * FROM users ORDER BY is_admin DESC, created_at ASC")
+        rows = cursor.fetchall()
+        return [_format_user_record(r) for r in rows]
+
+
+def upsert_user(
+    email: str,
+    name: Optional[str] = None,
+    picture: Optional[str] = None,
+    is_admin: bool = False,
+    is_active: bool = True,
+    db_path: Optional[str] = None
+) -> int:
+    """
+    Insert a new user or update an existing user's role and status.
+    If the email matches PRIMARY_ADMIN_EMAIL, is_admin and is_active are permanently enforced.
+    Returns the user ID.
+    """
+    clean_email = email.lower().strip()
+    if clean_email == PRIMARY_ADMIN_EMAIL.lower().strip():
+        is_admin = True
+        is_active = True
+
+    target = get_db_target(db_path)
+    with get_connection(target) as conn:
+        if is_postgres(target):
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cursor.execute("SELECT id, name, picture FROM users WHERE email = %s", (clean_email,))
+            row = cursor.fetchone()
+            if row:
+                user_id = row['id']
+                final_name = name if (name and name.strip()) else row['name']
+                final_picture = picture if (picture and picture.strip()) else row['picture']
+                cursor.execute("""
+                    UPDATE users
+                    SET name = %s, picture = %s, is_admin = %s, is_active = %s
+                    WHERE id = %s
+                """, (final_name, final_picture, is_admin, is_active, user_id))
+                return user_id
+            else:
+                cursor.execute("""
+                    INSERT INTO users (email, name, picture, is_admin, is_active, created_at)
+                    VALUES (%s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+                    RETURNING id;
+                """, (clean_email, name, picture, is_admin, is_active))
+                return cursor.fetchone()['id']
+        else:
+            cursor = conn.cursor()
+            cursor.execute("SELECT id, name, picture FROM users WHERE email = ?", (clean_email,))
+            row = cursor.fetchone()
+            if row:
+                user_id = row['id']
+                final_name = name if (name and name.strip()) else row['name']
+                final_picture = picture if (picture and picture.strip()) else row['picture']
+                cursor.execute("""
+                    UPDATE users
+                    SET name = ?, picture = ?, is_admin = ?, is_active = ?
+                    WHERE id = ?
+                """, (final_name, final_picture, 1 if is_admin else 0, 1 if is_active else 0, user_id))
+                return user_id
+            else:
+                cursor.execute("""
+                    INSERT INTO users (email, name, picture, is_admin, is_active, created_at)
+                    VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                """, (clean_email, name, picture, 1 if is_admin else 0, 1 if is_active else 0))
+                return cursor.lastrowid
+
+
+def update_user_last_login(
+    email: str,
+    name: Optional[str] = None,
+    picture: Optional[str] = None,
+    db_path: Optional[str] = None
+) -> None:
+    """Update user last_login timestamp and optionally name and picture."""
+    clean_email = email.lower().strip()
+    target = get_db_target(db_path)
+    with get_connection(target) as conn:
+        cursor = conn.cursor()
+        if is_postgres(target):
+            cursor.execute("""
+                UPDATE users
+                SET last_login_at = CURRENT_TIMESTAMP,
+                    name = CASE WHEN %s != '' THEN %s ELSE name END,
+                    picture = CASE WHEN %s != '' THEN %s ELSE picture END
+                WHERE email = %s
+            """, (name or '', name or '', picture or '', picture or '', clean_email))
+        else:
+            cursor.execute("""
+                UPDATE users
+                SET last_login_at = CURRENT_TIMESTAMP,
+                    name = CASE WHEN ? != '' THEN ? ELSE name END,
+                    picture = CASE WHEN ? != '' THEN ? ELSE picture END
+                WHERE email = ?
+            """, (name or '', name or '', picture or '', picture or '', clean_email))
+
+
+def set_user_active_status(email: str, is_active: bool, db_path: Optional[str] = None) -> bool:
+    """Toggle user active status. Primary superadmin cannot be deactivated."""
+    clean_email = email.lower().strip()
+    if clean_email == PRIMARY_ADMIN_EMAIL.lower().strip() and not is_active:
+        return False
+    target = get_db_target(db_path)
+    with get_connection(target) as conn:
+        cursor = conn.cursor()
+        if is_postgres(target):
+            cursor.execute("UPDATE users SET is_active = %s WHERE email = %s", (is_active, clean_email))
+            updated = cursor.rowcount > 0
+            if not is_active:
+                cursor.execute("DELETE FROM sessions WHERE LOWER(email) = %s", (clean_email,))
+        else:
+            cursor.execute("UPDATE users SET is_active = ? WHERE email = ?", (1 if is_active else 0, clean_email))
+            updated = cursor.rowcount > 0
+            if not is_active:
+                cursor.execute("DELETE FROM sessions WHERE LOWER(email) = ?", (clean_email,))
+        return updated
+
+
+def set_user_admin_role(email: str, is_admin: bool, db_path: Optional[str] = None) -> bool:
+    """Set user admin role. Primary superadmin cannot be demoted."""
+    clean_email = email.lower().strip()
+    if clean_email == PRIMARY_ADMIN_EMAIL.lower().strip() and not is_admin:
+        return False
+    target = get_db_target(db_path)
+    with get_connection(target) as conn:
+        cursor = conn.cursor()
+        if is_postgres(target):
+            cursor.execute("UPDATE users SET is_admin = %s WHERE email = %s", (is_admin, clean_email))
+        else:
+            cursor.execute("UPDATE users SET is_admin = ? WHERE email = ?", (1 if is_admin else 0, clean_email))
+        return cursor.rowcount > 0
+
+
+def delete_user(email: str, db_path: Optional[str] = None) -> bool:
+    """Delete a user and their sessions. Primary superadmin cannot be deleted."""
+    clean_email = email.lower().strip()
+    if clean_email == PRIMARY_ADMIN_EMAIL.lower().strip():
+        return False
+    target = get_db_target(db_path)
+    with get_connection(target) as conn:
+        cursor = conn.cursor()
+        ph = "%s" if is_postgres(target) else "?"
+        cursor.execute(f"DELETE FROM sessions WHERE LOWER(email) = {ph}", (clean_email,))
+        cursor.execute(f"DELETE FROM users WHERE email = {ph}", (clean_email,))
+        return cursor.rowcount > 0
+
+
+
+def create_session(email: str, duration_days: int = 30, db_path: Optional[str] = None) -> str:
+    """Create a persistent session token for an authorized user."""
+    clean_email = email.lower().strip()
+    session_id = secrets.token_urlsafe(32)
+    now = datetime.now(timezone.utc)
+    expires_at = (now + timedelta(days=duration_days)).strftime('%Y-%m-%d %H:%M:%S')
+    created_at = now.strftime('%Y-%m-%d %H:%M:%S')
+
+    target = get_db_target(db_path)
+    with get_connection(target) as conn:
+        cursor = conn.cursor()
+        if is_postgres(target):
+            cursor.execute("""
+                INSERT INTO sessions (session_id, email, created_at, expires_at)
+                VALUES (%s, %s, %s, %s)
+            """, (session_id, clean_email, created_at, expires_at))
+        else:
+            cursor.execute("""
+                INSERT INTO sessions (session_id, email, created_at, expires_at)
+                VALUES (?, ?, ?, ?)
+            """, (session_id, clean_email, created_at, expires_at))
+    return session_id
+
+
+def get_session_user(session_id: str, db_path: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """Look up active user for an unexpired session."""
+    if not session_id or not str(session_id).strip():
+        return None
+    target = get_db_target(db_path)
+    with get_connection(target) as conn:
+        if is_postgres(target):
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cursor.execute("""
+                SELECT u.*
+                FROM sessions s
+                JOIN users u ON LOWER(s.email) = LOWER(u.email)
+                WHERE s.session_id = %s
+                  AND s.expires_at > CURRENT_TIMESTAMP
+                  AND u.is_active = TRUE
+            """, (session_id,))
+        else:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT u.*
+                FROM sessions s
+                JOIN users u ON LOWER(s.email) = LOWER(u.email)
+                WHERE s.session_id = ?
+                  AND s.expires_at > CURRENT_TIMESTAMP
+                  AND u.is_active = 1
+            """, (session_id,))
+        row = cursor.fetchone()
+        return _format_user_record(row) if row else None
+
+
+def delete_session(session_id: str, db_path: Optional[str] = None) -> None:
+    """Delete a session by token."""
+    if not session_id:
+        return
+    target = get_db_target(db_path)
+    with get_connection(target) as conn:
+        cursor = conn.cursor()
+        ph = "%s" if is_postgres(target) else "?"
+        cursor.execute(f"DELETE FROM sessions WHERE session_id = {ph}", (session_id,))
+
+
+def delete_user_sessions(email: str, db_path: Optional[str] = None) -> None:
+    """Delete all sessions for a user email."""
+    clean_email = email.lower().strip()
+    target = get_db_target(db_path)
+    with get_connection(target) as conn:
+        cursor = conn.cursor()
+        ph = "%s" if is_postgres(target) else "?"
+        cursor.execute(f"DELETE FROM sessions WHERE LOWER(email) = {ph}", (clean_email,))
+
 

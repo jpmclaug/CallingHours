@@ -10,6 +10,7 @@ import threading
 import re
 import html
 import json
+import secrets
 from typing import Any, Optional, Dict, List
 
 import requests
@@ -68,7 +69,7 @@ DEFAULT_GEMINI_MODEL = "gemini-3.8-flash"
 _local_secrets = {}
 try:
     import calling_hours_secrets
-    for attr in ('GENIUS_CLIENT_ID', 'GENIUS_CLIENT_SECRET', 'GENIUS_ACCESS_TOKEN', 'GEMINI_API_KEY'):
+    for attr in ('GENIUS_CLIENT_ID', 'GENIUS_CLIENT_SECRET', 'GENIUS_ACCESS_TOKEN', 'GEMINI_API_KEY', 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_REDIRECT_URI'):
         if hasattr(calling_hours_secrets, attr):
             _local_secrets[attr] = getattr(calling_hours_secrets, attr)
 except ImportError:
@@ -79,6 +80,9 @@ GENIUS_CLIENT_ID = os.environ.get('GENIUS_CLIENT_ID') or _local_secrets.get('GEN
 GENIUS_CLIENT_SECRET = os.environ.get('GENIUS_CLIENT_SECRET') or _local_secrets.get('GENIUS_CLIENT_SECRET')
 GENIUS_ACCESS_TOKEN = os.environ.get('GENIUS_ACCESS_TOKEN') or _local_secrets.get('GENIUS_ACCESS_TOKEN')
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY') or _local_secrets.get('GEMINI_API_KEY')
+GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID') or _local_secrets.get('GOOGLE_CLIENT_ID', '')
+GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET') or _local_secrets.get('GOOGLE_CLIENT_SECRET', '')
+GOOGLE_REDIRECT_URI = os.environ.get('GOOGLE_REDIRECT_URI') or _local_secrets.get('GOOGLE_REDIRECT_URI', '')
 
 ACCESS_TOKEN = GENIUS_ACCESS_TOKEN
 SERVER_PORT = None
@@ -87,6 +91,10 @@ GENIUS_AUTH_URL = 'https://api.genius.com/oauth/authorize'
 GENIUS_TOKEN_URL = 'https://api.genius.com/oauth/token'
 GENIUS_API_SEARCH_URL = 'https://api.genius.com/search'
 GENIUS_WEB_SEARCH_URL = 'https://genius.com/api/search/multi'
+
+GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth'
+GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token'
+GOOGLE_USERINFO_URL = 'https://www.googleapis.com/oauth2/v3/userinfo'
 
 # Cloud Run injects K_SERVICE and PORT (default 8080)
 IS_CLOUD_RUN = bool(os.environ.get('K_SERVICE'))
@@ -112,10 +120,73 @@ def get_gemini_missing_message() -> str:
         )
     return '<div class="message">Set your GEMINI_API_KEY in calling_hours_secrets.py and reload to use analysis.</div>'
 
-def build_app_header(active_page: str = 'song') -> str:
+def get_google_redirect_uri(host_header: str | None = None) -> str:
+    if GOOGLE_REDIRECT_URI:
+        return GOOGLE_REDIRECT_URI
+    if host_header:
+        scheme = 'https' if (IS_CLOUD_RUN or 'run.app' in host_header) else 'http'
+        return f'{scheme}://{host_header}/auth/google/callback'
+    display_host = '127.0.0.1' if HOST == '0.0.0.0' else HOST
+    return f'http://{display_host}:{SERVER_PORT or PORT}/auth/google/callback'
+
+def parse_cookies(headers) -> Dict[str, str]:
+    cookie_header = headers.get('Cookie') or headers.get('cookie') or ''
+    cookies = {}
+    for item in cookie_header.split(';'):
+        if '=' in item:
+            name, val = item.strip().split('=', 1)
+            cookies[name.strip()] = val.strip()
+    return cookies
+
+def build_cookie_header(name: str, value: str, max_age: Optional[int] = 2592000, path: str = '/', http_only: bool = True, same_site: str = 'Lax', secure: bool = False) -> str:
+    parts = [f"{name}={value}", f"Path={path}", f"SameSite={same_site}"]
+    if max_age is not None:
+        parts.append(f"Max-Age={max_age}")
+    if http_only:
+        parts.append("HttpOnly")
+    if secure:
+        parts.append("Secure")
+    return "; ".join(parts)
+
+def build_app_header(active_page: str = 'song', user: Optional[Dict[str, Any]] = None) -> str:
     song_active = ' active' if active_page == 'song' else ''
     history_active = ' active' if active_page == 'history' else ''
     prompts_active = ' active' if active_page == 'prompts' else ''
+    admin_active = ' active' if active_page == 'admin' else ''
+
+    admin_nav_link = ''
+    user_menu_html = ''
+    if user:
+        if user.get('is_admin'):
+            admin_nav_link = f'''
+                <a href="/admin" class="app-nav-link{admin_active}" id="nav-link-admin">
+                    <span class="nav-icon">🛡️</span>
+                    <span class="nav-text">Admin</span>
+                </a>
+            '''
+
+        display_name = html_escape(user.get('name') or user.get('email', '').split('@')[0])
+        email = html_escape(user.get('email', ''))
+        picture = user.get('picture')
+        if picture and str(picture).strip():
+            avatar_html = f'<img src="{html_escape(picture)}" class="user-avatar" alt="Avatar" referrerpolicy="no-referrer">'
+        else:
+            initial = (display_name[0] if display_name else 'U').upper()
+            avatar_html = f'<div class="user-avatar-initial">{html_escape(initial)}</div>'
+
+        admin_pill = '<span class="badge-role-admin">Admin</span>' if user.get('is_admin') else ''
+
+        user_menu_html = f'''
+            <div class="app-user-bar">
+                <div class="user-profile-badge" title="{email}">
+                    {avatar_html}
+                    <span class="user-display-name">{display_name}</span>
+                    {admin_pill}
+                </div>
+                <a href="/logout" class="btn-logout" title="Sign out">Sign Out</a>
+            </div>
+        '''
+
     return f'''
     <header class="app-header">
         <div class="app-header-inner">
@@ -125,20 +196,24 @@ def build_app_header(active_page: str = 'song') -> str:
                 </svg>
                 <span class="app-brand-text">Calling Hours</span>
             </a>
-            <nav class="app-nav" aria-label="Main Navigation">
-                <a href="/" class="app-nav-link{song_active}" id="nav-link-song">
-                    <span class="nav-icon">🎵</span>
-                    <span class="nav-text">Song</span>
-                </a>
-                <a href="/history" class="app-nav-link{history_active}" id="nav-link-history">
-                    <span class="nav-icon">📜</span>
-                    <span class="nav-text">Search History</span>
-                </a>
-                <a href="/prompts" class="app-nav-link{prompts_active}" id="nav-link-prompts">
-                    <span class="nav-icon">⚙️</span>
-                    <span class="nav-text">Prompts</span>
-                </a>
-            </nav>
+            <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
+                <nav class="app-nav" aria-label="Main Navigation">
+                    <a href="/" class="app-nav-link{song_active}" id="nav-link-song">
+                        <span class="nav-icon">🎵</span>
+                        <span class="nav-text">Song</span>
+                    </a>
+                    <a href="/history" class="app-nav-link{history_active}" id="nav-link-history">
+                        <span class="nav-icon">📜</span>
+                        <span class="nav-text">Search History</span>
+                    </a>
+                    <a href="/prompts" class="app-nav-link{prompts_active}" id="nav-link-prompts">
+                        <span class="nav-icon">⚙️</span>
+                        <span class="nav-text">Prompts</span>
+                    </a>
+                    {admin_nav_link}
+                </nav>
+                {user_menu_html}
+            </div>
         </div>
     </header>
     '''
@@ -274,6 +349,316 @@ PAGE_HTML = r'''<!DOCTYPE html>
             border-color: #A5C8FF;
             box-shadow: 0 0 14px rgba(165, 200, 255, 0.35);
         }
+
+        /* User Profile & Navigation */
+        .app-user-bar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .user-profile-badge {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 4px 10px 4px 6px;
+            background: rgba(165, 200, 255, 0.08);
+            border: 1px solid rgba(165, 200, 255, 0.2);
+            border-radius: 20px;
+            color: #E1E8F0;
+            font-size: 0.85rem;
+        }
+        .user-avatar {
+            width: 26px;
+            height: 26px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 1px solid rgba(165, 200, 255, 0.4);
+        }
+        .user-avatar-initial {
+            width: 26px;
+            height: 26px;
+            border-radius: 50%;
+            background: #194685;
+            color: #A5C8FF;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 0.78rem;
+            text-transform: uppercase;
+        }
+        .user-display-name {
+            font-weight: 500;
+            max-width: 140px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .badge-role-admin {
+            background: rgba(255, 215, 0, 0.2);
+            color: #FFD700;
+            border: 1px solid rgba(255, 215, 0, 0.4);
+            border-radius: 10px;
+            padding: 1px 6px;
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+        .btn-logout {
+            display: inline-flex;
+            align-items: center;
+            padding: 6px 12px;
+            border-radius: 16px;
+            background: transparent;
+            color: rgba(225, 232, 240, 0.7);
+            border: 1px solid rgba(225, 232, 240, 0.2);
+            text-decoration: none;
+            font-size: 0.8rem;
+            font-weight: 600;
+            transition: all 0.2s ease;
+        }
+        .btn-logout:hover {
+            color: #f08c5a;
+            border-color: rgba(240, 140, 90, 0.4);
+            background: rgba(240, 140, 90, 0.08);
+        }
+
+        /* Login Card & Auth Styles */
+        .login-wrapper {
+            width: 100%;
+            min-height: 80vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            box-sizing: border-box;
+            z-index: 10;
+        }
+        .login-card {
+            width: min(500px, 94vw);
+            background: rgba(11, 30, 63, 0.75);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(165, 200, 255, 0.25);
+            border-radius: 16px;
+            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
+            padding: 36px 32px;
+            text-align: center;
+            box-sizing: border-box;
+        }
+        .login-logo {
+            width: 48px;
+            height: 48px;
+            fill: #A5C8FF;
+            filter: drop-shadow(0 0 12px rgba(165, 200, 255, 0.6));
+            margin-bottom: 8px;
+        }
+        .login-title {
+            font-family: 'Montserrat', sans-serif;
+            font-weight: 900;
+            font-size: 2rem;
+            margin: 0;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: #E1E8F0;
+        }
+        .login-subtitle {
+            margin: 6px 0 24px 0;
+            color: #A5C8FF;
+            font-size: 0.92rem;
+        }
+        .login-body {
+            background: rgba(5, 10, 20, 0.5);
+            border: 1px solid rgba(165, 200, 255, 0.15);
+            border-radius: 12px;
+            padding: 24px 20px;
+            margin-bottom: 20px;
+        }
+        .login-heading {
+            font-size: 1.3rem;
+            margin: 0 0 8px 0;
+            color: #E1E8F0;
+        }
+        .login-instruction {
+            font-size: 0.9rem;
+            color: rgba(225, 232, 240, 0.75);
+            margin: 0 0 20px 0;
+        }
+        .btn-google-signin {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            background: #FFFFFF;
+            color: #1F1F1F;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-weight: 600;
+            font-size: 0.95rem;
+            padding: 12px 24px;
+            border-radius: 24px;
+            text-decoration: none;
+            border: 1px solid #747775;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+            transition: all 0.2s ease;
+            cursor: pointer;
+            width: 100%;
+            max-width: 320px;
+            box-sizing: border-box;
+            margin: 0 auto;
+        }
+        .btn-google-signin:hover {
+            background: #F8FAFD;
+            box-shadow: 0 4px 14px rgba(66, 133, 244, 0.35);
+            transform: translateY(-1px);
+        }
+        .google-icon {
+            width: 20px;
+            height: 20px;
+            flex-shrink: 0;
+        }
+        .google-config-notice {
+            background: rgba(240, 140, 90, 0.1);
+            border: 1px solid rgba(240, 140, 90, 0.3);
+            border-radius: 10px;
+            padding: 16px;
+            color: #E1E8F0;
+        }
+        .google-config-notice h3 {
+            margin-top: 0;
+            color: #f08c5a;
+            font-size: 1.05rem;
+        }
+        .google-config-notice p {
+            font-size: 0.88rem;
+            color: rgba(225, 232, 240, 0.8);
+            margin: 6px 0;
+        }
+        .btn-dev-signin {
+            display: inline-block;
+            background: #194685;
+            color: #FFFFFF;
+            padding: 10px 20px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 700;
+            font-size: 0.9rem;
+            transition: all 0.2s ease;
+        }
+        .btn-dev-signin:hover {
+            background: #2563EB;
+        }
+        .login-footer {
+            font-size: 0.78rem;
+            color: rgba(225, 232, 240, 0.4);
+        }
+
+        /* Admin Dashboard Styles */
+        .admin-card {
+            background: rgba(11, 30, 63, 0.65);
+            border: 1px solid rgba(165, 200, 255, 0.2);
+            border-radius: 12px;
+            padding: 24px;
+            box-sizing: border-box;
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+        .admin-stat-card {
+            background: rgba(11, 30, 63, 0.65);
+            border: 1px solid rgba(165, 200, 255, 0.18);
+            border-radius: 12px;
+            padding: 18px 20px;
+            text-align: center;
+        }
+        .stat-number {
+            font-family: 'Montserrat', sans-serif;
+            font-size: 2rem;
+            font-weight: 800;
+            color: #A5C8FF;
+        }
+        .stat-label {
+            font-size: 0.82rem;
+            color: rgba(225, 232, 240, 0.65);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-top: 4px;
+        }
+        .admin-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+            text-align: left;
+        }
+        .admin-table th {
+            padding: 12px 14px;
+            border-bottom: 1px solid rgba(165, 200, 255, 0.25);
+            color: #A5C8FF;
+            font-family: 'Montserrat', sans-serif;
+            font-weight: 700;
+            font-size: 0.78rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .admin-table td {
+            padding: 14px;
+            border-bottom: 1px solid rgba(165, 200, 255, 0.1);
+            vertical-align: middle;
+        }
+        .admin-table tr:hover {
+            background: rgba(165, 200, 255, 0.04);
+        }
+        .badge-active {
+            display: inline-block;
+            background: rgba(90, 240, 165, 0.15);
+            color: #5af0a5;
+            border: 1px solid rgba(90, 240, 165, 0.3);
+            border-radius: 12px;
+            padding: 2px 8px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        .badge-suspended {
+            display: inline-block;
+            background: rgba(240, 140, 90, 0.15);
+            color: #f08c5a;
+            border: 1px solid rgba(240, 140, 90, 0.3);
+            border-radius: 12px;
+            padding: 2px 8px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        .badge-role-user {
+            display: inline-block;
+            background: rgba(165, 200, 255, 0.1);
+            color: #A5C8FF;
+            border: 1px solid rgba(165, 200, 255, 0.25);
+            border-radius: 12px;
+            padding: 2px 8px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        .btn-action-sm {
+            padding: 5px 10px;
+            font-size: 0.78rem;
+            border-radius: 6px;
+            border: 1px solid rgba(165, 200, 255, 0.25);
+            background: rgba(165, 200, 255, 0.08);
+            color: #E1E8F0;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .btn-action-sm:hover {
+            background: rgba(165, 200, 255, 0.2);
+            color: #FFFFFF;
+        }
+        .btn-action-danger {
+            border-color: rgba(240, 140, 90, 0.3);
+            color: #f08c5a;
+        }
+        .btn-action-danger:hover {
+            background: rgba(240, 140, 90, 0.15);
+            color: #ff9d6e;
+        }
+
 
         /* Workspace Tabs (Mobile Segmented Control) */
         .workspace-tabs {
@@ -1803,9 +2188,455 @@ HISTORY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
 </body>
 </html>'''
 
+LOGIN_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
+    <div class="stars"></div>
+    <div class="horizon"></div>
+    <div class="login-wrapper">
+        <div class="login-card">
+            <div class="login-brand">
+                <svg class="login-logo" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
+                </svg>
+                <h1 class="login-title">Calling Hours</h1>
+                <p class="login-subtitle">Song Lyric Search &amp; Gemini Poetic Analysis</p>
+            </div>
+
+            {error_banner}
+
+            <div class="login-body">
+                <h2 class="login-heading">Sign In</h2>
+                <p class="login-instruction">Sign in with your authorized Google account to access Calling Hours.</p>
+                
+                {login_button_or_notice}
+            </div>
+
+            <div class="login-footer">
+                <span>Calling Hours &bull; Powered by Google Gemini</span>
+            </div>
+        </div>
+    </div>
+</body>
+</html>'''
+
+UNAUTHORIZED_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
+    <div class="stars"></div>
+    <div class="horizon"></div>
+    <div class="login-wrapper">
+        <div class="login-card" style="border-color: rgba(240, 140, 90, 0.4);">
+            <div class="login-brand">
+                <div style="font-size: 3rem; margin-bottom: 8px;">🔒</div>
+                <h1 class="login-title" style="color: #f08c5a;">Access Restricted</h1>
+                <p class="login-subtitle">Calling Hours is currently private</p>
+            </div>
+
+            <div class="login-body">
+                <p style="font-size: 1.05rem; line-height: 1.5; color: #E1E8F0; margin: 0 0 12px 0;">
+                    The Google account <strong>{email}</strong> is not authorized to access this application.
+                </p>
+                <p style="font-size: 0.9rem; color: #A5C8FF; line-height: 1.5; margin: 0 0 20px 0;">
+                    Access is currently granted on an invitation-only basis. Please ask the administrator (<code>jpmclaug@gmail.com</code>) to grant you access.
+                </p>
+                
+                <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 16px;">
+                    <a href="/auth/google" class="btn-google-signin" style="justify-content: center; width: 100%;">
+                        <span>Sign In with a Different Account</span>
+                    </a>
+                    <a href="/login" style="color: #A5C8FF; text-decoration: none; font-size: 0.88rem; margin-top: 6px;">&larr; Return to Sign In</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>'''
+
+ADMIN_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
+    <div class="stars"></div>
+    <div class="horizon"></div>
+    {app_header}
+    <div class="container" style="flex-direction: column; width: min(1080px, 95vw);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 12px;">
+            <div>
+                <h1 style="font-size: 2rem; margin: 0; display: flex; align-items: center; gap: 10px;">
+                    <span>🛡️ User Access Management</span>
+                </h1>
+                <p style="margin: 4px 0 0 0; color: #A5C8FF; font-size: 0.95rem;">Manage authorized Google accounts and administrative permissions</p>
+            </div>
+            <a href="/" style="color:#A5C8FF; text-decoration:none; font-size: 1rem; border-bottom: 1px dotted #A5C8FF;">&larr; Back to Song</a>
+        </div>
+
+        {admin_message_block}
+
+        <!-- Stats Overview -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 28px;">
+            <div class="admin-stat-card">
+                <div class="stat-number">{total_users_count}</div>
+                <div class="stat-label">Total Authorized Users</div>
+            </div>
+            <div class="admin-stat-card">
+                <div class="stat-number" style="color: #5af0a5;">{active_users_count}</div>
+                <div class="stat-label">Active Users</div>
+            </div>
+            <div class="admin-stat-card">
+                <div class="stat-number" style="color: #FFD700;">{admin_users_count}</div>
+                <div class="stat-label">Administrators</div>
+            </div>
+        </div>
+
+        <!-- Add User Form -->
+        <div class="admin-card" style="margin-bottom: 28px;">
+            <h2 style="margin-top: 0; font-size: 1.25rem; color: #A5C8FF; display: flex; align-items: center; gap: 8px;">
+                <span>➕ Grant Access to New User</span>
+            </h2>
+            <p style="color: rgba(225, 232, 240, 0.7); font-size: 0.9rem; margin-top: 4px; margin-bottom: 16px;">
+                Add a Google email address to allow that user to sign in immediately.
+            </p>
+            <form method="post" action="/admin/user/add" style="display: grid; grid-template-columns: 2fr 1.5fr 1fr auto; gap: 12px; align-items: end;">
+                <div>
+                    <label for="new_email" style="display: block; font-size: 0.85rem; color: #A5C8FF; margin-bottom: 4px;">Google Email *</label>
+                    <input type="email" id="new_email" name="email" placeholder="e.g. friend@gmail.com" required style="width: 100%; box-sizing: border-box;">
+                </div>
+                <div>
+                    <label for="new_name" style="display: block; font-size: 0.85rem; color: #A5C8FF; margin-bottom: 4px;">Display Name (Optional)</label>
+                    <input type="text" id="new_name" name="name" placeholder="e.g. Alex Smith" style="width: 100%; box-sizing: border-box;">
+                </div>
+                <div>
+                    <label for="new_role" style="display: block; font-size: 0.85rem; color: #A5C8FF; margin-bottom: 4px;">Role</label>
+                    <select id="new_role" name="role" style="width: 100%; box-sizing: border-box;">
+                        <option value="user">User</option>
+                        <option value="admin">Administrator</option>
+                    </select>
+                </div>
+                <div>
+                    <button type="submit" style="padding: 10px 20px; white-space: nowrap;">Grant Access</button>
+                </div>
+            </form>
+        </div>
+
+        <!-- User Directory Table -->
+        <div class="admin-card">
+            <h2 style="margin-top: 0; font-size: 1.25rem; color: #A5C8FF; margin-bottom: 16px;">
+                Authorized Users Directory
+            </h2>
+            <div style="overflow-x: auto;">
+                <table class="admin-table">
+                    <thead>
+                        <tr>
+                            <th>User</th>
+                            <th>Role</th>
+                            <th>Status</th>
+                            <th>Created</th>
+                            <th>Last Active</th>
+                            <th style="text-align: right;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {users_table_rows}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</body>
+</html>'''
+
 class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
+    def is_request_secure(self) -> bool:
+        proto = self.headers.get('X-Forwarded-Proto', '').lower()
+        return proto == 'https' or IS_CLOUD_RUN
+
+    def get_current_user(self) -> Optional[Dict[str, Any]]:
+        cookies = parse_cookies(self.headers)
+        session_id = cookies.get('session_id')
+        if not session_id:
+            return None
+        return database.get_session_user(session_id)
+
+    def handle_logout(self):
+        cookies = parse_cookies(self.headers)
+        session_id = cookies.get('session_id')
+        if session_id:
+            database.delete_session(session_id)
+        expired_cookie = build_cookie_header('session_id', '', max_age=0, secure=self.is_request_secure())
+        self.send_response(302)
+        self.send_header('Set-Cookie', expired_cookie)
+        self.send_header('Location', '/login')
+        self.end_headers()
+
+    def handle_google_auth(self):
+        if not GOOGLE_CLIENT_ID:
+            self.send_response(302)
+            self.send_header('Location', '/login?error=oauth_unconfigured')
+            self.end_headers()
+            return
+
+        oauth_state = secrets.token_urlsafe(16)
+        redirect_uri = get_google_redirect_uri(self.headers.get('Host'))
+        params = {
+            'client_id': GOOGLE_CLIENT_ID,
+            'redirect_uri': redirect_uri,
+            'response_type': 'code',
+            'scope': 'openid email profile',
+            'state': oauth_state,
+            'access_type': 'online',
+            'prompt': 'select_account',
+        }
+        auth_url = f"{GOOGLE_AUTH_URL}?{urllib.parse.urlencode(params)}"
+        state_cookie = build_cookie_header('oauth_state', oauth_state, max_age=300, secure=self.is_request_secure())
+        self.send_response(302)
+        self.send_header('Set-Cookie', state_cookie)
+        self.send_header('Location', auth_url)
+        self.end_headers()
+
+    def handle_google_callback(self, query: str):
+        params = urllib.parse.parse_qs(query)
+        if params.get('error'):
+            err = params.get('error', ['Unknown error'])[0]
+            self.send_response(302)
+            self.send_header('Location', f'/login?error={urllib.parse.quote(err)}')
+            self.end_headers()
+            return
+
+        code = params.get('code', [''])[0].strip()
+        if not code:
+            self.send_response(302)
+            self.send_header('Location', '/login?error=missing_code')
+            self.end_headers()
+            return
+
+        redirect_uri = get_google_redirect_uri(self.headers.get('Host'))
+        try:
+            token_resp = requests.post(
+                GOOGLE_TOKEN_URL,
+                data={
+                    'client_id': GOOGLE_CLIENT_ID,
+                    'client_secret': GOOGLE_CLIENT_SECRET,
+                    'code': code,
+                    'grant_type': 'authorization_code',
+                    'redirect_uri': redirect_uri,
+                },
+                headers={'Accept': 'application/json'},
+                timeout=10
+            )
+            token_resp.raise_for_status()
+            token_data = token_resp.json()
+            access_token = token_data.get('access_token')
+            if not access_token:
+                raise ValueError("No access token returned from Google")
+
+            userinfo_resp = requests.get(
+                GOOGLE_USERINFO_URL,
+                headers={'Authorization': f'Bearer {access_token}'},
+                timeout=10
+            )
+            userinfo_resp.raise_for_status()
+            user_info = userinfo_resp.json()
+
+            user_email = user_info.get('email', '').lower().strip()
+            user_name = user_info.get('name', '')
+            user_picture = user_info.get('picture', '')
+
+            if not user_email:
+                raise ValueError("No email found in Google profile")
+
+            user_record = database.get_user(user_email)
+            if user_record and user_record.get('is_active'):
+                database.update_user_last_login(user_email, name=user_name, picture=user_picture)
+                session_id = database.create_session(user_email)
+                cookie_header = build_cookie_header(
+                    'session_id', session_id,
+                    secure=self.is_request_secure()
+                )
+                self.send_response(302)
+                self.send_header('Set-Cookie', cookie_header)
+                self.send_header('Location', '/')
+                self.end_headers()
+            else:
+                self.send_response(302)
+                self.send_header('Location', f'/unauthorized?email={urllib.parse.quote(user_email)}')
+                self.end_headers()
+        except Exception as e:
+            print(f"Google OAuth callback error: {e}")
+            self.send_response(302)
+            self.send_header('Location', f'/login?error={urllib.parse.quote(str(e))}')
+            self.end_headers()
+
+    def handle_dev_login(self, email: str = 'jpmclaug@gmail.com'):
+        clean_email = email.lower().strip()
+        user = database.get_user(clean_email)
+        if not user or not user.get('is_active'):
+            if clean_email == database.PRIMARY_ADMIN_EMAIL.lower().strip():
+                database.upsert_user(clean_email, name='JP McLaughlin', is_admin=True, is_active=True)
+                user = database.get_user(clean_email)
+            else:
+                self.send_response(302)
+                self.send_header('Location', f'/unauthorized?email={urllib.parse.quote(clean_email)}')
+                self.end_headers()
+                return
+
+        session_id = database.create_session(clean_email)
+        cookie_header = build_cookie_header('session_id', session_id, secure=self.is_request_secure())
+        self.send_response(302)
+        self.send_header('Set-Cookie', cookie_header)
+        self.send_header('Location', '/')
+        self.end_headers()
+
+    def render_login_page(self, error: str = ''):
+        if self.get_current_user():
+            self.send_response(302)
+            self.send_header('Location', '/')
+            self.end_headers()
+            return
+
+        error_banner = ''
+        if error:
+            error_msg_map = {
+                'missing_code': 'Google authorization was not completed. Missing code parameter.',
+                'oauth_unconfigured': 'Google OAuth credentials are not configured in calling_hours_secrets.py.',
+                'access_denied': 'Sign-in was cancelled or denied by Google.',
+            }
+            display_err = error_msg_map.get(error, error)
+            error_banner = f'<div class="message" style="border-color: rgba(240,140,90,0.5); color: #f08c5a; margin-bottom: 20px;">{html_escape(display_err)}</div>'
+
+        redirect_uri = get_google_redirect_uri(self.headers.get('Host'))
+
+        if GOOGLE_CLIENT_ID:
+            button_or_notice = '''
+                <a href="/auth/google" class="btn-google-signin">
+                    <svg class="google-icon" viewBox="0 0 48 48">
+                        <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+                        <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+                        <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+                        <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+                    </svg>
+                    <span>Sign in with Google</span>
+                </a>
+            '''
+        else:
+            button_or_notice = f'''
+                <div class="google-config-notice">
+                    <h3>Google OAuth Setup Required</h3>
+                    <p>Configure <code>GOOGLE_CLIENT_ID</code> and <code>GOOGLE_CLIENT_SECRET</code> in <code>calling_hours_secrets.py</code> or environment variables to enable live Google authentication.</p>
+                    <div style="margin-top: 14px; text-align: left; font-size: 0.85rem; color: #E1E8F0; background: rgba(0,0,0,0.3); padding: 12px; border-radius: 8px;">
+                        <div><strong>1.</strong> Create credentials at <a href="https://console.cloud.google.com/apis/credentials" target="_blank" style="color: #A8D2FF; text-decoration: underline;">Google Cloud Console</a></div>
+                        <div><strong>2.</strong> Authorized redirect URI: <code style="color: #A8D2FF;">{html_escape(redirect_uri)}</code></div>
+                        <div><strong>3.</strong> Add credentials to <code>calling_hours_secrets.py</code></div>
+                    </div>
+                    <div style="margin-top: 18px;">
+                        <a href="/auth/dev-login" class="btn-dev-signin">
+                            ⚡ Quick Sign-In as jpmclaug@gmail.com
+                        </a>
+                    </div>
+                </div>
+            '''
+
+        content = LOGIN_PAGE_HTML.replace('{error_banner}', error_banner)\
+                                 .replace('{login_button_or_notice}', button_or_notice)
+
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/html; charset=utf-8')
+        self.send_header('Content-Length', str(len(content.encode('utf-8'))))
+        self.end_headers()
+        self.wfile.write(content.encode('utf-8'))
+
+    def render_unauthorized_page(self, email: str = ''):
+        content = UNAUTHORIZED_PAGE_HTML.replace('{email}', html_escape(email or 'Your account'))
+        self.send_response(403)
+        self.send_header('Content-Type', 'text/html; charset=utf-8')
+        self.send_header('Content-Length', str(len(content.encode('utf-8'))))
+        self.end_headers()
+        self.wfile.write(content.encode('utf-8'))
+
+    def render_admin_page(self, message: str = '', user: Optional[Dict[str, Any]] = None):
+        users = database.get_all_users()
+        total_count = len(users)
+        active_count = sum(1 for u in users if u.get('is_active'))
+        admin_count = sum(1 for u in users if u.get('is_admin'))
+
+        message_html = ''
+        if message:
+            message_html = f'<div class="message" style="margin-bottom: 24px;">{html_escape(message)}</div>'
+
+        rows = []
+        for u in users:
+            u_email = u.get('email', '')
+            u_name = u.get('name') or u_email.split('@')[0]
+            u_picture = u.get('picture')
+            is_admin = u.get('is_admin')
+            is_active = u.get('is_active')
+            is_primary = (u_email.lower().strip() == database.PRIMARY_ADMIN_EMAIL.lower().strip())
+            created_at = u.get('created_at') or 'Unknown'
+            last_login = u.get('last_login_at') or 'Never'
+
+            if u_picture and str(u_picture).strip():
+                avatar_html = f'<img src="{html_escape(u_picture)}" class="user-avatar" alt="Avatar" referrerpolicy="no-referrer">'
+            else:
+                initial = (u_name[0] if u_name else 'U').upper()
+                avatar_html = f'<div class="user-avatar-initial">{html_escape(initial)}</div>'
+
+            role_badge = '<span class="badge-role-admin">Administrator</span>' if is_admin else '<span class="badge-role-user">User</span>'
+            status_badge = '<span class="badge-active">Active</span>' if is_active else '<span class="badge-suspended">Suspended</span>'
+
+            if is_primary:
+                actions_html = '<span style="font-size: 0.78rem; color: #FFD700; font-weight: 700;">★ Primary Superadmin</span>'
+            else:
+                status_btn_text = "Deactivate" if is_active else "Activate"
+                status_btn_class = "btn-action-sm btn-action-danger" if is_active else "btn-action-sm"
+                role_btn_text = "Demote to User" if is_admin else "Make Admin"
+                actions_html = f'''
+                <div style="display: flex; gap: 8px; justify-content: flex-end; align-items: center; flex-wrap: wrap;">
+                    <form method="post" action="/admin/user/toggle-role" style="display: inline; margin: 0;">
+                        <input type="hidden" name="email" value="{html_escape(u_email)}">
+                        <button type="submit" class="btn-action-sm">{role_btn_text}</button>
+                    </form>
+                    <form method="post" action="/admin/user/toggle-status" style="display: inline; margin: 0;">
+                        <input type="hidden" name="email" value="{html_escape(u_email)}">
+                        <button type="submit" class="{status_btn_class}">{status_btn_text}</button>
+                    </form>
+                    <form method="post" action="/admin/user/delete" style="display: inline; margin: 0;" onsubmit="return confirm('Permanently remove {html_escape(u_email)}?');">
+                        <input type="hidden" name="email" value="{html_escape(u_email)}">
+                        <button type="submit" class="btn-action-sm btn-action-danger" title="Delete User">&times;</button>
+                    </form>
+                </div>
+                '''
+
+            rows.append(f'''
+            <tr>
+                <td>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        {avatar_html}
+                        <div>
+                            <div style="font-weight: 700; color: #E1E8F0;">{html_escape(u_name)}</div>
+                            <div style="font-size: 0.82rem; color: #A5C8FF;">{html_escape(u_email)}</div>
+                        </div>
+                    </div>
+                </td>
+                <td>{role_badge}</td>
+                <td>{status_badge}</td>
+                <td style="font-size: 0.8rem; color: rgba(225, 232, 240, 0.6);">{html_escape(str(created_at))}</td>
+                <td style="font-size: 0.8rem; color: rgba(225, 232, 240, 0.6);">{html_escape(str(last_login))}</td>
+                <td style="text-align: right;">{actions_html}</td>
+            </tr>
+            ''')
+
+        table_rows_html = '\n'.join(rows) if rows else '<tr><td colspan="6" style="text-align:center; color:#A5C8FF;">No users found.</td></tr>'
+
+        content = ADMIN_PAGE_HTML.replace('{app_header}', build_app_header('admin', user=user))\
+                                 .replace('{admin_message_block}', message_html)\
+                                 .replace('{total_users_count}', str(total_count))\
+                                 .replace('{active_users_count}', str(active_count))\
+                                 .replace('{admin_users_count}', str(admin_count))\
+                                 .replace('{users_table_rows}', table_rows_html)
+
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/html; charset=utf-8')
+        self.send_header('Content-Length', str(len(content.encode('utf-8'))))
+        self.end_headers()
+        self.wfile.write(content.encode('utf-8'))
+
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
+
+        # 1. Health check (unauthenticated)
         if parsed.path == '/healthz':
             self.send_response(200)
             self.send_header('Content-Type', 'text/plain; charset=utf-8')
@@ -1813,6 +2644,111 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(b'OK')
             return
 
+        # 2. Static files (unauthenticated)
+        static_files = {
+            '/manifest.json': (os.path.join(SCRIPT_DIR, 'manifest.json'), 'application/manifest+json'),
+            '/apple-touch-icon.png': (os.path.join(SCRIPT_DIR, 'static', 'apple-touch-icon.png'), 'image/png'),
+            '/apple-touch-icon-precomposed.png': (os.path.join(SCRIPT_DIR, 'static', 'apple-touch-icon.png'), 'image/png'),
+            '/icon-192.png': (os.path.join(SCRIPT_DIR, 'static', 'icon-192.png'), 'image/png'),
+            '/icon-512.png': (os.path.join(SCRIPT_DIR, 'static', 'icon-512.png'), 'image/png'),
+            '/favicon-32x32.png': (os.path.join(SCRIPT_DIR, 'static', 'favicon-32x32.png'), 'image/png'),
+            '/favicon.ico': (os.path.join(SCRIPT_DIR, 'static', 'favicon.ico'), 'image/x-icon'),
+            '/favicon.svg': (os.path.join(SCRIPT_DIR, 'static', 'logo.svg'), 'image/svg+xml'),
+            '/logo.svg': (os.path.join(SCRIPT_DIR, 'static', 'logo.svg'), 'image/svg+xml'),
+        }
+        if parsed.path in static_files:
+            file_path, content_type = static_files[parsed.path]
+            if os.path.exists(file_path):
+                with open(file_path, 'rb') as f:
+                    content = f.read()
+                self.send_response(200)
+                self.send_header('Content-Type', content_type)
+                self.send_header('Content-Length', str(len(content)))
+                self.send_header('Cache-Control', 'public, max-age=86400')
+                self.end_headers()
+                self.wfile.write(content)
+                return
+
+        if parsed.path.startswith('/static/'):
+            filename = os.path.basename(parsed.path)
+            file_path = os.path.join(SCRIPT_DIR, 'static', filename)
+            if os.path.exists(file_path) and os.path.isfile(file_path):
+                ext = os.path.splitext(file_path)[1].lower()
+                mime_map = {
+                    '.png': 'image/png',
+                    '.jpg': 'image/jpeg',
+                    '.jpeg': 'image/jpeg',
+                    '.ico': 'image/x-icon',
+                    '.svg': 'image/svg+xml',
+                    '.json': 'application/json',
+                }
+                content_type = mime_map.get(ext, 'application/octet-stream')
+                with open(file_path, 'rb') as f:
+                    content = f.read()
+                self.send_response(200)
+                self.send_header('Content-Type', content_type)
+                self.send_header('Content-Length', str(len(content)))
+                self.send_header('Cache-Control', 'public, max-age=86400')
+                self.end_headers()
+                self.wfile.write(content)
+                return
+
+        # 3. Public Auth Routes
+        if parsed.path == '/login':
+            params = urllib.parse.parse_qs(parsed.query)
+            err = params.get('error', [''])[0]
+            self.render_login_page(error=err)
+            return
+
+        if parsed.path == '/logout':
+            self.handle_logout()
+            return
+
+        if parsed.path == '/auth/google':
+            self.handle_google_auth()
+            return
+
+        if parsed.path == '/auth/google/callback':
+            self.handle_google_callback(parsed.query)
+            return
+
+        if parsed.path == '/auth/dev-login':
+            params = urllib.parse.parse_qs(parsed.query)
+            email = params.get('email', ['jpmclaug@gmail.com'])[0]
+            self.handle_dev_login(email)
+            return
+
+        if parsed.path == '/unauthorized':
+            params = urllib.parse.parse_qs(parsed.query)
+            email = params.get('email', [''])[0]
+            self.render_unauthorized_page(email=email)
+            return
+
+        # 4. Require authentication for all remaining routes
+        current_user = self.get_current_user()
+        if not current_user:
+            if parsed.path.startswith('/api/'):
+                self.send_response(401)
+                self.send_header('Content-Type', 'application/json; charset=utf-8')
+                self.end_headers()
+                self.wfile.write(json.dumps({'error': 'Unauthorized', 'login_url': '/login'}).encode('utf-8'))
+                return
+            self.send_response(302)
+            self.send_header('Location', '/login')
+            self.end_headers()
+            return
+
+        # 5. Admin routes
+        if parsed.path == '/admin':
+            if not current_user.get('is_admin'):
+                self.send_error(403, 'Forbidden: Administrator access required.')
+                return
+            params = urllib.parse.parse_qs(parsed.query)
+            msg = params.get('msg', [''])[0]
+            self.render_admin_page(message=msg, user=current_user)
+            return
+
+        # 6. Protected application routes
         if parsed.path == '/authorize':
             self.handle_authorize()
             return
@@ -1867,54 +2803,6 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(json.dumps({'search': record}).encode('utf-8'))
             return
 
-        static_files = {
-            '/manifest.json': (os.path.join(SCRIPT_DIR, 'manifest.json'), 'application/manifest+json'),
-            '/apple-touch-icon.png': (os.path.join(SCRIPT_DIR, 'static', 'apple-touch-icon.png'), 'image/png'),
-            '/apple-touch-icon-precomposed.png': (os.path.join(SCRIPT_DIR, 'static', 'apple-touch-icon.png'), 'image/png'),
-            '/icon-192.png': (os.path.join(SCRIPT_DIR, 'static', 'icon-192.png'), 'image/png'),
-            '/icon-512.png': (os.path.join(SCRIPT_DIR, 'static', 'icon-512.png'), 'image/png'),
-            '/favicon-32x32.png': (os.path.join(SCRIPT_DIR, 'static', 'favicon-32x32.png'), 'image/png'),
-            '/favicon.ico': (os.path.join(SCRIPT_DIR, 'static', 'favicon.ico'), 'image/x-icon'),
-            '/favicon.svg': (os.path.join(SCRIPT_DIR, 'static', 'logo.svg'), 'image/svg+xml'),
-            '/logo.svg': (os.path.join(SCRIPT_DIR, 'static', 'logo.svg'), 'image/svg+xml'),
-        }
-        if parsed.path in static_files:
-            file_path, content_type = static_files[parsed.path]
-            if os.path.exists(file_path):
-                with open(file_path, 'rb') as f:
-                    content = f.read()
-                self.send_response(200)
-                self.send_header('Content-Type', content_type)
-                self.send_header('Content-Length', str(len(content)))
-                self.send_header('Cache-Control', 'public, max-age=86400')
-                self.end_headers()
-                self.wfile.write(content)
-                return
-
-        if parsed.path.startswith('/static/'):
-            filename = os.path.basename(parsed.path)
-            file_path = os.path.join(SCRIPT_DIR, 'static', filename)
-            if os.path.exists(file_path) and os.path.isfile(file_path):
-                ext = os.path.splitext(file_path)[1].lower()
-                mime_map = {
-                    '.png': 'image/png',
-                    '.jpg': 'image/jpeg',
-                    '.jpeg': 'image/jpeg',
-                    '.ico': 'image/x-icon',
-                    '.svg': 'image/svg+xml',
-                    '.json': 'application/json',
-                }
-                content_type = mime_map.get(ext, 'application/octet-stream')
-                with open(file_path, 'rb') as f:
-                    content = f.read()
-                self.send_response(200)
-                self.send_header('Content-Type', content_type)
-                self.send_header('Content-Length', str(len(content)))
-                self.send_header('Cache-Control', 'public, max-age=86400')
-                self.end_headers()
-                self.wfile.write(content)
-                return
-
         if parsed.path not in ('/', '/load'):
             self.send_error(404, 'Not Found')
             return
@@ -1965,6 +2853,88 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         self.render_page(message=message, lyrics_text='')
 
     def do_POST(self):
+        current_user = self.get_current_user()
+        if not current_user:
+            self.send_response(302)
+            self.send_header('Location', '/login')
+            self.end_headers()
+            return
+
+        # Admin user management POST endpoints
+        if self.path.startswith('/admin/user/'):
+            if not current_user.get('is_admin'):
+                self.send_error(403, 'Forbidden: Administrator access required.')
+                return
+
+            content_length = int(self.headers.get('Content-Length', 0))
+            body = self.rfile.read(content_length).decode('utf-8')
+            data = urllib.parse.parse_qs(body)
+
+            if self.path == '/admin/user/add':
+                email = data.get('email', [''])[0].strip().lower()
+                name = data.get('name', [''])[0].strip()
+                role = data.get('role', ['user'])[0].strip().lower()
+                is_admin = (role == 'admin')
+                if email and '@' in email:
+                    database.upsert_user(email, name=name or None, is_admin=is_admin, is_active=True)
+                    msg = urllib.parse.quote(f"Access granted for {email}.")
+                else:
+                    msg = urllib.parse.quote("Please provide a valid email address.")
+                self.send_response(302)
+                self.send_header('Location', f'/admin?msg={msg}')
+                self.end_headers()
+                return
+
+            if self.path == '/admin/user/toggle-status':
+                email = data.get('email', [''])[0].strip().lower()
+                target_user = database.get_user(email)
+                if target_user:
+                    new_status = not target_user['is_active']
+                    success = database.set_user_active_status(email, new_status)
+                    if success:
+                        status_str = "activated" if new_status else "deactivated"
+                        msg = urllib.parse.quote(f"User {email} {status_str}.")
+                    else:
+                        msg = urllib.parse.quote("Primary administrator status cannot be modified.")
+                else:
+                    msg = urllib.parse.quote("User not found.")
+                self.send_response(302)
+                self.send_header('Location', f'/admin?msg={msg}')
+                self.end_headers()
+                return
+
+            if self.path == '/admin/user/toggle-role':
+                email = data.get('email', [''])[0].strip().lower()
+                target_user = database.get_user(email)
+                if target_user:
+                    new_role = not target_user['is_admin']
+                    success = database.set_user_admin_role(email, new_role)
+                    if success:
+                        role_str = "promoted to Administrator" if new_role else "demoted to User"
+                        msg = urllib.parse.quote(f"User {email} {role_str}.")
+                    else:
+                        msg = urllib.parse.quote("Primary administrator role cannot be modified.")
+                else:
+                    msg = urllib.parse.quote("User not found.")
+                self.send_response(302)
+                self.send_header('Location', f'/admin?msg={msg}')
+                self.end_headers()
+                return
+
+            if self.path == '/admin/user/delete':
+                email = data.get('email', [''])[0].strip().lower()
+                success = database.delete_user(email)
+                if success:
+                    msg = urllib.parse.quote(f"User {email} removed.")
+                else:
+                    msg = urllib.parse.quote("Primary administrator cannot be removed.")
+                self.send_response(302)
+                self.send_header('Location', f'/admin?msg={msg}')
+                self.end_headers()
+                return
+
+            self.send_error(404, 'Not Found')
+            return
         if self.path not in ('/submit', '/analyze', '/prompts/save'):
             self.send_error(404, 'Not Found')
             return
@@ -2260,9 +3230,9 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                            .replace('{band_datalist_options}', band_datalist_options)\
                            .replace('{band_select_display}', band_select_display)\
                            .replace('{band_count_text}', band_count_text)\
-                           .replace('{lyrics_badge_display}', lyrics_badge_display)\
-                           .replace('{analysis_badge_display}', analysis_badge_display)\
-                           .replace('{app_header}', build_app_header('song'))
+                            .replace('{lyrics_badge_display}', lyrics_badge_display)\
+                            .replace('{analysis_badge_display}', analysis_badge_display)\
+                            .replace('{app_header}', build_app_header('song', user=self.get_current_user()))
         self.send_response(200)
         self.send_header('Content-Type', 'text/html; charset=utf-8')
         self.send_header('Content-Length', str(len(content.encode('utf-8'))))
@@ -2288,7 +3258,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         content = PROMPTS_PAGE_HTML.replace('{message_block}', message)\
                                    .replace('{message_display}', message_display)\
                                    .replace('{prompts_list}', prompts_list_html)\
-                                   .replace('{app_header}', build_app_header('prompts'))
+                                   .replace('{app_header}', build_app_header('prompts', user=self.get_current_user()))
                                    
         self.send_response(200)
         self.send_header('Content-Type', 'text/html; charset=utf-8')
@@ -2333,7 +3303,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             history_list_html = '\n'.join(cards)
 
         content = HISTORY_PAGE_HTML.replace('{history_list}', history_list_html)\
-                                   .replace('{app_header}', build_app_header('history'))
+                                   .replace('{app_header}', build_app_header('history', user=self.get_current_user()))
         self.send_response(200)
         self.send_header('Content-Type', 'text/html; charset=utf-8')
         self.send_header('Content-Length', str(len(content.encode('utf-8'))))
