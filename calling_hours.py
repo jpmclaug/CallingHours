@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import http.server
 import socketserver
 import os
@@ -8,6 +10,7 @@ import threading
 import re
 import html
 import json
+from typing import Any, Optional, Dict, List
 
 import requests
 from google import genai
@@ -88,7 +91,7 @@ GENIUS_WEB_SEARCH_URL = 'https://genius.com/api/search/multi'
 # Cloud Run injects K_SERVICE and PORT (default 8080)
 IS_CLOUD_RUN = bool(os.environ.get('K_SERVICE'))
 PORT = int(os.environ.get('PORT', 8080 if IS_CLOUD_RUN else 8000))
-HOST = os.environ.get('HOST', '0.0.0.0' if IS_CLOUD_RUN else '127.0.0.1')
+HOST = os.environ.get('HOST', '0.0.0.0' if (IS_CLOUD_RUN or 'PORT' in os.environ) else '127.0.0.1')
 OAUTH_PORT = PORT
 
 def get_genius_missing_message(action='authorize') -> str:
@@ -2546,8 +2549,9 @@ def run_server():
             print(f'Calling Hours app running at http://{display_host}:{port} (listening on {HOST}:{port})')
             
             # Open browser automatically only if running locally (not in Cloud Run/Docker/headless)
-            no_browser = os.environ.get('NO_BROWSER', '').lower() in ('1', 'true', 'yes')
-            if not IS_CLOUD_RUN and not no_browser:
+            is_container = IS_CLOUD_RUN or bool(os.environ.get('PORT')) or HOST == '0.0.0.0'
+            no_browser = is_container or os.environ.get('NO_BROWSER', '').lower() in ('1', 'true', 'yes')
+            if not no_browser:
                 threading.Timer(0.5, lambda: webbrowser.open(f'http://{display_host}:{port}')).start()
 
             try:

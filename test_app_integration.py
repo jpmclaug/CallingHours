@@ -180,6 +180,18 @@ class TestAppIntegration(unittest.TestCase):
             self.assertIn('⚡ Continue to Gemini Analysis', html)
             self.assertIn('View Lyrics', html)
 
+    def test_07_html_escape(self):
+        self.assertEqual(calling_hours.html_escape(None), "")
+        self.assertEqual(calling_hours.html_escape("<script>"), "&lt;script&gt;")
+        self.assertEqual(calling_hours.html_escape(123), "123")
+        self.assertEqual(calling_hours.html_escape("test & fun"), "test &amp; fun")
+
+    def test_08_healthz_endpoint(self):
+        with urllib.request.urlopen(f"{self.base_url}/healthz") as resp:
+            self.assertEqual(resp.status, 200)
+            self.assertEqual(resp.read(), b'OK')
+
 if __name__ == "__main__":
     unittest.main()
+
 
