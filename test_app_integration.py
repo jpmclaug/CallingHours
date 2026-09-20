@@ -551,9 +551,156 @@ class TestAppIntegration(unittest.TestCase):
         self.assertIn("Danceability", widget)
         self.assertIn("Valence", widget)
 
+    def test_23_artist_intelligence_page_and_directory(self):
+        # 1. Verify App Header contains link to Artists
+        with self.authed_get("/") as resp:
+            self.assertEqual(resp.status, 200)
+            html = resp.read().decode('utf-8')
+            self.assertIn('href="/artist"', html)
+            self.assertIn('Artists', html)
+
+        # 2. Verify Artist Directory page (when no artist specified)
+        with self.authed_get("/artist") as resp:
+            self.assertEqual(resp.status, 200)
+            html = resp.read().decode('utf-8')
+            self.assertIn("Artist Intelligence Directory", html)
+            self.assertIn("Live touring, North Carolina concerts", html)
+            self.assertIn('name="artist"', html)
+
+        # 3. Verify Artist Intelligence Hub page for a specific artist
+        mock_setlist_data = {
+            "mbid": "test-mbid-jew",
+            "name": "Jimmy Eat World",
+            "url": "https://www.setlist.fm/setlists/jimmy-eat-world-4bd6838a.html",
+            "last_nc_show": {
+                "venue_name": "Red Hat Amphitheater",
+                "city": "Raleigh",
+                "state": "NC",
+                "tour_name": "Amplify The Noise Tour",
+                "date_formatted": "August 20, 2023",
+                "url": "https://setlist.fm/show-nc-jew",
+                "song_count": 18,
+                "total_nc_shows": 12,
+                "info": "Co-headlining with Manchester Orchestra"
+            },
+            "last_3_tours": [
+                {
+                    "tour_name": "Amplify The Noise Tour",
+                    "sample_date_formatted": "August 20, 2023",
+                    "venue_name": "Red Hat Amphitheater",
+                    "location": "Raleigh, NC, United States",
+                    "played_with": ["Manchester Orchestra", "Middle Kids"],
+                    "setlist_url": "https://setlist.fm/show-nc-jew"
+                },
+                {
+                    "tour_name": "Surviving The Truth Tour",
+                    "sample_date_formatted": "March 15, 2022",
+                    "venue_name": "The Orange Peel",
+                    "location": "Asheville, NC, United States",
+                    "played_with": ["Dashboard Confessional"],
+                    "setlist_url": "https://setlist.fm/show-nc-jew-2"
+                }
+            ],
+            "recent_setlists": [
+                {
+                    "venue_name": "Red Hat Amphitheater",
+                    "city": "Raleigh",
+                    "state_or_country": "NC",
+                    "tour_name": "Amplify The Noise Tour",
+                    "date_formatted": "August 20, 2023",
+                    "url": "https://setlist.fm/show-nc-jew",
+                    "song_count": 18,
+                    "sample_songs": ["Bleed American", "Sweetness", "The Middle"]
+                }
+            ]
+        }
+
+        mock_adb_data = {
+            "banner_url": "https://example.com/banner.jpg",
+            "thumbnail_url": "https://example.com/thumb.jpg",
+            "formed_year": "1993",
+            "country": "Mesa, Arizona, United States",
+            "biography": "Jimmy Eat World is an American rock band formed in 1993.",
+        }
+
+        with patch("setlistfm.get_or_fetch_artist_setlist_data", return_value=mock_setlist_data), \
+             patch("theaudiodb.get_or_fetch_artist_details", return_value=mock_adb_data):
+            url = "/artist?artist=" + urllib.parse.quote("Jimmy Eat World")
+            with self.authed_get(url) as resp:
+                self.assertEqual(resp.status, 200)
+                html = resp.read().decode('utf-8')
+                # Verify header and hero
+                self.assertIn("Jimmy Eat World", html)
+                self.assertIn("1993", html)
+                self.assertIn("Mesa, Arizona, United States", html)
+                # Verify NC Spotlight Card
+                self.assertIn("North Carolina Show Spotlight", html)
+                self.assertIn("Last Played in NC: August 20, 2023", html)
+                self.assertIn("Red Hat Amphitheater", html)
+                self.assertIn("12", html)  # Total NC shows
+                # Verify Tours & Co-Performers
+                self.assertIn("Last 3 Tours &amp; Who They Played With", html)
+                self.assertIn("Amplify The Noise Tour", html)
+                self.assertIn("Manchester Orchestra", html)
+                self.assertIn("Middle Kids", html)
+                self.assertIn("Surviving The Truth Tour", html)
+                self.assertIn("Dashboard Confessional", html)
+                # Verify Recent Setlists
+                self.assertIn("Recent Concert Setlists", html)
+                self.assertIn("Bleed American", html)
+                self.assertIn("Sweetness", html)
+
+    def test_24_unified_artist_api_and_auto_analyze_flow(self):
+        # 1. Save a test song in database
+        database.save_search(
+            artist="Blink-182",
+            song="All The Small Things",
+            lyrics="Late night, come home, work sucks, I know",
+            source="Genius",
+            db_path=self.db_path
+        )
+
+        # 2. Test /api/artist endpoint
+        mock_setlist_data = {
+            "mbid": "blink-mbid",
+            "name": "Blink-182",
+            "last_nc_show": {"venue_name": "PNC Music Pavilion", "city": "Charlotte"},
+            "tours": [{"tour_name": "One More Time Tour", "played_with": ["Pierce The Veil"]}],
+            "recent_setlists": []
+        }
+
+        with patch("setlistfm.get_or_fetch_artist_setlist_data", return_value=mock_setlist_data):
+            url = "/api/artist?artist=" + urllib.parse.quote("Blink-182")
+            with self.authed_get(url) as resp:
+                self.assertEqual(resp.status, 200)
+                data = json.loads(resp.read().decode('utf-8'))
+                self.assertEqual(data["artist"], "Blink-182")
+                self.assertIn("setlistfm", data)
+                self.assertEqual(data["setlistfm"]["last_nc_show"]["city"], "Charlotte")
+                self.assertIn("songs", data)
+                self.assertTrue(any(s["song"] == "All The Small Things" for s in data["songs"]))
+
+        # 3. Test /api/setlistfm/artist endpoint
+        with patch("setlistfm.get_or_fetch_artist_setlist_data", return_value=mock_setlist_data):
+            url = "/api/setlistfm/artist?artist=" + urllib.parse.quote("Blink-182")
+            with self.authed_get(url) as resp:
+                self.assertEqual(resp.status, 200)
+                data = json.loads(resp.read().decode('utf-8'))
+                self.assertEqual(data["name"], "Blink-182")
+                self.assertEqual(data["mbid"], "blink-mbid")
+
+        # 4. Test loading song from artist page with auto_analyze=1
+        url = "/?artist=" + urllib.parse.quote("Blink-182") + "&song=" + urllib.parse.quote("All The Small Things") + "&auto_analyze=1"
+        with self.authed_get(url) as resp:
+            self.assertEqual(resp.status, 200)
+            html = resp.read().decode('utf-8')
+            self.assertIn("All The Small Things", html)
+            self.assertIn("Late night, come home", html)
+
 
 if __name__ == "__main__":
     unittest.main()
+
 
 
 

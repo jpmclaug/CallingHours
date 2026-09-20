@@ -33,6 +33,7 @@ from google import genai
 import database
 import lastfm
 import theaudiodb
+import setlistfm
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPT_DIR)
@@ -91,7 +92,7 @@ DEFAULT_GEMINI_MODEL = "gemini-3.8-flash"
 _local_secrets = {}
 try:
     import calling_hours_secrets
-    for attr in ('GENIUS_CLIENT_ID', 'GENIUS_CLIENT_SECRET', 'GENIUS_ACCESS_TOKEN', 'GEMINI_API_KEY', 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_REDIRECT_URI', 'LASTFM_API_KEY', 'THEAUDIODB_API_KEY'):
+    for attr in ('GENIUS_CLIENT_ID', 'GENIUS_CLIENT_SECRET', 'GENIUS_ACCESS_TOKEN', 'GEMINI_API_KEY', 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_REDIRECT_URI', 'LASTFM_API_KEY', 'THEAUDIODB_API_KEY', 'SETLIST_FM_API_KEY'):
         if hasattr(calling_hours_secrets, attr):
             _local_secrets[attr] = getattr(calling_hours_secrets, attr)
 except ImportError:
@@ -107,6 +108,7 @@ GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET') or _local_secrets.
 GOOGLE_REDIRECT_URI = os.environ.get('GOOGLE_REDIRECT_URI') or _local_secrets.get('GOOGLE_REDIRECT_URI', '')
 LASTFM_API_KEY = os.environ.get('LASTFM_API_KEY') or _local_secrets.get('LASTFM_API_KEY', '')
 THEAUDIODB_API_KEY = os.environ.get('THEAUDIODB_API_KEY') or _local_secrets.get('THEAUDIODB_API_KEY', '123')
+SETLIST_FM_API_KEY = os.environ.get('SETLIST_FM_API_KEY') or _local_secrets.get('SETLIST_FM_API_KEY', '')
 
 def build_theaudiodb_widget(
     artist: str,
@@ -431,6 +433,7 @@ def build_cookie_header(name: str, value: str, max_age: Optional[int] = 2592000,
 
 def build_app_header(active_page: str = 'song', user: Optional[Dict[str, Any]] = None) -> str:
     song_active = ' active' if active_page == 'song' else ''
+    artist_active = ' active' if active_page == 'artist' else ''
     history_active = ' active' if active_page == 'history' else ''
     prompts_active = ' active' if active_page == 'prompts' else ''
     admin_active = ' active' if active_page == 'admin' else ''
@@ -484,6 +487,10 @@ def build_app_header(active_page: str = 'song', user: Optional[Dict[str, Any]] =
                 <a href="/" class="app-nav-link{song_active}" id="nav-link-song">
                     <span class="nav-icon">🎵</span>
                     <span class="nav-text">Song</span>
+                </a>
+                <a href="/artist" class="app-nav-link{artist_active}" id="nav-link-artist">
+                    <span class="nav-icon">👤</span>
+                    <span class="nav-text">Artists</span>
                 </a>
                 <a href="/history" class="app-nav-link{history_active}" id="nav-link-history">
                     <span class="nav-icon">📜</span>
@@ -2903,7 +2910,12 @@ PAGE_HTML = r'''<!DOCTYPE html>
             fetch('/api/lastfm/artist?artist=' + encodeURIComponent(artistName))
                 .then(r => r.json())
                 .then(data => {
-                    let html = '';
+                    let html = `
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; background: rgba(165, 200, 255, 0.08); padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(165, 200, 255, 0.2); flex-wrap: wrap; gap: 8px;">
+                            <span style="font-size: 0.84rem; color: #A5C8FF;">Live tours, NC shows &amp; full catalog</span>
+                            <a href="/artist?artist=${encodeURIComponent(artistName)}" class="pill-btn primary" style="font-size: 0.78rem; padding: 4px 12px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;">🌟 View Full Artist Page &rarr;</a>
+                        </div>
+                    `;
                     if (data.tags && data.tags.length > 0) {
                         html += '<div style="margin-bottom: 16px;">';
                         html += '<div style="font-size: 0.76rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #C5B8FF; margin-bottom: 8px;">Top Genres &amp; Tags</div>';
@@ -3410,7 +3422,12 @@ HISTORY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             fetch('/api/lastfm/artist?artist=' + encodeURIComponent(artistName))
                 .then(r => r.json())
                 .then(data => {
-                    let html = '';
+                    let html = `
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; background: rgba(165, 200, 255, 0.08); padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(165, 200, 255, 0.2); flex-wrap: wrap; gap: 8px;">
+                            <span style="font-size: 0.84rem; color: #A5C8FF;">Live tours, NC shows &amp; full catalog</span>
+                            <a href="/artist?artist=${encodeURIComponent(artistName)}" class="pill-btn primary" style="font-size: 0.78rem; padding: 4px 12px; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;">🌟 View Full Artist Page &rarr;</a>
+                        </div>
+                    `;
                     if (data.tags && data.tags.length > 0) {
                         html += '<div style="margin-bottom: 16px;">';
                         html += '<div style="font-size: 0.76rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #C5B8FF; margin-bottom: 8px;">Top Genres &amp; Tags</div>';
@@ -3527,8 +3544,284 @@ HISTORY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             if (activeArtistFilter) {
                 filterByArtist(activeArtistFilter);
             }
-        });
     </script>
+</body>
+</html>'''
+
+ARTIST_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
+    <div class="stars"></div>
+    <div class="horizon"></div>
+    {app_header}
+    <style>
+        .artist-page-container {
+            width: min(1160px, 94vw);
+            margin: 0 auto 60px auto;
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+        }
+        .artist-top-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+        .artist-search-form {
+            display: flex;
+            gap: 10px;
+            flex: 1;
+            max-width: 480px;
+        }
+        .artist-search-input {
+            flex: 1;
+            padding: 10px 16px;
+            background: rgba(11, 30, 63, 0.75);
+            border: 1px solid rgba(165, 200, 255, 0.3);
+            border-radius: 8px;
+            color: #E1E8F0;
+            font-size: 0.95rem;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .artist-search-input:focus {
+            border-color: #A5C8FF;
+            box-shadow: 0 0 10px rgba(165, 200, 255, 0.3);
+        }
+        .artist-hero-card {
+            position: relative;
+            background: linear-gradient(135deg, rgba(14, 34, 72, 0.88) 0%, rgba(6, 14, 30, 0.95) 100%);
+            border: 1px solid rgba(165, 200, 255, 0.25);
+            border-radius: 16px;
+            padding: 32px;
+            box-shadow: 0 12px 36px rgba(0, 0, 0, 0.55);
+            overflow: hidden;
+        }
+        .artist-hero-backdrop {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-size: cover;
+            background-position: center;
+            opacity: 0.16;
+            filter: blur(5px);
+            z-index: 0;
+            pointer-events: none;
+        }
+        .artist-hero-inner {
+            position: relative;
+            z-index: 1;
+            display: flex;
+            align-items: center;
+            gap: 32px;
+            flex-wrap: wrap;
+        }
+        .artist-avatar-img {
+            width: 140px;
+            height: 140px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 3px solid #A5C8FF;
+            box-shadow: 0 0 24px rgba(165, 200, 255, 0.45);
+            background: #0B1E3F;
+            flex-shrink: 0;
+        }
+        .artist-avatar-placeholder {
+            width: 140px;
+            height: 140px;
+            border-radius: 50%;
+            border: 3px solid #A5C8FF;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 3.5rem;
+            background: rgba(11, 30, 63, 0.8);
+            color: #A5C8FF;
+            flex-shrink: 0;
+            box-shadow: 0 0 24px rgba(165, 200, 255, 0.35);
+        }
+        .artist-info-col {
+            flex: 1;
+            min-width: 280px;
+        }
+        .artist-heading {
+            margin: 0 0 8px 0;
+            font-family: 'Montserrat', sans-serif;
+            font-size: 2.6rem;
+            font-weight: 900;
+            letter-spacing: -0.02em;
+            color: #FFFFFF;
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.7);
+            line-height: 1.15;
+        }
+        .artist-badges-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin: 10px 0 14px 0;
+        }
+        .artist-meta-badge {
+            background: rgba(165, 200, 255, 0.12);
+            border: 1px solid rgba(165, 200, 255, 0.25);
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.84rem;
+            color: #D2E4FF;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .artist-meta-badge strong {
+            color: #FFFFFF;
+        }
+        .artist-links-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 14px;
+        }
+        .nc-spotlight-card {
+            background: linear-gradient(135deg, rgba(16, 48, 102, 0.8) 0%, rgba(8, 24, 56, 0.9) 100%);
+            border: 1px solid rgba(165, 200, 255, 0.35);
+            border-left: 6px solid #60A5FA;
+            border-radius: 14px;
+            padding: 24px 28px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+        }
+        .tour-history-card {
+            background: rgba(11, 30, 63, 0.65);
+            border: 1px solid rgba(165, 200, 255, 0.2);
+            border-radius: 14px;
+            padding: 24px 28px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+        }
+        .section-header-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-bottom: 18px;
+            border-bottom: 1px solid rgba(165, 200, 255, 0.15);
+            padding-bottom: 12px;
+        }
+        .section-title {
+            font-family: 'Montserrat', sans-serif;
+            font-size: 1.35rem;
+            font-weight: 800;
+            color: #E1E8F0;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .tour-cards-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 18px;
+        }
+        .tour-item-card {
+            background: rgba(14, 38, 80, 0.55);
+            border: 1px solid rgba(165, 200, 255, 0.22);
+            border-radius: 12px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            gap: 16px;
+            transition: transform 0.2s ease, border-color 0.2s ease;
+        }
+        .tour-item-card:hover {
+            transform: translateY(-2px);
+            border-color: rgba(165, 200, 255, 0.4);
+        }
+        .tour-title {
+            font-family: 'Montserrat', sans-serif;
+            font-size: 1.15rem;
+            font-weight: 800;
+            color: #FFFFFF;
+            margin: 0 0 6px 0;
+        }
+        .coperformer-chip {
+            background: rgba(99, 102, 241, 0.22);
+            border: 1px solid rgba(165, 200, 255, 0.35);
+            color: #E0E7FF;
+            padding: 3px 10px;
+            border-radius: 16px;
+            font-size: 0.82rem;
+            text-decoration: none;
+            display: inline-block;
+            transition: all 0.2s ease;
+        }
+        .coperformer-chip:hover {
+            background: rgba(99, 102, 241, 0.45);
+            border-color: #A5C8FF;
+            color: #FFFFFF;
+            transform: scale(1.04);
+        }
+        .songs-table-card {
+            background: rgba(11, 30, 63, 0.65);
+            border: 1px solid rgba(165, 200, 255, 0.2);
+            border-radius: 14px;
+            padding: 24px 28px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+        }
+        .artist-song-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 16px;
+            padding: 12px 14px;
+            border-bottom: 1px solid rgba(165, 200, 255, 0.08);
+            border-radius: 8px;
+            transition: background 0.15s ease;
+            flex-wrap: wrap;
+        }
+        .artist-song-row:hover {
+            background: rgba(165, 200, 255, 0.07);
+        }
+        .btn-analyze-song {
+            background: linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%);
+            color: #FFFFFF;
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            border-radius: 8px;
+            padding: 7px 14px;
+            font-size: 0.84rem;
+            font-weight: 700;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            box-shadow: 0 2px 8px rgba(37, 99, 235, 0.4);
+            transition: all 0.2s ease;
+            white-space: nowrap;
+        }
+        .btn-analyze-song:hover {
+            background: linear-gradient(135deg, #3B82F6 0%, #2563EB 100%);
+            box-shadow: 0 4px 14px rgba(37, 99, 235, 0.6);
+            transform: translateY(-1px);
+        }
+        .similar-chip {
+            background: rgba(165, 200, 255, 0.1);
+            border: 1px solid rgba(165, 200, 255, 0.25);
+            color: #C5B8FF;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            text-decoration: none;
+            display: inline-block;
+            transition: all 0.2s ease;
+        }
+        .similar-chip:hover {
+            background: rgba(165, 200, 255, 0.25);
+            color: #FFFFFF;
+            border-color: #A5C8FF;
+            transform: scale(1.03);
+        }
+    </style>
+
+    <div class="artist-page-container">
+        {artist_page_content}
+    </div>
 </body>
 </html>'''
 
@@ -4185,6 +4478,45 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(json.dumps({'theaudiodb_data': data}).encode('utf-8'))
             return
 
+        if parsed.path == '/artist':
+            params = urllib.parse.parse_qs(parsed.query)
+            selected_artist = params.get('artist', [''])[0].strip()
+            refresh = params.get('refresh', ['0'])[0] == '1'
+            self.render_artist_page(selected_artist=selected_artist, refresh=refresh)
+            return
+
+        if parsed.path == '/api/setlistfm/artist':
+            params = urllib.parse.parse_qs(parsed.query)
+            artist = params.get('artist', [''])[0].strip()
+            refresh = params.get('refresh', ['0'])[0] == '1'
+            data = setlistfm.get_or_fetch_artist_setlist_data(artist, api_key=SETLIST_FM_API_KEY, force_refresh=refresh) if artist else {}
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(json.dumps(data).encode('utf-8'))
+            return
+
+        if parsed.path == '/api/artist':
+            params = urllib.parse.parse_qs(parsed.query)
+            artist = params.get('artist', [''])[0].strip()
+            refresh = params.get('refresh', ['0'])[0] == '1'
+            s_data = setlistfm.get_or_fetch_artist_setlist_data(artist, api_key=SETLIST_FM_API_KEY, force_refresh=refresh) if artist else {}
+            l_data = lastfm.get_or_fetch_artist_metadata(artist, api_key=LASTFM_API_KEY, force_refresh=refresh) if artist else {}
+            a_data = theaudiodb.get_or_fetch_artist_details(artist, api_key=THEAUDIODB_API_KEY, force_refresh=refresh) if artist else {}
+            db_s = database.get_songs_by_band(artist) if artist else []
+            resp_payload = {
+                "artist": artist,
+                "setlistfm": s_data,
+                "lastfm": l_data,
+                "theaudiodb": a_data,
+                "songs": db_s,
+            }
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(json.dumps(resp_payload).encode('utf-8'))
+            return
+
         if parsed.path not in ('/', '/load'):
             self.send_error(404, 'Not Found')
             return
@@ -4193,6 +4525,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         load_id = params.get('id', [''])[0].strip()
         artist_param = params.get('artist', [''])[0].strip()
         song_param = params.get('song', [''])[0].strip()
+        auto_analyze = params.get('auto_analyze', ['0'])[0] == '1' or params.get('analyze', ['0'])[0] == '1'
         if load_id.isdigit():
             rec = database.get_search_by_id(int(load_id))
             if rec:
@@ -4278,6 +4611,28 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 except Exception as lfe:
                     print(f"Last.fm artist metadata load error: {lfe}")
 
+                # Auto-analyze if requested and lyrics exist but no analysis yet
+                if auto_analyze and not analysis and lyrics and GEMINI_API_KEY:
+                    try:
+                        prompts = load_prompts()
+                        p_template = prompts[0]['text'] if prompts else "Analyze lyrics:\n{lyrics_text}"
+                        p_text = p_template.replace('{song}', song).replace('{artist}', artist).replace('{lyrics_text}', html.unescape(lyrics))
+                        client = genai.Client(api_key=GEMINI_API_KEY)
+                        inter = client.interactions.create(model=model_name, input=p_text)
+                        analysis = inter.output_text or ''
+                        database.save_analysis(
+                            artist=artist,
+                            song=song,
+                            analysis=analysis,
+                            model_name=model_name,
+                            prompt_name="Default Analysis",
+                            lyrics=lyrics,
+                            track_tags=track_tags,
+                            theaudiodb_data=theaudiodb_data
+                        )
+                    except Exception as aae:
+                        print(f"Auto-analyze error: {aae}")
+
                 genius_link = f' <a href="{html_escape(song_url)}" target="_blank" style="color:#A8D2FF; text-decoration:underline;">View on Genius</a>' if song_url else ''
                 has_analysis_msg = ' with saved analysis' if analysis else ''
                 message = (
@@ -4300,21 +4655,89 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 )
                 return
             else:
-                artist_metadata = None
-                try:
-                    artist_metadata = lastfm.get_or_fetch_artist_metadata(artist_param, api_key=LASTFM_API_KEY)
-                except Exception as lfe:
-                    print(f"Last.fm artist metadata error: {lfe}")
+                # Song not previously cached in searches table: fetch lyrics online
+                lyrics = ''
+                song_url = None
+                source = None
+                genius_info = search_genius_song_details(artist_param, song_param)
+                if genius_info and genius_info.get('url'):
+                    song_url = genius_info['url']
+                    source = 'Genius'
+                    fetched = fetch_genius_lyrics(song_url)
+                    if fetched:
+                        lyrics = fetched
+                if not lyrics:
+                    lrclib_lyrics = fetch_lrclib_lyrics(artist_param, song_param)
+                    if lrclib_lyrics:
+                        lyrics = lrclib_lyrics
+                        source = 'LRCLIB'
+
+                track_tags = []
+                if LASTFM_API_KEY:
+                    try:
+                        track_tags = lastfm.get_or_fetch_track_tags(artist_param, song_param, api_key=LASTFM_API_KEY)
+                    except Exception:
+                        pass
+
                 theaudiodb_data = None
                 try:
                     theaudiodb_data = theaudiodb.get_or_fetch_track_metadata(artist_param, song_param, api_key=THEAUDIODB_API_KEY)
-                except Exception as adbe:
-                    print(f"TheAudioDB track error: {adbe}")
+                except Exception:
+                    pass
+
+                artist_metadata = None
+                try:
+                    artist_metadata = lastfm.get_or_fetch_artist_metadata(artist_param, api_key=LASTFM_API_KEY)
+                except Exception:
+                    pass
+
+                analysis = ''
+                if lyrics:
+                    try:
+                        database.save_search(
+                            artist=artist_param,
+                            song=song_param,
+                            lyrics=lyrics,
+                            source=source or 'Online',
+                            song_url=song_url,
+                            track_tags=track_tags,
+                            theaudiodb_data=theaudiodb_data
+                        )
+                    except Exception as sse:
+                        print(f"Save search on auto load error: {sse}")
+
+                    if auto_analyze and GEMINI_API_KEY:
+                        try:
+                            prompts = load_prompts()
+                            p_template = prompts[0]['text'] if prompts else "Analyze lyrics:\n{lyrics_text}"
+                            p_text = p_template.replace('{song}', song_param).replace('{artist}', artist_param).replace('{lyrics_text}', html.unescape(lyrics))
+                            client = genai.Client(api_key=GEMINI_API_KEY)
+                            inter = client.interactions.create(model=DEFAULT_GEMINI_MODEL, input=p_text)
+                            analysis = inter.output_text or ''
+                            database.save_analysis(
+                                artist=artist_param,
+                                song=song_param,
+                                analysis=analysis,
+                                model_name=DEFAULT_GEMINI_MODEL,
+                                prompt_name="Default Analysis",
+                                lyrics=lyrics,
+                                track_tags=track_tags,
+                                theaudiodb_data=theaudiodb_data
+                            )
+                        except Exception as aae:
+                            print(f"Auto-analyze new song error: {aae}")
+
+                genius_link = f' <a href="{html_escape(song_url)}" target="_blank" style="color:#A8D2FF; text-decoration:underline;">View on Genius</a>' if song_url else ''
+                msg = f'<div class="message">Loaded <strong>{html_escape(artist_param)}</strong> - <strong>{html_escape(song_param)}</strong>.{genius_link}</div>' if lyrics else ''
                 self.render_page(
-                    message='',
-                    lyrics_text='',
+                    message=msg,
+                    lyrics_text=lyrics,
                     artist_value=html_escape(artist_param),
                     song_value=html_escape(song_param),
+                    analysis_result=analysis,
+                    selected_model=DEFAULT_GEMINI_MODEL,
+                    show_editor=bool(lyrics or analysis),
+                    track_tags=track_tags,
                     artist_metadata=artist_metadata,
                     theaudiodb_data=theaudiodb_data
                 )
@@ -4948,6 +5371,521 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                                    .replace('{total_artists_count}', str(total_artists_count))\
                                    .replace('{initial_artist_filter}', html_escape(selected_artist))\
                                    .replace('{app_header}', build_app_header('history', user=self.get_current_user()))
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/html; charset=utf-8')
+        self.send_header('Content-Length', str(len(content.encode('utf-8'))))
+        self.end_headers()
+        self.wfile.write(content.encode('utf-8'))
+
+    def render_artist_page(self, selected_artist: str = '', refresh: bool = False):
+        current_user = self.get_current_user()
+        clean_artist = selected_artist.strip()
+
+        if not clean_artist:
+            # Render Artist Directory / Index
+            bands = database.get_distinct_bands()
+            bands_count = len(bands)
+
+            band_cards = []
+            for b in bands:
+                b_name = html_escape(b['artist'])
+                b_count = b['song_count']
+                b_last = html_escape(b.get('last_searched', '') or '')
+                songs_text = f"{b_count} song" if b_count == 1 else f"{b_count} songs"
+                band_cards.append(f'''
+                <div style="background: rgba(14, 38, 80, 0.55); border: 1px solid rgba(165, 200, 255, 0.2); border-radius: 12px; padding: 20px; display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;">
+                    <div>
+                        <div style="font-size: 1.2rem; font-weight: 800; color: #FFFFFF; font-family: 'Montserrat', sans-serif;">{b_name}</div>
+                        <div style="font-size: 0.82rem; color: #A5C8FF; margin-top: 4px;">{songs_text} in library &bull; Last active: {b_last}</div>
+                    </div>
+                    <a href="/artist?artist={urllib.parse.quote(b['artist'])}" class="pill-btn primary" style="font-size: 0.84rem; padding: 6px 14px; text-decoration: none;">
+                        Explore Profile &rarr;
+                    </a>
+                </div>
+                ''')
+
+            cards_html = "".join(band_cards) if band_cards else '<div style="text-align: center; color: rgba(225, 232, 240, 0.6); padding: 40px; font-style: italic;">No artists in library yet. Search for a song or look up an artist below!</div>'
+
+            directory_html = f'''
+            <div class="artist-top-bar">
+                <div>
+                    <h1 style="font-family: 'Montserrat', sans-serif; font-size: 2rem; font-weight: 900; margin: 0; color: #FFFFFF;">Artist Intelligence Directory</h1>
+                    <div style="font-size: 0.88rem; color: #A5C8FF; margin-top: 4px;">Live touring, North Carolina concerts, catalog intelligence, and thematic lyrics analysis</div>
+                </div>
+                <form action="/artist" method="get" class="artist-search-form">
+                    <input type="text" name="artist" class="artist-search-input" placeholder="Search any artist (e.g. Jimmy Eat World, Slowdive)..." required>
+                    <button type="submit" class="pill-btn primary" style="padding: 10px 18px; font-size: 0.9rem;">Explore</button>
+                </form>
+            </div>
+
+            <div style="background: rgba(11, 30, 63, 0.65); border: 1px solid rgba(165, 200, 255, 0.2); border-radius: 14px; padding: 24px 28px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid rgba(165, 200, 255, 0.15); padding-bottom: 12px;">
+                    <span style="font-family: 'Montserrat', sans-serif; font-size: 1.15rem; font-weight: 800; color: #E1E8F0;">Saved Artists in Library ({bands_count})</span>
+                    <a href="/" style="color: #A5C8FF; text-decoration: none; font-size: 0.86rem;">&larr; Back to Song Search</a>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 12px;">
+                    {cards_html}
+                </div>
+            </div>
+            '''
+
+            content = ARTIST_PAGE_HTML.replace('{app_header}', build_app_header('artist', user=current_user))\
+                                      .replace('{artist_page_content}', directory_html)
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/html; charset=utf-8')
+            self.send_header('Content-Length', str(len(content.encode('utf-8'))))
+            self.end_headers()
+            self.wfile.write(content.encode('utf-8'))
+            return
+
+        # Fetch intelligence across all APIs
+        artist_esc = html_escape(clean_artist)
+        artist_url_param = urllib.parse.quote(clean_artist)
+
+        # 1. Setlist.fm
+        setlist_data = {}
+        try:
+            setlist_data = setlistfm.get_or_fetch_artist_setlist_data(
+                clean_artist,
+                api_key=SETLIST_FM_API_KEY,
+                force_refresh=refresh
+            )
+        except Exception as se:
+            print(f"Setlist.fm load error for {clean_artist}: {se}")
+
+        # 2. TheAudioDB
+        audiodb_data = {}
+        try:
+            audiodb_data = theaudiodb.get_or_fetch_artist_details(
+                clean_artist,
+                api_key=THEAUDIODB_API_KEY,
+                force_refresh=refresh
+            ) or {}
+        except Exception as ae:
+            print(f"TheAudioDB artist details error for {clean_artist}: {ae}")
+
+        # 3. Last.fm
+        lastfm_data = {}
+        try:
+            lastfm_data = lastfm.get_or_fetch_artist_metadata(
+                clean_artist,
+                api_key=LASTFM_API_KEY,
+                force_refresh=refresh
+            ) or {}
+        except Exception as le:
+            print(f"Last.fm artist metadata error for {clean_artist}: {le}")
+
+        # 4. Database songs
+        db_songs = database.get_songs_by_band(clean_artist) or []
+
+        # Build Hero Section
+        banner_url = audiodb_data.get('banner_url') or audiodb_data.get('fanart_url')
+        thumb_url = audiodb_data.get('thumbnail_url')
+        logo_url = audiodb_data.get('logo_url')
+        formed_year = audiodb_data.get('formed_year')
+        country = audiodb_data.get('country')
+        genre = audiodb_data.get('genre') or (lastfm_data.get('tags', [{}])[0].get('name') if lastfm_data.get('tags') else '')
+        style = audiodb_data.get('style')
+
+        listeners = lastfm_data.get('listeners') or 0
+        playcount = lastfm_data.get('playcount') or 0
+        total_concerts = setlist_data.get('total_concerts') or 0
+
+        # Avatar
+        if thumb_url:
+            avatar_html = f'<img src="{html_escape(thumb_url)}" alt="{artist_esc}" class="artist-avatar-img">'
+        else:
+            first_char = clean_artist[0].upper() if clean_artist else '?'
+            avatar_html = f'<div class="artist-avatar-placeholder">{first_char}</div>'
+
+        # Backdrop
+        backdrop_html = f'<div class="artist-hero-backdrop" style="background-image: url(\'{html_escape(banner_url)}\');"></div>' if banner_url else ''
+
+        # Logo or Title
+        if logo_url:
+            title_html = f'''
+            <div style="margin-bottom: 8px;">
+                <img src="{html_escape(logo_url)}" alt="{artist_esc}" style="max-height: 70px; max-width: 320px; object-fit: contain; filter: drop-shadow(0 2px 8px rgba(0,0,0,0.8));">
+            </div>
+            <h1 class="artist-heading" style="font-size: 2.2rem;">{artist_esc}</h1>
+            '''
+        else:
+            title_html = f'<h1 class="artist-heading">{artist_esc}</h1>'
+
+        # Meta badges
+        badges = []
+        if formed_year:
+            badges.append(f'<span class="artist-meta-badge">🎸 Formed: <strong>{formed_year}</strong></span>')
+        if country:
+            badges.append(f'<span class="artist-meta-badge">📍 Origin: <strong>{html_escape(country)}</strong></span>')
+        if listeners > 0:
+            badges.append(f'<span class="artist-meta-badge">🎧 Listeners: <strong>{listeners:,}</strong></span>')
+        if playcount > 0:
+            badges.append(f'<span class="artist-meta-badge">📻 Scrobbles: <strong>{playcount:,}</strong></span>')
+        if total_concerts > 0:
+            badges.append(f'<span class="artist-meta-badge">🎤 Setlist.fm Shows: <strong>{total_concerts:,}</strong></span>')
+        badges_html = "".join(badges)
+
+        # Tags
+        tags_chips = []
+        for t in (lastfm_data.get('tags') or [])[:8]:
+            t_name = html_escape(t.get('name', ''))
+            t_url = html_escape(t.get('url') or f"https://www.last.fm/tag/{urllib.parse.quote_plus(t.get('name', ''))}")
+            tags_chips.append(f'<a href="{t_url}" target="_blank" class="lastfm-tag-chip artist-tag">#{t_name}</a>')
+        tags_html = " ".join(tags_chips)
+
+        # External Links
+        ext_links = []
+        if setlist_data.get('url'):
+            ext_links.append(f'<a href="{html_escape(setlist_data["url"])}" target="_blank" class="pill-btn secondary" style="font-size: 0.78rem; padding: 4px 10px;">🎤 Setlist.fm Profile &rarr;</a>')
+        ext_links.append(f'<a href="https://www.last.fm/music/{artist_url_param}" target="_blank" class="pill-btn secondary" style="font-size: 0.78rem; padding: 4px 10px;">📻 Last.fm Profile &rarr;</a>')
+        ext_links.append(f'<a href="https://genius.com/search?q={artist_url_param}" target="_blank" class="pill-btn secondary" style="font-size: 0.78rem; padding: 4px 10px;">📝 Genius Catalog &rarr;</a>')
+        ext_links.append(f'<a href="/artist?artist={artist_url_param}&refresh=1" class="pill-btn secondary" style="font-size: 0.78rem; padding: 4px 10px;" title="Bypass cache and reload data from all APIs">↻ Refresh Data</a>')
+        links_html = " ".join(ext_links)
+
+        # Hero Card HTML
+        hero_html = f'''
+        <div class="artist-hero-card">
+            {backdrop_html}
+            <div class="artist-hero-inner">
+                {avatar_html}
+                <div class="artist-info-col">
+                    {title_html}
+                    <div class="artist-badges-row">{badges_html}</div>
+                    {f'<div style="margin-top: 8px;">{tags_html}</div>' if tags_html else ''}
+                    <div class="artist-links-row">{links_html}</div>
+                </div>
+            </div>
+        </div>
+        '''
+
+        # North Carolina Spotlight Card (Setlist.fm)
+        has_setlist_key = setlist_data.get('has_key', bool(SETLIST_FM_API_KEY))
+        last_nc = setlist_data.get('last_nc_show')
+        if last_nc:
+            nc_date = html_escape(last_nc.get('date_formatted') or last_nc.get('event_date') or 'Unknown Date')
+            nc_venue = html_escape(last_nc.get('venue_name') or 'Unknown Venue')
+            nc_city = html_escape(last_nc.get('city') or '')
+            nc_state = html_escape(last_nc.get('state') or 'NC')
+            nc_tour = html_escape(last_nc.get('tour_name') or 'No tour assigned')
+            nc_url = html_escape(last_nc.get('url') or '')
+            nc_info = html_escape(last_nc.get('info') or '')
+            nc_songs_count = last_nc.get('song_count', 0)
+            nc_total = last_nc.get('total_nc_shows', 1)
+
+            tour_badge = f'<span style="background: rgba(96, 165, 250, 0.2); border: 1px solid rgba(96, 165, 250, 0.4); color: #93C5FD; padding: 2px 10px; border-radius: 12px; font-size: 0.82rem;">Tour: {nc_tour}</span>'
+            songs_badge = f'<span style="background: rgba(165, 200, 255, 0.15); color: #E1E8F0; padding: 2px 10px; border-radius: 12px; font-size: 0.82rem;">🎵 {nc_songs_count} songs played</span>' if nc_songs_count > 0 else ''
+            notes_html = f'<div style="margin-top: 10px; font-size: 0.84rem; color: rgba(225, 232, 240, 0.75); font-style: italic;">Note: {nc_info}</div>' if nc_info else ''
+
+            nc_spotlight_html = f'''
+            <div class="nc-spotlight-card">
+                <div class="nc-card-header">
+                    <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                        <span style="font-size: 1.6rem;">📍</span>
+                        <div>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span class="nc-badge">North Carolina Show Spotlight</span>
+                                <span style="font-size: 0.8rem; color: #93C5FD;">{nc_total} total recorded NC shows on Setlist.fm</span>
+                            </div>
+                            <h2 style="font-family: 'Montserrat', sans-serif; font-size: 1.4rem; font-weight: 800; color: #FFFFFF; margin: 6px 0 0 0;">
+                                Last Played in NC: {nc_date}
+                            </h2>
+                        </div>
+                    </div>
+                    {f'<a href="{nc_url}" target="_blank" class="pill-btn primary" style="padding: 8px 16px; font-size: 0.86rem; text-decoration: none; white-space: nowrap;">View NC Setlist on Setlist.fm &rarr;</a>' if nc_url else ''}
+                </div>
+                <div style="margin-top: 14px; font-size: 1.05rem; color: #E1E8F0; line-height: 1.5;">
+                    🏟️ <strong>{nc_venue}</strong> &bull; {nc_city}, {nc_state}
+                </div>
+                <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; align-items: center;">
+                    {tour_badge}
+                    {songs_badge}
+                </div>
+                {notes_html}
+            </div>
+            '''
+        elif not has_setlist_key:
+            nc_spotlight_html = '''
+            <div class="nc-spotlight-card" style="border-left-color: #F59E0B;">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <span style="font-size: 1.5rem;">📍</span>
+                    <div>
+                        <div style="font-weight: 700; color: #FCD34D;">Setlist.fm API Connection Required</div>
+                        <div style="font-size: 0.85rem; color: rgba(225, 232, 240, 0.8); margin-top: 4px;">
+                            Configure <code>SETLIST_FM_API_KEY</code> in <code>calling_hours_secrets.py</code> to see North Carolina concert history and tour co-performers.
+                        </div>
+                    </div>
+                </div>
+            </div>
+            '''
+        else:
+            nc_spotlight_html = f'''
+            <div class="nc-spotlight-card" style="border-left-color: rgba(165, 200, 255, 0.4);">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <span style="font-size: 1.5rem;">📍</span>
+                    <div>
+                        <div style="font-family: 'Montserrat', sans-serif; font-weight: 700; color: #E1E8F0;">North Carolina Concert History</div>
+                        <div style="font-size: 0.88rem; color: rgba(225, 232, 240, 0.7); margin-top: 4px;">
+                            No recorded concerts in North Carolina found for <strong>{artist_esc}</strong> on Setlist.fm.
+                        </div>
+                    </div>
+                </div>
+            </div>
+            '''
+
+        # Last 3 Tours & Who They Played With (Setlist.fm)
+        tours = setlist_data.get('last_3_tours') or []
+        if tours:
+            tour_cards = []
+            for t in tours:
+                t_name = html_escape(t.get('tour_name') or 'Unnamed Tour')
+                sample_date = html_escape(t.get('sample_date_formatted') or t.get('sample_date') or '')
+                venue_name = html_escape(t.get('venue_name') or '')
+                location = html_escape(t.get('location') or '')
+                tour_url = html_escape(t.get('setlist_url') or '')
+                notes = html_escape(t.get('notes') or '')
+                played_with = t.get('played_with') or []
+
+                coperformer_chips = []
+                for band in played_with:
+                    band_esc = html_escape(band)
+                    band_clean = band.replace(" (Guest)", "")
+                    coperformer_chips.append(f'<a href="/artist?artist={urllib.parse.quote(band_clean)}" class="coperformer-chip" title="Explore {band_esc} profile">🎸 {band_esc}</a>')
+
+                coperformers_html = f'<div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px;">{" ".join(coperformer_chips)}</div>' if coperformer_chips else '<span style="font-size: 0.82rem; color: rgba(225, 232, 240, 0.5); font-style: italic;">Solo headline bill or no co-performers recorded on sample show</span>'
+
+                tour_cards.append(f'''
+                <div class="tour-item-card">
+                    <div>
+                        <div style="font-size: 0.74rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; color: #93C5FD; margin-bottom: 4px;">Tour</div>
+                        <div class="tour-title">{t_name}</div>
+                        <div style="font-size: 0.82rem; color: rgba(225, 232, 240, 0.7); margin-top: 4px;">
+                            📅 {sample_date} &bull; {venue_name} ({location})
+                        </div>
+                        <div style="margin-top: 14px;">
+                            <div style="font-size: 0.76rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #C5B8FF; margin-bottom: 4px;">Played With / Co-Performers</div>
+                            {coperformers_html}
+                        </div>
+                        {f'<div style="margin-top: 10px; font-size: 0.8rem; color: rgba(225, 232, 240, 0.65); font-style: italic;">Note: {notes}</div>' if notes else ''}
+                    </div>
+                    {f'<div style="margin-top: 14px; text-align: right;"><a href="{tour_url}" target="_blank" class="pill-btn secondary" style="font-size: 0.76rem; padding: 4px 10px;">View Tour Setlist &rarr;</a></div>' if tour_url else ''}
+                </div>
+                ''')
+
+            tours_html = f'''
+            <div class="tour-history-card">
+                <div class="section-header-row">
+                    <div>
+                        <h2 class="section-title"><span>🚌</span> Last 3 Tours &amp; Who They Played With</h2>
+                        <div style="font-size: 0.84rem; color: #A5C8FF; margin-top: 4px;">Tours and artists {artist_esc} shared the bill with (co-headliners, openers, and festival lineups)</div>
+                    </div>
+                </div>
+                <div class="tour-cards-grid">
+                    {"".join(tour_cards)}
+                </div>
+            </div>
+            '''
+        elif has_setlist_key:
+            tours_html = f'''
+            <div class="tour-history-card">
+                <div class="section-header-row">
+                    <h2 class="section-title"><span>🚌</span> Tours &amp; Tour Mates</h2>
+                </div>
+                <div style="font-size: 0.88rem; color: rgba(225, 232, 240, 0.65); font-style: italic; padding: 12px 0;">
+                    No distinct tours with co-performer data recorded on Setlist.fm for {artist_esc}.
+                </div>
+            </div>
+            '''
+        else:
+            tours_html = ''
+
+        # Recent Setlists (Setlist.fm)
+        recent_setlists = setlist_data.get('recent_setlists') or []
+        if recent_setlists:
+            setlist_rows = []
+            for s in recent_setlists:
+                s_date = html_escape(s.get('date_formatted') or s.get('event_date') or '')
+                s_venue = html_escape(s.get('venue_name') or 'Venue')
+                s_city = html_escape(s.get('city') or '')
+                s_state = html_escape(s.get('state_or_country') or '')
+                s_tour = html_escape(s.get('tour_name') or '')
+                s_url = html_escape(s.get('url') or '')
+                s_count = s.get('song_count', 0)
+                sample_songs = s.get('sample_songs') or []
+                songs_preview = f'<span style="font-size: 0.78rem; color: rgba(225, 232, 240, 0.6); margin-left: 8px;">({", ".join(html_escape(x) for x in sample_songs[:3])}...)</span>' if sample_songs else ''
+
+                tour_tag = f'<span style="font-size: 0.78rem; background: rgba(165, 200, 255, 0.1); padding: 1px 8px; border-radius: 10px; color: #93C5FD; margin-left: 8px;">{s_tour}</span>' if s_tour else ''
+
+                setlist_rows.append(f'''
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; border-bottom: 1px solid rgba(165, 200, 255, 0.08); gap: 12px; flex-wrap: wrap;">
+                    <div>
+                        <div style="font-size: 0.95rem; font-weight: 700; color: #FFFFFF;">
+                            📅 {s_date} &bull; {s_venue} ({s_city}, {s_state})
+                            {tour_tag}
+                        </div>
+                        <div style="font-size: 0.8rem; color: #A5C8FF; margin-top: 2px;">
+                            {s_count} songs played {songs_preview}
+                        </div>
+                    </div>
+                    {f'<a href="{s_url}" target="_blank" class="pill-btn secondary" style="font-size: 0.74rem; padding: 3px 8px;">Setlist &rarr;</a>' if s_url else ''}
+                </div>
+                ''')
+
+            recent_setlists_html = f'''
+            <div class="tour-history-card">
+                <div class="section-header-row">
+                    <h2 class="section-title"><span>🎤</span> Recent Concert Setlists</h2>
+                    {f'<a href="{html_escape(setlist_data.get("url"))}" target="_blank" style="color: #A5C8FF; font-size: 0.82rem; text-decoration: none;">View all {total_concerts} concerts on Setlist.fm &rarr;</a>' if setlist_data.get('url') else ''}
+                </div>
+                <div style="display: flex; flex-direction: column;">
+                    {"".join(setlist_rows)}
+                </div>
+            </div>
+            '''
+        else:
+            recent_setlists_html = ''
+
+        # Catalog & Songs with One-Click Thematic Analysis
+        # Merge top tracks from Last.fm and database songs
+        seen_songs = set()
+        catalog_items = []
+
+        # 1. DB songs first (with analysis or lyrics status)
+        for s in db_songs:
+            s_title = s['song']
+            s_norm = s_title.strip().lower()
+            if s_norm in seen_songs:
+                continue
+            seen_songs.add(s_norm)
+            catalog_items.append({
+                "title": s_title,
+                "has_analysis": s.get('has_analysis', False),
+                "has_lyrics": s.get('has_lyrics', False),
+                "source": "database",
+                "plays": None,
+                "listeners": None,
+            })
+
+        # 2. Last.fm top tracks
+        for t in (lastfm_data.get('top_tracks') or []):
+            t_title = t.get('name', '')
+            t_norm = t_title.strip().lower()
+            if t_norm in seen_songs:
+                # enrich existing item with plays/listeners
+                for item in catalog_items:
+                    if item['title'].strip().lower() == t_norm:
+                        item['plays'] = t.get('playcount')
+                        item['listeners'] = t.get('listeners')
+                        break
+            else:
+                seen_songs.add(t_norm)
+                catalog_items.append({
+                    "title": t_title,
+                    "has_analysis": False,
+                    "has_lyrics": False,
+                    "source": "lastfm",
+                    "plays": t.get('playcount'),
+                    "listeners": t.get('listeners'),
+                })
+
+        song_rows = []
+        for idx, item in enumerate(catalog_items[:18]):
+            s_title_esc = html_escape(item['title'])
+            s_title_url = urllib.parse.quote(item['title'])
+
+            badges = []
+            if item['has_analysis']:
+                badges.append('<span style="background: rgba(120, 90, 255, 0.35); border: 1px solid rgba(165, 140, 255, 0.5); color: #DDD6FE; padding: 2px 8px; border-radius: 6px; font-size: 0.74rem; font-weight: 700;">✦ Analysis Saved</span>')
+            elif item['has_lyrics']:
+                badges.append('<span style="background: rgba(16, 185, 129, 0.25); border: 1px solid rgba(16, 185, 129, 0.4); color: #6EE7B7; padding: 2px 8px; border-radius: 6px; font-size: 0.74rem;">● Lyrics in DB</span>')
+            else:
+                badges.append('<span style="background: rgba(165, 200, 255, 0.12); color: #A5C8FF; padding: 2px 8px; border-radius: 6px; font-size: 0.74rem;">Last.fm Top Track</span>')
+
+            plays_text = ''
+            if item['listeners']:
+                plays_text = f"{item['listeners']:,} listeners"
+            elif item['plays']:
+                plays_text = f"{item['plays']:,} plays"
+
+            song_rows.append(f'''
+            <div class="artist-song-row">
+                <div style="display: flex; align-items: center; gap: 14px;">
+                    <span style="font-family: 'Montserrat', sans-serif; font-weight: 800; color: rgba(225, 232, 240, 0.4); font-size: 0.9rem; width: 24px; text-align: right;">{idx + 1}</span>
+                    <div>
+                        <div style="font-size: 1.05rem; font-weight: 700; color: #FFFFFF;">{s_title_esc}</div>
+                        <div style="display: flex; align-items: center; gap: 8px; margin-top: 3px;">
+                            {"".join(badges)}
+                            {f'<span style="font-size: 0.78rem; color: rgba(225, 232, 240, 0.5);">{plays_text}</span>' if plays_text else ''}
+                        </div>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                    <a href="/?artist={artist_url_param}&song={s_title_url}&auto_analyze=1" class="btn-analyze-song" title="Load lyrics and perform Gemini thematic analysis">
+                        ⚡ Analyze Song
+                    </a>
+                </div>
+            </div>
+            ''')
+
+        songs_html = f'''
+        <div class="songs-table-card">
+            <div class="section-header-row">
+                <div>
+                    <h2 class="section-title"><span>🎵</span> Songs &amp; Thematic Analysis Launcher</h2>
+                    <div style="font-size: 0.84rem; color: #A5C8FF; margin-top: 4px;">Click any song to immediately fetch lyrics and execute AI thematic analysis</div>
+                </div>
+            </div>
+            <div style="display: flex; flex-direction: column;">
+                {"".join(song_rows) if song_rows else '<div style="text-align: center; color: rgba(225,232,240,0.6); padding: 20px;">No songs cataloged yet.</div>'}
+            </div>
+        </div>
+        '''
+
+        # Biography & Similar Artists (TheAudioDB & Last.fm)
+        bio_text = audiodb_data.get('biography') or lastfm_data.get('bio') or ''
+        similar_artists = lastfm_data.get('similar_artists') or []
+
+        similar_chips = []
+        for s in similar_artists[:10]:
+            s_name = s.get('name') if isinstance(s, dict) else str(s)
+            if s_name:
+                similar_chips.append(f'<a href="/artist?artist={urllib.parse.quote(s_name)}" class="similar-chip">👥 {html_escape(s_name)}</a>')
+
+        bio_card_html = ''
+        if bio_text or similar_chips:
+            bio_card_html = f'''
+            <div class="tour-history-card">
+                <div class="section-header-row">
+                    <h2 class="section-title"><span>📖</span> Artist Biography &amp; Similar Bands</h2>
+                </div>
+                {f'<div style="font-size: 0.92rem; line-height: 1.65; color: #E1E8F0; max-height: 280px; overflow-y: auto; padding-right: 8px; margin-bottom: 20px; white-space: pre-wrap;">{html_escape(bio_text)}</div>' if bio_text else ''}
+                {f'<div><div style="font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #93C5FD; margin-bottom: 8px;">Similar Artists (Click to explore)</div><div style="display: flex; flex-wrap: wrap; gap: 8px;">{" ".join(similar_chips)}</div></div>' if similar_chips else ''}
+            </div>
+            '''
+
+        page_content = f'''
+        <div class="artist-top-bar">
+            <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                <a href="/artist" style="color: #A5C8FF; text-decoration: none; font-size: 0.88rem;">&larr; All Artists</a>
+                <span style="color: rgba(165, 200, 255, 0.4);">&bull;</span>
+                <a href="/" style="color: #A5C8FF; text-decoration: none; font-size: 0.88rem;">Song Search</a>
+            </div>
+            <form action="/artist" method="get" class="artist-search-form">
+                <input type="text" name="artist" class="artist-search-input" placeholder="Search another artist..." value="{artist_esc}" required>
+                <button type="submit" class="pill-btn primary" style="padding: 10px 18px; font-size: 0.9rem;">Search</button>
+            </form>
+        </div>
+
+        {hero_html}
+        {nc_spotlight_html}
+        {tours_html}
+        {recent_setlists_html}
+        {songs_html}
+        {bio_card_html}
+        '''
+
+        content = ARTIST_PAGE_HTML.replace('{app_header}', build_app_header('artist', user=current_user))\
+                                  .replace('{artist_page_content}', page_content)
         self.send_response(200)
         self.send_header('Content-Type', 'text/html; charset=utf-8')
         self.send_header('Content-Length', str(len(content.encode('utf-8'))))

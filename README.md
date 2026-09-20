@@ -8,8 +8,11 @@ Calling Hours is a web application that fetches song lyrics via the Genius API a
 - **Admin User Management**: A dedicated `/admin` control center for administrators to grant access to other Google accounts, manage roles (Administrator vs Standard User), activate/suspend accounts, or remove users, with built-in safeguards protecting the primary superadmin.
 - **Genius & Open Lyrics Search**: Search for songs by artist and title via Genius with seamless automatic fallback to the **LRCLIB** open database (resilient to Cloudflare 403 blocks on cloud hosts like Cloud Run).
 - **Neon Serverless PostgreSQL Persistence**: Automatically saves searches, retrieved lyrics, users, sessions, and Gemini analyses in **Neon PostgreSQL** so data persists permanently across devices, sessions, and cloud restarts (with graceful fallback to local SQLite when offline). Select from previously searched bands via dropdown or autocomplete, browse past tracks for any band, and instantly load saved results without network latency.
-- **Last.fm Music Intelligence**: Community-driven track genre tags and comprehensive artist profiles (top tags and top songs) via the Last.fm 2.0 API. Persisted in both Neon PostgreSQL and SQLite, displayed alongside Gemini literary analyses and accessible on-demand via the interactive **Artist Profile** drawer.
-- **Search History Dashboard**: Dedicated `/history` view to browse, filter, quick-load, and manage previously searched songs and analyses, complete with Last.fm tag chips and artist intelligence drawers.
+- **Setlist.fm Live Concert & Tour Intelligence**: Integration with Setlist.fm REST API v1.0 providing live concert history, spotlighting when the artist last played in North Carolina (venue, city, tour, setlist link), and identifying who they played with on their last 3 tours (co-headliners, tour mates, openers, and festival lineups).
+- **Multi-API Artist Intelligence Page (`/artist`)**: A comprehensive dedicated artist profile unifying data across Setlist.fm, Last.fm, TheAudioDB, Genius, and local database history. Explore band origins, formation year, artwork, biography, similar artists, and launch one-click Gemini thematic analysis on any song in their catalog.
+- **TheAudioDB Track & Artist Insights**: Track tempos (BPM), musical keys, moods, audio feature radars (danceability, valence, energy), music videos, and artist backgrounds.
+- **Last.fm Music Intelligence**: Community-driven track genre tags and comprehensive artist profiles (top tags, listeners, scrobbles, and top songs) via the Last.fm 2.0 API. Persisted in both Neon PostgreSQL and SQLite.
+- **Search History Dashboard**: Dedicated `/history` view to browse, filter, quick-load, and manage previously searched songs and analyses, complete with Last.fm tag chips and artist intelligence links.
 - **Editable & Custom Lyrics**: An editable lyrics workspace allowing users to review, edit, or paste lyrics manually if needed.
 - **Gemini-Powered Analysis**: Deep lyric analysis analyzing themes, narrative, emotional tone, and poetic devices.
 - **Newest Gemini Free-Tier Models**:
@@ -88,7 +91,9 @@ Or via Google Cloud Console:
 | `GOOGLE_REDIRECT_URI` | Explicit Google OAuth callback URL (e.g. `https://your-service.run.app/auth/google/callback`) | Dynamically resolved |
 | `GENIUS_ACCESS_TOKEN` | Genius Client Access Token (from Genius dashboard) | **Yes** (avoids OAuth flow) |
 | `GEMINI_API_KEY` | Google Gemini API Key (from AI Studio) | **Yes** |
-| `LASTFM_API_KEY` | Last.fm API Key for song tags and artist catalog intelligence ([Get API Key](https://www.last.fm/api/account/create)) | Optional (Free) |
+| `SETLIST_FM_API_KEY` | Setlist.fm API Key for concert tour rosters, co-performers, and NC show history ([Get API Key](https://www.setlist.fm/settings/api)) | Optional (Free) |
+| `LASTFM_API_KEY` | Last.fm API Key for song tags, artist catalog intelligence, and scrobble stats ([Get API Key](https://www.last.fm/api/account/create)) | Optional (Free) |
+| `THEAUDIODB_API_KEY` | TheAudioDB API Key for artist banners, photos, and discography data (defaults to test key `123`) | Optional |
 | `GENIUS_CLIENT_ID` | Genius Client ID (only needed if using OAuth) | Optional |
 | `GENIUS_CLIENT_SECRET` | Genius Client Secret (only needed if using OAuth) | Optional |
 | `PORT` | Container listen port (injected by Cloud Run) | `8080` |

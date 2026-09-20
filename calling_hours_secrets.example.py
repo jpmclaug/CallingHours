@@ -32,3 +32,7 @@ LASTFM_API_KEY = ""
 # Can also be set to your premium API key if subscribed
 THEAUDIODB_API_KEY = "123"
 
+# Setlist.fm REST API v1.0 Key (for concert history, NC shows, tours & co-performers)
+# Obtain a key from https://www.setlist.fm/settings/api
+SETLIST_FM_API_KEY = ""
+

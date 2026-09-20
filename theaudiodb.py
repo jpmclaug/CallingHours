@@ -266,3 +266,114 @@ def get_or_fetch_track_metadata(
             print(f"Database save_theaudiodb_data error for {clean_artist} - {clean_song}: {e}")
 
     return data
+
+
+def clean_artist_data(raw_artist: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Extract, normalize, and type artist metadata from TheAudioDB artist payload.
+    Includes the complete raw dictionary under 'raw' so no information is lost.
+    """
+    if not raw_artist or not isinstance(raw_artist, dict):
+        return {}
+
+    return {
+        "id_artist": _clean_str(raw_artist.get("idArtist")),
+        "artist": _clean_str(raw_artist.get("strArtist")),
+        "artist_alternate": _clean_str(raw_artist.get("strArtistAlternate")),
+        "formed_year": _to_int(raw_artist.get("intFormedYear")) or _to_int(raw_artist.get("intBornYear")),
+        "born_year": _to_int(raw_artist.get("intBornYear")),
+        "country": _clean_str(raw_artist.get("strCountry")),
+        "genre": _clean_str(raw_artist.get("strGenre")),
+        "style": _clean_str(raw_artist.get("strStyle")),
+        "mood": _clean_str(raw_artist.get("strMood")),
+        "website": _clean_str(raw_artist.get("strWebsite")),
+        "biography": _clean_str(raw_artist.get("strBiographyEN")),
+        "gender": _clean_str(raw_artist.get("strGender")),
+        "members": _to_int(raw_artist.get("intMembers")),
+        "thumbnail_url": _clean_str(raw_artist.get("strArtistThumb")),
+        "logo_url": _clean_str(raw_artist.get("strArtistLogo")),
+        "clearart_url": _clean_str(raw_artist.get("strArtistClearart")),
+        "fanart_url": _clean_str(raw_artist.get("strArtistFanart")),
+        "banner_url": _clean_str(raw_artist.get("strArtistBanner")),
+        "raw": raw_artist,
+    }
+
+
+def fetch_artist_details(
+    artist: str,
+    api_key: Optional[str] = None,
+    timeout: int = 8
+) -> Optional[Dict[str, Any]]:
+    """
+    Fetch artist details from TheAudioDB search.php endpoint.
+    Returns cleaned artist dictionary or None if not found.
+    """
+    key = api_key or get_theaudiodb_api_key()
+    if not key or not artist:
+        return None
+
+    clean_artist = artist.strip()
+    if not clean_artist:
+        return None
+
+    headers = {"User-Agent": DEFAULT_USER_AGENT}
+    url = f"{THEAUDIODB_API_BASE_URL}{key}/search.php"
+
+    try:
+        resp = requests.get(url, params={"s": clean_artist}, headers=headers, timeout=timeout)
+        if resp.status_code != 200:
+            return None
+        data = resp.json()
+        if not isinstance(data, dict):
+            return None
+        artist_list = data.get("artists")
+        if isinstance(artist_list, list) and artist_list and isinstance(artist_list[0], dict):
+            return clean_artist_data(artist_list[0])
+    except Exception as e:
+        print(f"TheAudioDB fetch_artist_details error for {clean_artist}: {e}")
+
+    return None
+
+
+def get_or_fetch_artist_details(
+    artist: str,
+    api_key: Optional[str] = None,
+    force_refresh: bool = False,
+    db_path: Optional[str] = None
+) -> Optional[Dict[str, Any]]:
+    """
+    Get TheAudioDB artist metadata from database cache if available,
+    otherwise fetch from TheAudioDB and persist to database.
+    """
+    if not artist:
+        return None
+
+    clean_artist = artist.strip()
+    if not clean_artist:
+        return None
+
+    import database
+
+    # 1. Check database cache first if not forcing refresh
+    if not force_refresh:
+        cached_meta = database.get_artist_metadata(clean_artist, db_path=db_path)
+        if cached_meta and cached_meta.get("theaudiodb_data"):
+            adb_data = cached_meta["theaudiodb_data"]
+            if isinstance(adb_data, str):
+                try:
+                    adb_data = json.loads(adb_data)
+                except Exception:
+                    adb_data = None
+            if isinstance(adb_data, dict):
+                return adb_data
+
+    # 2. Fetch from TheAudioDB
+    data = fetch_artist_details(clean_artist, api_key=api_key)
+    if data:
+        try:
+            database.save_artist_metadata(clean_artist, theaudiodb_data=data, db_path=db_path)
+        except Exception as e:
+            print(f"Database save_artist_metadata error for {clean_artist}: {e}")
+
+    return data
+

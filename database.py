@@ -113,7 +113,7 @@ def _format_artist_record(rec: Any) -> Optional[Dict[str, Any]]:
         d['created_at'] = _format_datetime(d['created_at'])
     if 'updated_at' in d and d['updated_at'] is not None:
         d['updated_at'] = _format_datetime(d['updated_at'])
-    for field in ('tags', 'top_tracks'):
+    for field in ('tags', 'top_tracks', 'similar_artists'):
         if field in d and d[field] is not None:
             if isinstance(d[field], str):
                 try:
@@ -124,6 +124,17 @@ def _format_artist_record(rec: Any) -> Optional[Dict[str, Any]]:
                 d[field] = []
         else:
             d[field] = []
+    for dict_field in ('setlistfm_data', 'theaudiodb_data'):
+        if dict_field in d and d[dict_field] is not None:
+            if isinstance(d[dict_field], str):
+                try:
+                    d[dict_field] = json.loads(d[dict_field])
+                except Exception:
+                    d[dict_field] = None
+            elif not isinstance(d[dict_field], dict):
+                d[dict_field] = None
+        else:
+            d[dict_field] = None
     return d
 
 def _format_user_record(rec: Any) -> Optional[Dict[str, Any]]:
@@ -268,6 +279,36 @@ def init_db(db_path: Optional[str] = None) -> None:
                 ALTER TABLE searches ADD COLUMN IF NOT EXISTS theaudiodb_data TEXT;
             """)
             cursor.execute("""
+                ALTER TABLE artist_metadata ADD COLUMN IF NOT EXISTS setlistfm_data TEXT;
+            """)
+            cursor.execute("""
+                ALTER TABLE artist_metadata ADD COLUMN IF NOT EXISTS theaudiodb_data TEXT;
+            """)
+            cursor.execute("""
+                ALTER TABLE artist_metadata ADD COLUMN IF NOT EXISTS bio TEXT;
+            """)
+            cursor.execute("""
+                ALTER TABLE artist_metadata ADD COLUMN IF NOT EXISTS similar_artists TEXT;
+            """)
+            cursor.execute("""
+                ALTER TABLE artist_metadata ADD COLUMN IF NOT EXISTS listeners BIGINT;
+            """)
+            cursor.execute("""
+                ALTER TABLE artist_metadata ADD COLUMN IF NOT EXISTS playcount BIGINT;
+            """)
+            cursor.execute("""
+                ALTER TABLE artist_metadata ADD COLUMN IF NOT EXISTS image_url TEXT;
+            """)
+            cursor.execute("""
+                ALTER TABLE artist_metadata ADD COLUMN IF NOT EXISTS banner_url TEXT;
+            """)
+            cursor.execute("""
+                ALTER TABLE artist_metadata ADD COLUMN IF NOT EXISTS formed_year INT;
+            """)
+            cursor.execute("""
+                ALTER TABLE artist_metadata ADD COLUMN IF NOT EXISTS country TEXT;
+            """)
+            cursor.execute("""
                 INSERT INTO users (email, is_admin, is_active, created_at)
                 VALUES (%s, TRUE, TRUE, CURRENT_TIMESTAMP)
                 ON CONFLICT (email) DO UPDATE SET is_admin = TRUE, is_active = TRUE;
@@ -326,6 +367,25 @@ def init_db(db_path: Optional[str] = None) -> None:
                 cursor.execute("ALTER TABLE searches ADD COLUMN track_tags TEXT;")
             if 'theaudiodb_data' not in existing_cols:
                 cursor.execute("ALTER TABLE searches ADD COLUMN theaudiodb_data TEXT;")
+
+            cursor.execute("PRAGMA table_info(artist_metadata);")
+            art_cols = [col[1] for col in cursor.fetchall()]
+            art_col_defs = [
+                ('setlistfm_data', 'TEXT'),
+                ('theaudiodb_data', 'TEXT'),
+                ('bio', 'TEXT'),
+                ('similar_artists', 'TEXT'),
+                ('listeners', 'INTEGER'),
+                ('playcount', 'INTEGER'),
+                ('image_url', 'TEXT'),
+                ('banner_url', 'TEXT'),
+                ('formed_year', 'INTEGER'),
+                ('country', 'TEXT'),
+            ]
+            for col_name, col_type in art_col_defs:
+                if col_name not in art_cols:
+                    cursor.execute(f"ALTER TABLE artist_metadata ADD COLUMN {col_name} {col_type};")
+
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS users (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -648,73 +708,152 @@ def save_artist_metadata(
     artist: str,
     tags: Optional[Union[str, List[Dict[str, Any]]]] = None,
     top_tracks: Optional[Union[str, List[Dict[str, Any]]]] = None,
+    setlistfm_data: Optional[Union[str, Dict[str, Any]]] = None,
+    theaudiodb_data: Optional[Union[str, Dict[str, Any]]] = None,
+    bio: Optional[str] = None,
+    similar_artists: Optional[Union[str, List[Any]]] = None,
+    listeners: Optional[int] = None,
+    playcount: Optional[int] = None,
+    image_url: Optional[str] = None,
+    banner_url: Optional[str] = None,
+    formed_year: Optional[int] = None,
+    country: Optional[str] = None,
     db_path: Optional[str] = None
 ) -> int:
     """
-    Save or update artist top tags and top tracks in the artists table.
+    Save or update comprehensive artist metadata (Last.fm, Setlist.fm, TheAudioDB).
     Returns the record ID.
     """
     artist_clean = artist.strip()
     artist_norm = normalize_text(artist_clean)
     tags_json = json.dumps(tags) if isinstance(tags, (list, dict)) else tags
     tracks_json = json.dumps(top_tracks) if isinstance(top_tracks, (list, dict)) else top_tracks
+    setlist_json = json.dumps(setlistfm_data) if isinstance(setlistfm_data, (list, dict)) else setlistfm_data
+    audiodb_json = json.dumps(theaudiodb_data) if isinstance(theaudiodb_data, (list, dict)) else theaudiodb_data
+    similar_json = json.dumps(similar_artists) if isinstance(similar_artists, (list, dict)) else similar_artists
+
     target = get_db_target(db_path)
 
     with get_connection(target) as conn:
         if is_postgres(target):
             cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cursor.execute(
-                "SELECT id, tags, top_tracks FROM artist_metadata WHERE artist_normalized = %s",
+                "SELECT * FROM artist_metadata WHERE artist_normalized = %s",
                 (artist_norm,)
             )
             row = cursor.fetchone()
             if row:
                 record_id = row['id']
-                new_tags = tags_json if tags_json is not None else row['tags']
-                new_tracks = tracks_json if tracks_json is not None else row['top_tracks']
+                new_tags = tags_json if tags_json is not None else row.get('tags')
+                new_tracks = tracks_json if tracks_json is not None else row.get('top_tracks')
+                new_setlist = setlist_json if setlist_json is not None else row.get('setlistfm_data')
+                new_audiodb = audiodb_json if audiodb_json is not None else row.get('theaudiodb_data')
+                new_bio = bio if bio is not None else row.get('bio')
+                new_similar = similar_json if similar_json is not None else row.get('similar_artists')
+                new_listeners = listeners if listeners is not None else row.get('listeners')
+                new_playcount = playcount if playcount is not None else row.get('playcount')
+                new_image = image_url if image_url is not None else row.get('image_url')
+                new_banner = banner_url if banner_url is not None else row.get('banner_url')
+                new_formed = formed_year if formed_year is not None else row.get('formed_year')
+                new_country = country if country is not None else row.get('country')
+
                 cursor.execute("""
                     UPDATE artist_metadata
                     SET artist = %s,
                         tags = %s,
                         top_tracks = %s,
+                        setlistfm_data = %s,
+                        theaudiodb_data = %s,
+                        bio = %s,
+                        similar_artists = %s,
+                        listeners = %s,
+                        playcount = %s,
+                        image_url = %s,
+                        banner_url = %s,
+                        formed_year = %s,
+                        country = %s,
                         updated_at = CURRENT_TIMESTAMP
                     WHERE id = %s
-                """, (artist_clean, new_tags, new_tracks, record_id))
+                """, (
+                    artist_clean, new_tags, new_tracks, new_setlist, new_audiodb,
+                    new_bio, new_similar, new_listeners, new_playcount,
+                    new_image, new_banner, new_formed, new_country, record_id
+                ))
                 return record_id
             else:
                 cursor.execute("""
                     INSERT INTO artist_metadata (
-                        artist, artist_normalized, tags, top_tracks, created_at, updated_at
-                    ) VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                        artist, artist_normalized, tags, top_tracks,
+                        setlistfm_data, theaudiodb_data, bio, similar_artists,
+                        listeners, playcount, image_url, banner_url, formed_year, country,
+                        created_at, updated_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                     RETURNING id;
-                """, (artist_clean, artist_norm, tags_json, tracks_json))
+                """, (
+                    artist_clean, artist_norm, tags_json, tracks_json,
+                    setlist_json, audiodb_json, bio, similar_json,
+                    listeners, playcount, image_url, banner_url, formed_year, country
+                ))
                 return cursor.fetchone()['id']
         else:
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT id, tags, top_tracks FROM artist_metadata WHERE artist_normalized = ?",
+                "SELECT * FROM artist_metadata WHERE artist_normalized = ?",
                 (artist_norm,)
             )
             row = cursor.fetchone()
             if row:
-                record_id = row['id']
-                new_tags = tags_json if tags_json is not None else row['tags']
-                new_tracks = tracks_json if tracks_json is not None else row['top_tracks']
+                row_dict = dict(row)
+                record_id = row_dict['id']
+                new_tags = tags_json if tags_json is not None else row_dict.get('tags')
+                new_tracks = tracks_json if tracks_json is not None else row_dict.get('top_tracks')
+                new_setlist = setlist_json if setlist_json is not None else row_dict.get('setlistfm_data')
+                new_audiodb = audiodb_json if audiodb_json is not None else row_dict.get('theaudiodb_data')
+                new_bio = bio if bio is not None else row_dict.get('bio')
+                new_similar = similar_json if similar_json is not None else row_dict.get('similar_artists')
+                new_listeners = listeners if listeners is not None else row_dict.get('listeners')
+                new_playcount = playcount if playcount is not None else row_dict.get('playcount')
+                new_image = image_url if image_url is not None else row_dict.get('image_url')
+                new_banner = banner_url if banner_url is not None else row_dict.get('banner_url')
+                new_formed = formed_year if formed_year is not None else row_dict.get('formed_year')
+                new_country = country if country is not None else row_dict.get('country')
+
                 cursor.execute("""
                     UPDATE artist_metadata
                     SET artist = ?,
                         tags = ?,
                         top_tracks = ?,
+                        setlistfm_data = ?,
+                        theaudiodb_data = ?,
+                        bio = ?,
+                        similar_artists = ?,
+                        listeners = ?,
+                        playcount = ?,
+                        image_url = ?,
+                        banner_url = ?,
+                        formed_year = ?,
+                        country = ?,
                         updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now')
                     WHERE id = ?
-                """, (artist_clean, new_tags, new_tracks, record_id))
+                """, (
+                    artist_clean, new_tags, new_tracks, new_setlist, new_audiodb,
+                    new_bio, new_similar, new_listeners, new_playcount,
+                    new_image, new_banner, new_formed, new_country, record_id
+                ))
                 return record_id
             else:
                 cursor.execute("""
                     INSERT INTO artist_metadata (
-                        artist, artist_normalized, tags, top_tracks, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'), strftime('%Y-%m-%d %H:%M:%f', 'now'))
-                """, (artist_clean, artist_norm, tags_json, tracks_json))
+                        artist, artist_normalized, tags, top_tracks,
+                        setlistfm_data, theaudiodb_data, bio, similar_artists,
+                        listeners, playcount, image_url, banner_url, formed_year, country,
+                        created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'), strftime('%Y-%m-%d %H:%M:%f', 'now'))
+                """, (
+                    artist_clean, artist_norm, tags_json, tracks_json,
+                    setlist_json, audiodb_json, bio, similar_json,
+                    listeners, playcount, image_url, banner_url, formed_year, country
+                ))
                 return cursor.lastrowid
 
 
