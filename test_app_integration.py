@@ -465,6 +465,33 @@ class TestAppIntegration(unittest.TestCase):
             self.assertIn("Alison", html)
             self.assertIn("#shoegaze", html)
 
+    def test_21_lastfm_track_name_layout_and_widget_rendering(self):
+        # 1. Verify CSS styles prevent flex collapse of track names
+        with self.authed_get("/") as resp:
+            self.assertEqual(resp.status, 200)
+            html = resp.read().decode('utf-8')
+            self.assertIn('.lastfm-track-name', html)
+            self.assertIn('min-width: 0;', html)
+            self.assertIn('.lastfm-quick-load-btn', html)
+            self.assertIn('width: auto;', html)
+            self.assertIn('flex-shrink: 0;', html)
+            self.assertIn('class="artist-modal-close"', html)
+
+        # 2. Verify build_lastfm_widget renders track names and attributes properly
+        mock_artist_meta = {
+            "tags": [{"name": "emo", "url": "https://last.fm/tag/emo"}],
+            "top_tracks": [
+                {"rank": 1, "name": "Your Deep Rest", "playcount": 25000, "listeners": 8200},
+                {"rank": 2, "name": "An Introduction to the Album", "playcount": 20000, "listeners": 7100}
+            ]
+        }
+        widget = calling_hours.build_lastfm_widget("The Hotelier", "Your Deep Rest", track_tags=[], artist_metadata=mock_artist_meta)
+        self.assertIn("Your Deep Rest", widget)
+        self.assertIn("An Introduction to the Album", widget)
+        self.assertIn('class="lastfm-track-name" title="Your Deep Rest"', widget)
+        self.assertIn('class="lastfm-quick-load-btn"', widget)
+        self.assertIn("quickLoadTrack('The Hotelier', 'Your Deep Rest')", widget)
+
 if __name__ == "__main__":
     unittest.main()
 

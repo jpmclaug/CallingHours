@@ -11,9 +11,24 @@ import re
 import html
 import json
 import secrets
+import difflib
 from typing import Any, Optional, Dict, List
 
 import requests
+try:
+    from curl_cffi import requests as c_requests
+    HAS_CURL_CFFI = True
+except ImportError:
+    c_requests = None
+    HAS_CURL_CFFI = False
+
+try:
+    from bs4 import BeautifulSoup
+    HAS_BS4 = True
+except ImportError:
+    BeautifulSoup = None
+    HAS_BS4 = False
+
 from google import genai
 import database
 import lastfm
@@ -1951,6 +1966,20 @@ PAGE_HTML = r'''<!DOCTYPE html>
                 padding: 6px 10px;
                 font-size: 0.72rem;
             }
+
+            .lastfm-track-meta {
+                display: none;
+            }
+
+            .lastfm-track-row {
+                padding: 6px 8px;
+                gap: 8px;
+            }
+
+            .lastfm-quick-load-btn {
+                padding: 3px 8px;
+                font-size: 0.72rem;
+            }
         }
 
         /* Last.fm Music Intelligence Card & Badges */
@@ -2047,10 +2076,12 @@ PAGE_HTML = r'''<!DOCTYPE html>
             font-weight: 700;
             color: #A5C8FF;
             min-width: 18px;
+            flex-shrink: 0;
         }
 
         .lastfm-track-name {
-            flex: 1;
+            flex: 1 1 auto;
+            min-width: 0;
             font-weight: 500;
             color: #E1E8F0;
             overflow: hidden;
@@ -2062,16 +2093,25 @@ PAGE_HTML = r'''<!DOCTYPE html>
             font-size: 0.74rem;
             color: rgba(225, 232, 240, 0.5);
             white-space: nowrap;
+            flex-shrink: 0;
         }
 
         .lastfm-quick-load-btn {
+            width: auto;
+            margin: 0;
+            flex-shrink: 0;
+            box-shadow: none;
             background: linear-gradient(135deg, #194685, #2563EB);
             color: #FFFFFF;
             border: none;
             padding: 4px 10px;
             border-radius: 6px;
+            font-family: inherit;
             font-size: 0.75rem;
             font-weight: 600;
+            letter-spacing: normal;
+            text-transform: none;
+            line-height: 1.3;
             cursor: pointer;
             transition: all 0.2s ease;
             white-space: nowrap;
@@ -2080,6 +2120,7 @@ PAGE_HTML = r'''<!DOCTYPE html>
         .lastfm-quick-load-btn:hover {
             background: linear-gradient(135deg, #2563EB, #4285F4);
             transform: scale(1.04);
+            box-shadow: 0 2px 8px rgba(66, 133, 244, 0.4);
         }
 
         /* Artist Info Modal */
@@ -2109,6 +2150,27 @@ PAGE_HTML = r'''<!DOCTYPE html>
             padding: 24px;
             box-shadow: 0 20px 60px rgba(0, 0, 0, 0.7);
             animation: modal-pop-in 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .artist-modal-close {
+            background: transparent;
+            border: none;
+            color: #A5C8FF;
+            font-size: 1.6rem;
+            cursor: pointer;
+            line-height: 1;
+            padding: 4px;
+            width: auto;
+            margin: 0;
+            box-shadow: none;
+            transition: color 0.15s ease, transform 0.15s ease;
+        }
+
+        .artist-modal-close:hover {
+            color: #FFFFFF;
+            transform: scale(1.1);
+            background: transparent;
+            box-shadow: none;
         }
     </style>
 </head>
@@ -2147,7 +2209,7 @@ PAGE_HTML = r'''<!DOCTYPE html>
                     <h2 id="artist-modal-title" style="margin: 0; font-family: 'Montserrat', sans-serif; font-size: 1.35rem; color: #E1E8F0;">Artist Intelligence</h2>
                     <div id="artist-modal-subtitle" style="font-size: 0.85rem; color: #A5C8FF; margin-top: 4px;">Last.fm Top Tags &amp; Catalog</div>
                 </div>
-                <button type="button" onclick="closeArtistModal()" style="background: transparent; border: none; color: #A5C8FF; font-size: 1.6rem; cursor: pointer; line-height: 1; padding: 4px;" aria-label="Close modal">&times;</button>
+                <button type="button" class="artist-modal-close" onclick="closeArtistModal()" aria-label="Close modal">&times;</button>
             </div>
             <div id="artist-modal-content">
                 <div style="text-align: center; color: #A5C8FF; padding: 30px;">Loading artist data...</div>
@@ -3036,7 +3098,7 @@ HISTORY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
                     <h2 id="artist-modal-title" style="margin: 0; font-family: 'Montserrat', sans-serif; font-size: 1.35rem; color: #E1E8F0;">Artist Intelligence</h2>
                     <div id="artist-modal-subtitle" style="font-size: 0.85rem; color: #A5C8FF; margin-top: 4px;">Last.fm Top Tags &amp; Catalog</div>
                 </div>
-                <button type="button" onclick="closeArtistModal()" style="background: transparent; border: none; color: #A5C8FF; font-size: 1.6rem; cursor: pointer; line-height: 1; padding: 4px;" aria-label="Close modal">&times;</button>
+                <button type="button" class="artist-modal-close" onclick="closeArtistModal()" aria-label="Close modal">&times;</button>
             </div>
             <div id="artist-modal-content">
                 <div style="text-align: center; color: #A5C8FF; padding: 30px;">Loading artist data...</div>
@@ -4120,6 +4182,8 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 source = ""
                 song_url = None
                 genius_error = None
+                canonical_artist = None
+                canonical_song = None
 
                 # Check database cache first if not forcing a refresh
                 if not force_refresh:
@@ -4136,18 +4200,18 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                             print(f"Touch search error: {e}")
 
                 if not lyrics:
+                    genius_info = None
+
                     # 1. Attempt Genius song search if credentials or access token are present
-                    if ACCESS_TOKEN:
+                    if ACCESS_TOKEN or (GENIUS_CLIENT_ID and GENIUS_CLIENT_SECRET):
                         try:
-                            song_url = search_genius_song(artist, song)
+                            genius_info = search_genius_song_details(artist, song)
+                            if genius_info:
+                                song_url = genius_info.get('url')
+                                canonical_artist = genius_info.get('artist')
+                                canonical_song = genius_info.get('song')
                         except Exception as e:
                             print(f"Genius search error: {e}")
-                            genius_error = str(e)
-                    elif GENIUS_CLIENT_ID and GENIUS_CLIENT_SECRET:
-                        try:
-                            song_url = search_genius_song(artist, song)
-                        except Exception as e:
-                            print(f"Genius web search error: {e}")
                             genius_error = str(e)
 
                     # 2. Try scraping Genius if song URL was resolved
@@ -4163,20 +4227,32 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                     # 3. Fallback to LRCLIB open database if Genius didn't provide lyrics
                     if not lyrics:
                         try:
-                            lyrics = fetch_lrclib_lyrics(artist, song)
+                            lyrics = fetch_lrclib_lyrics(
+                                artist=artist,
+                                song=song,
+                                canonical_artist=canonical_artist,
+                                canonical_song=canonical_song
+                            )
                             if lyrics:
                                 source = "LRCLIB"
                         except Exception as e:
                             print(f"LRCLIB fallback error: {e}")
 
+                    effective_artist = canonical_artist or artist
+                    effective_song = canonical_song or song
+
                     track_tags = []
                     artist_metadata = None
                     try:
-                        track_tags = lastfm.get_or_fetch_track_tags(artist, song, api_key=LASTFM_API_KEY, force_refresh=force_refresh)
+                        track_tags = lastfm.get_or_fetch_track_tags(effective_artist, effective_song, api_key=LASTFM_API_KEY, force_refresh=force_refresh)
+                        if not track_tags and effective_artist != artist:
+                            track_tags = lastfm.get_or_fetch_track_tags(artist, song, api_key=LASTFM_API_KEY, force_refresh=force_refresh)
                     except Exception as lfe:
                         print(f"Last.fm track tags error on submit: {lfe}")
                     try:
-                        artist_metadata = lastfm.get_or_fetch_artist_metadata(artist, api_key=LASTFM_API_KEY, force_refresh=force_refresh)
+                        artist_metadata = lastfm.get_or_fetch_artist_metadata(effective_artist, api_key=LASTFM_API_KEY, force_refresh=force_refresh)
+                        if not artist_metadata and effective_artist != artist:
+                            artist_metadata = lastfm.get_or_fetch_artist_metadata(artist, api_key=LASTFM_API_KEY, force_refresh=force_refresh)
                     except Exception as lfe:
                         print(f"Last.fm artist metadata error on submit: {lfe}")
 
@@ -4191,6 +4267,15 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                                 song_url=song_url,
                                 track_tags=track_tags
                             )
+                            if canonical_artist and (canonical_artist.lower() != artist.lower() or (canonical_song and canonical_song.lower() != song.lower())):
+                                database.save_search(
+                                    artist=canonical_artist,
+                                    song=canonical_song or song,
+                                    lyrics=lyrics,
+                                    source=source,
+                                    song_url=song_url,
+                                    track_tags=track_tags
+                                )
                         except Exception as e:
                             print(f"Database save error: {e}")
                 else:
@@ -4208,9 +4293,12 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                     show_editor = True
                     genius_link = f' <a href="{html_escape(song_url)}" target="_blank" style="color:#A8D2FF; text-decoration:underline;">View on Genius</a>' if song_url else ''
                     note = ' (via LRCLIB fallback - Genius web access blocked)' if (source == 'LRCLIB' and song_url) else (f' (via {source})' if source in ('LRCLIB', 'Database') else '')
+                    matched_note = f' (matched for <em>{html_escape(artist)}</em>)' if (canonical_artist and canonical_artist.lower() != artist.lower()) else ''
+                    display_artist = canonical_artist or artist
+                    display_song = canonical_song or song
                     message = (
                         '<div class="message">'
-                        f'Successfully found lyrics for <strong>{html_escape(artist)}</strong> - <strong>{html_escape(song)}</strong>{note}.'
+                        f'Successfully found lyrics for <strong>{html_escape(display_artist)}</strong> - <strong>{html_escape(display_song)}</strong>{matched_note}{note}.'
                         f'{genius_link}{refresh_link}'
                         '</div>'
                     )
@@ -4229,8 +4317,8 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             self.render_page(
                 message=message,
                 lyrics_text=lyrics_text,
-                artist_value=html_escape(artist),
-                song_value=html_escape(song),
+                artist_value=html_escape(canonical_artist or artist) if lyrics else html_escape(artist),
+                song_value=html_escape(canonical_song or song) if lyrics else html_escape(song),
                 analysis_result=cached_analysis,
                 selected_model=cached_model,
                 show_editor=show_editor,
@@ -4597,43 +4685,88 @@ def build_browser_headers():
         'Upgrade-Insecure-Requests': '1',
     }
 
-def fetch_lrclib_lyrics(artist: str, song: str) -> str | None:
+def fetch_lrclib_lyrics(
+    artist: str,
+    song: str,
+    canonical_artist: Optional[str] = None,
+    canonical_song: Optional[str] = None
+) -> str | None:
     headers = {
         'User-Agent': 'CallingHours/1.0 (https://github.com/callinghours)'
     }
-    # 1. Exact match endpoint
-    try:
-        resp = requests.get(
-            'https://lrclib.net/api/get',
-            params={'artist_name': artist, 'track_name': song},
-            headers=headers,
-            timeout=8
-        )
-        if resp.status_code == 200:
-            data = resp.json()
-            lyrics = data.get('plainLyrics')
-            if lyrics and lyrics.strip():
-                return lyrics.strip()
-    except Exception as e:
-        print(f"LRCLIB direct fetch failed: {e}")
 
-    # 2. Search endpoint fallback
-    try:
-        resp = requests.get(
-            'https://lrclib.net/api/search',
-            params={'q': f"{artist} {song}"},
-            headers=headers,
-            timeout=8
-        )
-        if resp.status_code == 200:
-            results = resp.json()
-            if isinstance(results, list):
-                for item in results:
-                    lyrics = item.get('plainLyrics')
-                    if lyrics and lyrics.strip():
-                        return lyrics.strip()
-    except Exception as e:
-        print(f"LRCLIB search fallback failed: {e}")
+    # Pairs of (artist, song) candidates to try first
+    candidates = []
+    if canonical_artist and canonical_song:
+        c_art = canonical_artist.strip()
+        c_sng = canonical_song.strip()
+        if c_art and c_sng:
+            candidates.append((c_art, c_sng))
+    if artist and song:
+        u_art = artist.strip()
+        u_sng = song.strip()
+        if (u_art, u_sng) not in candidates:
+            candidates.append((u_art, u_sng))
+
+    for art, sng in candidates:
+        # 1. Exact match endpoint
+        try:
+            resp = requests.get(
+                'https://lrclib.net/api/get',
+                params={'artist_name': art, 'track_name': sng},
+                headers=headers,
+                timeout=8
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                lyrics = data.get('plainLyrics')
+                if lyrics and lyrics.strip():
+                    return lyrics.strip()
+        except Exception as e:
+            print(f"LRCLIB direct fetch failed for {art} - {sng}: {e}")
+
+        # 2. Search endpoint fallback
+        try:
+            resp = requests.get(
+                'https://lrclib.net/api/search',
+                params={'q': f"{art} {sng}"},
+                headers=headers,
+                timeout=8
+            )
+            if resp.status_code == 200:
+                results = resp.json()
+                if isinstance(results, list):
+                    for item in results:
+                        lyrics = item.get('plainLyrics')
+                        if lyrics and lyrics.strip():
+                            return lyrics.strip()
+        except Exception as e:
+            print(f"LRCLIB search fallback failed for {art} {sng}: {e}")
+
+    # 3. Track-only search with fuzzy artist matching (resilient to artist typos e.g. 'the hoteliers')
+    query_song = (canonical_song or song).strip()
+    target_artist = (canonical_artist or artist).strip().lower()
+    if query_song and target_artist:
+        try:
+            resp = requests.get(
+                'https://lrclib.net/api/search',
+                params={'q': query_song},
+                headers=headers,
+                timeout=8
+            )
+            if resp.status_code == 200:
+                results = resp.json()
+                if isinstance(results, list):
+                    for item in results:
+                        lyrics = item.get('plainLyrics')
+                        if not lyrics or not lyrics.strip():
+                            continue
+                        item_artist = (item.get('artistName') or '').strip().lower()
+                        sim = difflib.SequenceMatcher(None, target_artist, item_artist).ratio()
+                        if target_artist in item_artist or item_artist in target_artist or sim >= 0.7:
+                            return lyrics.strip()
+        except Exception as e:
+            print(f"LRCLIB track fuzzy search failed for {target_artist} - {query_song}: {e}")
 
     return None
 
@@ -4684,7 +4817,7 @@ def save_access_token(token: str):
     except (OSError, IOError) as e:
         print(f"Warning: Could not write access token to file ({e}). Token is stored in-memory.")
 
-def search_genius_song(artist: str, song: str) -> str | None:
+def search_genius_song_details(artist: str, song: str) -> Dict[str, str] | None:
     query = f"{artist} {song}".strip()
 
     if ACCESS_TOKEN:
@@ -4695,7 +4828,14 @@ def search_genius_song(artist: str, song: str) -> str | None:
         for hit in data.get('response', {}).get('hits', []):
             result = hit.get('result')
             if result and (hit.get('type') == 'song' or result.get('_type') == 'song' or result.get('type') == 'song'):
-                return result.get('url')
+                url = result.get('url')
+                resolved_artist = result.get('primary_artist', {}).get('name') or result.get('artist_names')
+                resolved_song = result.get('title')
+                return {
+                    'url': url,
+                    'artist': resolved_artist or artist,
+                    'song': resolved_song or song
+                }
     else:
         response = requests.get(GENIUS_WEB_SEARCH_URL, params={'q': query}, headers=build_genius_headers(), timeout=10)
         response.raise_for_status()
@@ -4705,18 +4845,73 @@ def search_genius_song(artist: str, song: str) -> str | None:
             for hit in section.get('hits', []):
                 result = hit.get('result') or hit.get('hit', {}).get('result')
                 if result and (hit.get('type') == 'song' or result.get('_type') == 'song' or result.get('type') == 'song'):
-                    return result.get('url')
+                    url = result.get('url')
+                    resolved_artist = result.get('primary_artist', {}).get('name') or result.get('artist_names')
+                    resolved_song = result.get('title')
+                    return {
+                        'url': url,
+                        'artist': resolved_artist or artist,
+                        'song': resolved_song or song
+                    }
 
     return None
 
-def fetch_genius_lyrics(song_url: str) -> str | None:
-    response = requests.get(song_url, headers=build_browser_headers(), timeout=10)
-    response.raise_for_status()
-    html_text = response.text
+def search_genius_song(artist: str, song: str) -> str | None:
+    info = search_genius_song_details(artist, song)
+    return info.get('url') if info else None
 
+def fetch_genius_lyrics(song_url: str) -> str | None:
+    headers = build_browser_headers()
+    html_text = None
+
+    # 1. Try curl_cffi with browser impersonation to bypass Cloudflare TLS fingerprint blocks (403 Forbidden)
+    if HAS_CURL_CFFI:
+        try:
+            resp = c_requests.get(song_url, impersonate='chrome', headers=headers, timeout=12)
+            if resp.status_code == 200:
+                html_text = resp.text
+            elif resp.status_code != 403:
+                resp.raise_for_status()
+        except Exception as ce:
+            print(f"curl_cffi fetch error: {ce}")
+
+    # 2. Fallback to standard requests if curl_cffi was unavailable or didn't fetch HTML
+    if not html_text:
+        response = requests.get(song_url, headers=headers, timeout=10)
+        response.raise_for_status()
+        html_text = response.text
+
+    # 3. Parse lyrics using BeautifulSoup if available
+    if HAS_BS4:
+        soup = BeautifulSoup(html_text, 'html.parser')
+        for el in soup.find_all(class_=lambda x: x and any(h in x for h in ['LyricsHeader', 'LyricsPlaceholder', 'SongDescription', 'InContentAd'])):
+            el.decompose()
+
+        containers = soup.find_all('div', attrs={'data-lyrics-container': 'true'})
+        if containers:
+            lyrics_chunks = []
+            for c in containers:
+                for br in c.find_all(['br', 'hr']):
+                    next_sib = br.next_sibling
+                    if next_sib and isinstance(next_sib, str) and next_sib.startswith('\n'):
+                        br.replace_with('\n')
+                        next_sib.replace_with(next_sib.lstrip('\r\n'))
+                    else:
+                        br.replace_with('\n')
+                text = c.get_text()
+                lines = [l.strip() for l in text.splitlines()]
+                cleaned = '\n'.join(lines)
+                cleaned = re.sub(r'\n{3,}', '\n\n', cleaned)
+                if cleaned.strip():
+                    lyrics_chunks.append(cleaned.strip())
+            full_lyrics = '\n\n'.join(lyrics_chunks)
+            full_lyrics = re.sub(r'^\d*\s*Contributors.*?Lyrics\n?', '', full_lyrics, flags=re.IGNORECASE)
+            return full_lyrics.strip()
+
+    # 4. Fallback regex parser
     lyrics = []
     start_matches = list(re.finditer(r'<div[^>]*data-lyrics-container="true"[^>]*>', html_text))
-    
+
     if start_matches:
         for match in start_matches:
             start_idx = match.end()
@@ -4736,13 +4931,14 @@ def fetch_genius_lyrics(song_url: str) -> str | None:
                     if div_count == 0:
                         end_idx = next_close
                     pos = next_close + 6
-            
+
             block = html_text[start_idx:end_idx]
+            block = re.sub(r'<div[^>]*class="[^"]*LyricsHeader[^"]*"[^>]*>.*?</div>', '', block, flags=re.DOTALL)
             block = re.sub(r'<br\s*/?>', '\n', block)
             block = re.sub(r'<.*?>', '', block)
             block = html.unescape(block)
             lyrics.append(block.strip())
-            
+
         full_lyrics = '\n\n'.join(line for line in lyrics if line)
         full_lyrics = re.sub(r'^\d*\s*Contributors.*?Lyrics\n?', '', full_lyrics, flags=re.IGNORECASE)
         return full_lyrics.strip()
