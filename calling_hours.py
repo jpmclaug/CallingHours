@@ -323,14 +323,14 @@ def build_lastfm_widget(
                     <span class="lastfm-track-rank">{rank}</span>
                     <span class="lastfm-track-name" title="{t_name}">{t_name}</span>
                     <span class="lastfm-track-meta">{meta_str}</span>
-                    <button type="button" class="lastfm-quick-load-btn" onclick="quickLoadTrack('{artist_esc}', '{t_name_attr}')" title="Load lyrics for {t_name}">⚡ Load</button>
+                    <button type="button" class="lastfm-quick-load-btn" data-artist="{artist_esc}" data-track="{t_name_attr}" onclick="quickLoadTrack(this.dataset.artist, this.dataset.track)" title="Load lyrics for {t_name}">⚡ Load</button>
                 </div>
             ''')
         top_tracks_html = "".join(top_tracks_rows)
     else:
         top_tracks_html = '<div style="font-size: 0.82rem; color: rgba(225, 232, 240, 0.5); font-style: italic; padding: 6px 0;">No top tracks found for artist.</div>'
 
-    view_more_btn = f'''<button type="button" class="pill-btn secondary" style="font-size: 0.72rem; padding: 2px 8px;" onclick="openArtistModal('{artist_esc}')">View All Top Tracks &rarr;</button>''' if len(top_tracks) > 5 else ''
+    view_more_btn = f'''<button type="button" class="pill-btn secondary" style="font-size: 0.72rem; padding: 2px 8px;" data-artist="{artist_esc}" onclick="openArtistModal(this.dataset.artist)">View All Top Tracks &rarr;</button>''' if len(top_tracks) > 5 else ''
 
     return f'''
     <div class="lastfm-card" id="lastfm-intelligence-widget" style="margin-bottom: 20px;">
@@ -339,7 +339,7 @@ def build_lastfm_widget(
                 <span style="font-size: 1.2rem;">📻</span>
                 <span style="font-weight: 700; color: #E1E8F0; font-family: 'Montserrat', sans-serif;">Last.fm Music Intelligence</span>
             </div>
-            <button type="button" class="pill-btn secondary" style="font-size: 0.75rem; padding: 4px 10px;" onclick="openArtistModal('{artist_esc}')">
+            <button type="button" class="pill-btn secondary" style="font-size: 0.75rem; padding: 4px 10px;" data-artist="{artist_esc}" onclick="openArtistModal(this.dataset.artist)">
                 👤 {artist_esc} Profile
             </button>
         </div>
@@ -523,8 +523,41 @@ PAGE_HTML = r'''<!DOCTYPE html>
     <meta name="apple-mobile-web-app-title" content="Calling Hours">
     <meta name="theme-color" content="#050A14">
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script>
+        // Track app header height for sticky workspace tabs and scrolling offset
+        function updateAppHeaderHeight() {
+            const header = document.querySelector('.app-header');
+            if (header) {
+                document.documentElement.style.setProperty('--app-header-height', header.offsetHeight + 'px');
+            }
+        }
+        window.addEventListener('DOMContentLoaded', updateAppHeaderHeight);
+        window.addEventListener('resize', updateAppHeaderHeight);
+        window.addEventListener('orientationchange', updateAppHeaderHeight);
+
+        // iOS PWA Standalone Mode link handler: ensures internal navigation stays inside standalone app
+        if (('standalone' in window.navigator) && window.navigator.standalone) {
+            document.addEventListener('click', function(e) {
+                let node = e.target;
+                while (node && node.nodeName !== 'A' && node.nodeName !== 'HTML') {
+                    node = node.parentNode;
+                }
+                if (node && node.nodeName === 'A' && node.href && !node.getAttribute('target') && node.origin === window.location.origin) {
+                    if (node.pathname === window.location.pathname && node.search === window.location.search && node.hash) {
+                        return;
+                    }
+                    e.preventDefault();
+                    window.location.href = node.href;
+                }
+            }, false);
+        }
+    </script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@700;800;900&family=Roboto+Condensed:wght@300;400;700&display=swap');
+
+        :root {
+            --app-header-height: 110px;
+        }
 
         *, *::before, *::after {
             box-sizing: border-box;
@@ -912,6 +945,7 @@ PAGE_HTML = r'''<!DOCTYPE html>
 
         /* Login Card & Auth Styles */
         .login-wrapper {
+            position: relative;
             width: 100%;
             min-height: 80vh;
             display: flex;
@@ -1174,8 +1208,9 @@ PAGE_HTML = r'''<!DOCTYPE html>
             gap: 6px;
             margin-bottom: 20px;
             position: sticky;
-            top: 70px;
+            top: calc(var(--app-header-height, 110px) + 8px);
             z-index: 30;
+            scroll-margin-top: calc(var(--app-header-height, 110px) + 12px);
             box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
         }
 
@@ -1200,7 +1235,9 @@ PAGE_HTML = r'''<!DOCTYPE html>
             box-shadow: none;
             margin: 0;
             width: auto;
+            min-height: 44px;
             touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
         }
 
         .tab-btn:hover {
@@ -1272,6 +1309,7 @@ PAGE_HTML = r'''<!DOCTYPE html>
             background-size: 350px 250px;
             opacity: 0.65;
             z-index: 0;
+            pointer-events: none;
         }
 
         /* Suburban horizon silhouette */
@@ -1891,15 +1929,18 @@ PAGE_HTML = r'''<!DOCTYPE html>
             }
 
             .workspace-tabs {
-                top: 86px;
+                top: calc(var(--app-header-height, 110px) + 4px);
+                scroll-margin-top: calc(var(--app-header-height, 110px) + 10px);
                 margin-bottom: 14px;
                 padding: 4px;
             }
 
             .tab-btn {
-                padding: 8px 6px;
-                font-size: 0.76rem;
+                padding: 10px 6px;
+                font-size: 0.78rem;
+                min-height: 44px;
                 gap: 4px;
+                -webkit-tap-highlight-color: transparent;
             }
 
             .container {
@@ -1960,14 +2001,15 @@ PAGE_HTML = r'''<!DOCTYPE html>
             }
 
             .pill-btn {
-                padding: 7px 12px;
-                font-size: 0.74rem;
-                min-height: 36px;
+                padding: 8px 12px;
+                font-size: 0.75rem;
+                min-height: 38px;
                 display: inline-flex;
                 align-items: center;
                 justify-content: center;
                 white-space: nowrap;
                 touch-action: manipulation;
+                -webkit-tap-highlight-color: transparent;
             }
 
             .lyrics-box, .lyrics-reader-box {
@@ -2097,18 +2139,23 @@ PAGE_HTML = r'''<!DOCTYPE html>
             }
 
             .workspace-tabs {
-                top: 80px;
+                top: calc(var(--app-header-height, 110px) + 4px);
+                scroll-margin-top: calc(var(--app-header-height, 110px) + 8px);
                 gap: 4px;
             }
 
             .tab-btn {
-                padding: 7px 4px;
-                font-size: 0.72rem;
+                padding: 10px 4px;
+                font-size: 0.74rem;
+                min-height: 44px;
+                -webkit-tap-highlight-color: transparent;
             }
 
             .pill-btn {
-                padding: 6px 10px;
-                font-size: 0.72rem;
+                padding: 8px 12px;
+                font-size: 0.74rem;
+                min-height: 38px;
+                -webkit-tap-highlight-color: transparent;
             }
 
             .lastfm-track-meta {
@@ -2116,13 +2163,19 @@ PAGE_HTML = r'''<!DOCTYPE html>
             }
 
             .lastfm-track-row {
-                padding: 6px 8px;
-                gap: 8px;
+                padding: 8px 10px;
+                gap: 10px;
             }
 
             .lastfm-quick-load-btn {
-                padding: 3px 8px;
-                font-size: 0.72rem;
+                padding: 7px 12px;
+                font-size: 0.78rem;
+                min-height: 38px;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                touch-action: manipulation;
+                -webkit-tap-highlight-color: transparent;
             }
         }
 
@@ -2382,6 +2435,7 @@ PAGE_HTML = r'''<!DOCTYPE html>
             background: rgba(3, 7, 18, 0.75);
             backdrop-filter: blur(12px);
             -webkit-backdrop-filter: blur(12px);
+            cursor: pointer;
         }
 
         .artist-modal {
@@ -2395,6 +2449,7 @@ PAGE_HTML = r'''<!DOCTYPE html>
             padding: 24px;
             box-shadow: 0 20px 60px rgba(0, 0, 0, 0.7);
             animation: modal-pop-in 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+            cursor: default;
         }
 
         .artist-modal-close {
@@ -2404,11 +2459,18 @@ PAGE_HTML = r'''<!DOCTYPE html>
             font-size: 1.6rem;
             cursor: pointer;
             line-height: 1;
-            padding: 4px;
+            padding: 6px;
             width: auto;
+            min-width: 44px;
+            min-height: 44px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
             margin: 0;
             box-shadow: none;
             transition: color 0.15s ease, transform 0.15s ease;
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
         }
 
         .artist-modal-close:hover {
@@ -2499,20 +2561,20 @@ PAGE_HTML = r'''<!DOCTYPE html>
                     </select>
                 </div>
 
-                <label for="artist" style="display: flex; justify-content: space-between; align-items: center;">
-                    <span>Artist Name</span>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 14px; margin-bottom: 6px;">
+                    <label for="artist" style="margin: 0;">Artist Name</label>
                     <button type="button" id="btn-artist-profile" class="pill-btn secondary" style="font-size: 0.72rem; padding: 2px 8px; {artist_info_btn_display}" onclick="openArtistModal(document.getElementById('artist').value)">👤 Artist Profile</button>
-                </label>
+                </div>
                 <input type="text" id="artist" name="artist" placeholder="e.g. Adele" value="{artist_value}" list="bands-datalist" autocomplete="off" required oninput="onArtistInput(this.value)" onchange="onArtistChange(this.value)">
                 <datalist id="bands-datalist">
                     {band_datalist_options}
                 </datalist>
 
                 <div id="band-songs-group" style="display: none; margin-top: 14px; margin-bottom: 8px;">
-                    <label for="band_song_select" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                        <span>Previous Songs</span>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <label for="band_song_select" style="margin: 0;">Previous Songs</label>
                         <button type="button" id="btn-quick-load" class="pill-btn secondary" style="font-size: 0.7rem; padding: 2px 8px; display: none;" onclick="loadSelectedSavedSong()">⚡ Load Result</button>
-                    </label>
+                    </div>
                     <select id="band_song_select" onchange="onPreviousSongSelected(this)">
                         <option value="">-- Or pick a previous song --</option>
                     </select>
@@ -2886,6 +2948,7 @@ PAGE_HTML = r'''<!DOCTYPE html>
         }
 
         function quickLoadTrack(artist, track) {
+            closeArtistModal();
             const artistInput = document.getElementById('artist');
             const songInput = document.getElementById('song');
             if (artistInput && songInput) {
@@ -2893,7 +2956,12 @@ PAGE_HTML = r'''<!DOCTYPE html>
                 songInput.value = track;
                 switchWorkspaceTab('search');
                 const form = document.getElementById('search-form');
-                if (form) form.submit();
+                if (form) {
+                    if (typeof onSearchSubmit === 'function') onSearchSubmit();
+                    form.submit();
+                }
+            } else {
+                window.location.href = '/?artist=' + encodeURIComponent(artist) + '&song=' + encodeURIComponent(track);
             }
         }
 
@@ -2939,7 +3007,7 @@ PAGE_HTML = r'''<!DOCTYPE html>
                                     <span class="lastfm-track-rank">${rank}</span>
                                     <span class="lastfm-track-name" title="${escapeHtml(t.name)}">${escapeHtml(t.name)}</span>
                                     <span class="lastfm-track-meta">${playText}</span>
-                                    <button type="button" class="lastfm-quick-load-btn" onclick="quickLoadTrack('${escapeHtml(artistName)}', '${escapeHtml(t.name)}')">⚡ Analyze</button>
+                                    <button type="button" class="lastfm-quick-load-btn" data-artist="${escapeHtml(artistName)}" data-track="${escapeHtml(t.name)}" onclick="quickLoadTrack(this.dataset.artist, this.dataset.track)">⚡ Analyze</button>
                                 </div>
                             `;
                         });
@@ -3137,7 +3205,10 @@ PAGE_HTML = r'''<!DOCTYPE html>
             if (shouldScroll && window.innerWidth <= 1080) {
                 const tabsBar = document.getElementById('workspace-tabs');
                 if (tabsBar) {
-                    tabsBar.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    const header = document.querySelector('.app-header');
+                    const headerHeight = header ? header.offsetHeight : 0;
+                    const y = tabsBar.getBoundingClientRect().top + window.pageYOffset - headerHeight - 10;
+                    window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
                 }
             }
         }
@@ -3451,7 +3522,7 @@ HISTORY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
                                     <span class="lastfm-track-rank">${rank}</span>
                                     <span class="lastfm-track-name" title="${escapeHtml(t.name)}">${escapeHtml(t.name)}</span>
                                     <span class="lastfm-track-meta">${playText}</span>
-                                    <button type="button" class="lastfm-quick-load-btn" onclick="quickLoadTrack('${escapeHtml(artistName)}', '${escapeHtml(t.name)}')">⚡ Load</button>
+                                    <button type="button" class="lastfm-quick-load-btn" data-artist="${escapeHtml(artistName)}" data-track="${escapeHtml(t.name)}" onclick="quickLoadTrack(this.dataset.artist, this.dataset.track)">⚡ Load</button>
                                 </div>
                             `;
                         });
@@ -3554,6 +3625,8 @@ ARTIST_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
     {app_header}
     <style>
         .artist-page-container {
+            position: relative;
+            z-index: 2;
             width: min(1160px, 94vw);
             margin: 0 auto 60px auto;
             display: flex;
@@ -3745,11 +3818,15 @@ ARTIST_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             background: rgba(99, 102, 241, 0.22);
             border: 1px solid rgba(165, 200, 255, 0.35);
             color: #E0E7FF;
-            padding: 3px 10px;
+            padding: 5px 12px;
             border-radius: 16px;
             font-size: 0.82rem;
             text-decoration: none;
-            display: inline-block;
+            display: inline-flex;
+            align-items: center;
+            min-height: 32px;
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
             transition: all 0.2s ease;
         }
         .coperformer-chip:hover {
@@ -3784,16 +3861,19 @@ ARTIST_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             color: #FFFFFF;
             border: 1px solid rgba(255, 255, 255, 0.25);
             border-radius: 8px;
-            padding: 7px 14px;
-            font-size: 0.84rem;
+            padding: 8px 16px;
+            font-size: 0.86rem;
             font-weight: 700;
             text-decoration: none;
             display: inline-flex;
             align-items: center;
             gap: 6px;
+            min-height: 40px;
             box-shadow: 0 2px 8px rgba(37, 99, 235, 0.4);
             transition: all 0.2s ease;
             white-space: nowrap;
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
         }
         .btn-analyze-song:hover {
             background: linear-gradient(135deg, #3B82F6 0%, #2563EB 100%);
@@ -3804,11 +3884,15 @@ ARTIST_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             background: rgba(165, 200, 255, 0.1);
             border: 1px solid rgba(165, 200, 255, 0.25);
             color: #C5B8FF;
-            padding: 4px 12px;
+            padding: 5px 12px;
             border-radius: 20px;
             font-size: 0.85rem;
             text-decoration: none;
-            display: inline-block;
+            display: inline-flex;
+            align-items: center;
+            min-height: 32px;
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
             transition: all 0.2s ease;
         }
         .similar-chip:hover {
@@ -4991,7 +5075,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                         except Exception as lfe:
                             print(f"Last.fm artist metadata error on submit: {lfe}")
 
-                refresh_link = ' <a href="#" onclick="forceRefreshSearch(); return false;" style="color:#A8D2FF; text-decoration:underline; font-size:0.85em; margin-left:8px;">[Re-fetch fresh]</a>'
+                refresh_link = ' <button type="button" onclick="forceRefreshSearch()" style="background: none; border: none; padding: 0; color:#A8D2FF; text-decoration:underline; font-size:0.85em; margin-left:8px; cursor: pointer; font-family: inherit;">[Re-fetch fresh]</button>'
                 if lyrics:
                     lyrics_text = lyrics
                     show_editor = True
@@ -5308,7 +5392,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             sel = ' selected' if b_artist.lower() == artist_norm_target else ''
             artist_filter_options += f'<option value="{html_escape(b_artist)}"{sel}>{html_escape(b_artist)} ({songs_label})</option>\n'
             active_style = 'background: rgba(165, 200, 255, 0.35); border-color: #A5C8FF; color: #FFFFFF;' if b_artist.lower() == artist_norm_target else 'background: rgba(11, 30, 63, 0.6); border-color: rgba(165, 200, 255, 0.2); color: #A5C8FF;'
-            artist_chips_html += f'''<button type="button" class="artist-chip" data-artist="{html_escape(b_artist)}" onclick="filterByArtist('{html_escape(b_artist)}')" style="{active_style} border: 1px solid; padding: 5px 12px; border-radius: 20px; font-size: 0.82rem; cursor: pointer; transition: all 0.2s ease;">{html_escape(b_artist)} ({b_count})</button>\n'''
+            artist_chips_html += f'''<button type="button" class="artist-chip" data-artist="{html_escape(b_artist)}" onclick="filterByArtist(this.dataset.artist)" style="{active_style} border: 1px solid; padding: 5px 12px; border-radius: 20px; font-size: 0.82rem; cursor: pointer; transition: all 0.2s ease;">{html_escape(b_artist)} ({b_count})</button>\n'''
 
         artist_chips_display = '' if bands else 'display: none;'
         all_chip_active_style = 'background: rgba(165, 200, 255, 0.35); border-color: #A5C8FF; color: #FFFFFF;' if not artist_norm_target else 'background: rgba(11, 30, 63, 0.6); border-color: rgba(165, 200, 255, 0.2); color: #A5C8FF;'
@@ -5341,8 +5425,8 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 <div class="history-card" data-artist="{artist_esc}" style="background: rgba(11, 30, 63, 0.6); padding: 14px 18px; border-radius: 10px; border: 1px solid rgba(165, 200, 255, 0.15); display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;">
                     <div style="flex: 1; min-width: 220px;">
                         <div style="font-size: 1.1rem; font-weight: 700; color: #E1E8F0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                            <a href="#" onclick="filterByArtist('{artist_esc}'); return false;" style="color: inherit; text-decoration: none; border-bottom: 1px dotted rgba(165, 200, 255, 0.4);" title="Filter history by {artist_esc}">{artist_esc}</a>
-                            <button type="button" class="pill-btn secondary" style="font-size: 0.68rem; padding: 1px 6px; line-height: 1.3;" onclick="openArtistModal('{artist_esc}')" title="View Last.fm info for {artist_esc}">👤 Info</button>
+                            <button type="button" data-artist="{artist_esc}" onclick="filterByArtist(this.dataset.artist)" style="background: none; border: none; padding: 0; font: inherit; color: inherit; cursor: pointer; border-bottom: 1px dotted rgba(165, 200, 255, 0.4); text-align: left;" title="Filter history by {artist_esc}">{artist_esc}</button>
+                            <button type="button" class="pill-btn secondary" style="font-size: 0.68rem; padding: 1px 6px; line-height: 1.3;" data-artist="{artist_esc}" onclick="openArtistModal(this.dataset.artist)" title="View Last.fm info for {artist_esc}">👤 Info</button>
                             <span style="font-weight: 300; color: #A5C8FF;">&mdash;</span> {song_esc}
                         </div>
                         <div style="display: flex; gap: 8px; align-items: center; margin-top: 6px; flex-wrap: wrap;">

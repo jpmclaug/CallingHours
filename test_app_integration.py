@@ -453,7 +453,8 @@ class TestAppIntegration(unittest.TestCase):
             self.assertIn('id="artist-modal-overlay"', html)
             self.assertIn('#shoegaze', html)
             self.assertIn('#dream pop', html)
-            self.assertIn('openArtistModal(\'Slowdive\')', html)
+            self.assertIn('data-artist="Slowdive"', html)
+            self.assertIn('openArtistModal(this.dataset.artist)', html)
 
         # 3. Verify loading song via artist & song query params (e.g. from quickLoadTrack)
         url = "/?artist=" + urllib.parse.quote("Slowdive") + "&song=" + urllib.parse.quote("Alison")
@@ -490,7 +491,9 @@ class TestAppIntegration(unittest.TestCase):
         self.assertIn("An Introduction to the Album", widget)
         self.assertIn('class="lastfm-track-name" title="Your Deep Rest"', widget)
         self.assertIn('class="lastfm-quick-load-btn"', widget)
-        self.assertIn("quickLoadTrack('The Hotelier', 'Your Deep Rest')", widget)
+        self.assertIn('data-artist="The Hotelier"', widget)
+        self.assertIn('data-track="Your Deep Rest"', widget)
+        self.assertIn("quickLoadTrack(this.dataset.artist, this.dataset.track)", widget)
 
     def test_22_theaudiodb_api_and_widget_rendering(self):
         # 1. Verify /api/theaudiodb/track endpoint
@@ -696,6 +699,70 @@ class TestAppIntegration(unittest.TestCase):
             html = resp.read().decode('utf-8')
             self.assertIn("All The Small Things", html)
             self.assertIn("Late night, come home", html)
+
+
+    def test_25_mobile_touch_fixes(self):
+        # 1. Verify Home Page DOM structure and touch fixes
+        with self.authed_get("/") as resp:
+            self.assertEqual(resp.status, 200)
+            html = resp.read().decode('utf-8')
+
+            # Verify pointer-events: none on stars
+            self.assertIn("pointer-events: none;", html)
+
+            # Verify PWA standalone navigation handler and --app-header-height in head
+            self.assertIn("--app-header-height", html)
+            self.assertIn("window.navigator.standalone", html)
+
+            # Verify workspace-tabs sticky positioning and scroll-margin-top
+            self.assertIn("scroll-margin-top: calc(var(--app-header-height", html)
+
+            # Verify buttons are NOT inside <label for="artist"> or <label for="band_song_select">
+            self.assertNotIn('<label for="artist"><button', html.replace(' ', '').replace('\n', ''))
+            self.assertIn('<button type="button" id="btn-artist-profile"', html)
+            self.assertIn('<button type="button" id="btn-quick-load"', html)
+
+        # 2. Verify Artist Page container positioning and touch styling
+        with self.authed_get("/artist?artist=Jimmy+Eat+World") as resp:
+            self.assertEqual(resp.status, 200)
+            html = resp.read().decode('utf-8')
+            self.assertIn("position: relative;", html)
+            self.assertIn("z-index: 2;", html)
+            self.assertIn(".btn-analyze-song", html)
+            self.assertIn("touch-action: manipulation;", html)
+
+        # 3. Verify Last.fm widget handles apostrophes in band and track names safely with dataset attributes
+        mock_lastfm = {
+            "tags": [{"name": "rock", "url": "https://www.last.fm/tag/rock"}],
+            "top_tracks": [
+                {"name": "What's My Age Again?", "rank": 1, "listeners": 500000, "playcount": 2000000}
+            ]
+        }
+        with patch("lastfm.get_or_fetch_artist_metadata", return_value=mock_lastfm):
+            widget_html = calling_hours.build_lastfm_widget("Jane's Addiction", "Jane Says", [{}], mock_lastfm, has_api_key=True)
+            # Must NOT use unescaped raw quotes in onclick
+            self.assertNotIn("quickLoadTrack('Jane&#x27;s Addiction'", widget_html)
+            self.assertNotIn("quickLoadTrack('Jane's Addiction'", widget_html)
+            # Must use data-artist and data-track with this.dataset
+            self.assertIn('data-artist="Jane&#x27;s Addiction"', widget_html)
+            self.assertIn('data-track="What&#x27;s My Age Again?"', widget_html)
+            self.assertIn("quickLoadTrack(this.dataset.artist, this.dataset.track)", widget_html)
+            self.assertIn("openArtistModal(this.dataset.artist)", widget_html)
+
+        # 4. Verify History Page renders safe buttons with dataset attributes for bands with apostrophes
+        database.save_search(
+            artist="Guns N' Roses",
+            song="Sweet Child O' Mine",
+            lyrics="She's got a smile that it seems to me",
+            source="Genius",
+            db_path=self.db_path
+        )
+        with self.authed_get("/history") as resp:
+            self.assertEqual(resp.status, 200)
+            html = resp.read().decode('utf-8')
+            self.assertIn('data-artist="Guns N&#x27; Roses"', html)
+            self.assertIn("filterByArtist(this.dataset.artist)", html)
+            self.assertIn("openArtistModal(this.dataset.artist)", html)
 
 
 if __name__ == "__main__":
