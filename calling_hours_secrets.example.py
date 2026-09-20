@@ -23,3 +23,7 @@ GOOGLE_CLIENT_SECRET = ""
 # Example: postgresql://neondb_owner:password@ep-xyz-pooler.us-east-1.aws.neon.tech/neondb?sslmode=require
 NEON_DATABASE_URL = ""
 
+# Last.fm API Key (for track top tags, artist tags, and top tracks)
+# Obtain a free key from https://www.last.fm/api/account/create
+LASTFM_API_KEY = ""
+

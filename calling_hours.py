@@ -16,9 +16,15 @@ from typing import Any, Optional, Dict, List
 import requests
 from google import genai
 import database
+import lastfm
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPT_DIR)
+
+def html_escape(text: Any) -> str:
+    if text is None:
+        return ""
+    return html.escape(str(text))
 
 # Initialize database
 try:
@@ -69,7 +75,7 @@ DEFAULT_GEMINI_MODEL = "gemini-3.8-flash"
 _local_secrets = {}
 try:
     import calling_hours_secrets
-    for attr in ('GENIUS_CLIENT_ID', 'GENIUS_CLIENT_SECRET', 'GENIUS_ACCESS_TOKEN', 'GEMINI_API_KEY', 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_REDIRECT_URI'):
+    for attr in ('GENIUS_CLIENT_ID', 'GENIUS_CLIENT_SECRET', 'GENIUS_ACCESS_TOKEN', 'GEMINI_API_KEY', 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_REDIRECT_URI', 'LASTFM_API_KEY'):
         if hasattr(calling_hours_secrets, attr):
             _local_secrets[attr] = getattr(calling_hours_secrets, attr)
 except ImportError:
@@ -83,6 +89,129 @@ GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY') or _local_secrets.get('GEMINI_
 GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID') or _local_secrets.get('GOOGLE_CLIENT_ID', '')
 GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET') or _local_secrets.get('GOOGLE_CLIENT_SECRET', '')
 GOOGLE_REDIRECT_URI = os.environ.get('GOOGLE_REDIRECT_URI') or _local_secrets.get('GOOGLE_REDIRECT_URI', '')
+LASTFM_API_KEY = os.environ.get('LASTFM_API_KEY') or _local_secrets.get('LASTFM_API_KEY', '')
+
+def build_lastfm_widget(
+    artist: str,
+    song: str,
+    track_tags: Optional[List[Dict[str, Any]]] = None,
+    artist_metadata: Optional[Dict[str, Any]] = None,
+    has_api_key: bool = True
+) -> str:
+    if not artist and not song:
+        return ""
+
+    artist_esc = html_escape(artist)
+    song_esc = html_escape(song)
+
+    tags = track_tags or []
+    art_meta = artist_metadata or {}
+    art_tags = art_meta.get("tags") or []
+    top_tracks = art_meta.get("top_tracks") or []
+
+    if not has_api_key and not tags and not art_tags and not top_tracks:
+        return f'''
+        <div class="lastfm-card" style="margin-bottom: 20px;">
+            <div class="lastfm-header">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 1.2rem;">📻</span>
+                    <span style="font-weight: 700; color: #E1E8F0; font-family: 'Montserrat', sans-serif;">Last.fm Music Intelligence</span>
+                </div>
+            </div>
+            <div style="font-size: 0.85rem; color: rgba(225, 232, 240, 0.7); line-height: 1.5; padding: 6px 0;">
+                Connect community tags and artist top tracks by adding <code>LASTFM_API_KEY</code> to <code>calling_hours_secrets.py</code> or environment variables.
+                <a href="https://www.last.fm/api/account/create" target="_blank" style="color: #A5C8FF; text-decoration: underline; margin-left: 6px;">Get a free API key &rarr;</a>
+            </div>
+        </div>
+        '''
+
+    # 1. Track Tags Chips
+    if tags:
+        track_chips = []
+        for t in tags[:10]:
+            name = html_escape(t.get("name", ""))
+            count = t.get("count", 0)
+            url = html_escape(t.get("url") or f"https://www.last.fm/tag/{urllib.parse.quote_plus(name)}")
+            badge = f'<span class="lastfm-chip-count">{count}</span>' if count > 0 else ''
+            track_chips.append(f'<a href="{url}" target="_blank" class="lastfm-tag-chip track-tag" title="Last.fm tag: {name}">#{name}{badge}</a>')
+        track_tags_html = " ".join(track_chips)
+    else:
+        track_tags_html = '<span style="font-size: 0.82rem; color: rgba(225, 232, 240, 0.5); font-style: italic;">No track tags found on Last.fm.</span>'
+
+    # 2. Artist Tags Chips
+    if art_tags:
+        art_chips = []
+        for t in art_tags[:8]:
+            name = html_escape(t.get("name", ""))
+            url = html_escape(t.get("url") or f"https://www.last.fm/tag/{urllib.parse.quote_plus(name)}")
+            art_chips.append(f'<a href="{url}" target="_blank" class="lastfm-tag-chip artist-tag" title="Artist genre: {name}">#{name}</a>')
+        artist_tags_html = " ".join(art_chips)
+    else:
+        artist_tags_html = '<span style="font-size: 0.82rem; color: rgba(225, 232, 240, 0.5); font-style: italic;">No artist genres found.</span>'
+
+    # 3. Artist Top Tracks List
+    top_tracks_rows = []
+    if top_tracks:
+        for t in top_tracks[:5]:
+            rank = t.get("rank", 1)
+            t_name = html_escape(t.get("name", ""))
+            t_name_attr = html.escape(t.get("name", ""), quote=True)
+            playcount = t.get("playcount", 0)
+            listeners = t.get("listeners", 0)
+            meta_parts = []
+            if listeners:
+                meta_parts.append(f"{listeners:,} listeners")
+            elif playcount:
+                meta_parts.append(f"{playcount:,} plays")
+            meta_str = " &bull; ".join(meta_parts)
+            top_tracks_rows.append(f'''
+                <div class="lastfm-track-row">
+                    <span class="lastfm-track-rank">{rank}</span>
+                    <span class="lastfm-track-name" title="{t_name}">{t_name}</span>
+                    <span class="lastfm-track-meta">{meta_str}</span>
+                    <button type="button" class="lastfm-quick-load-btn" onclick="quickLoadTrack('{artist_esc}', '{t_name_attr}')" title="Load lyrics for {t_name}">⚡ Load</button>
+                </div>
+            ''')
+        top_tracks_html = "".join(top_tracks_rows)
+    else:
+        top_tracks_html = '<div style="font-size: 0.82rem; color: rgba(225, 232, 240, 0.5); font-style: italic; padding: 6px 0;">No top tracks found for artist.</div>'
+
+    view_more_btn = f'''<button type="button" class="pill-btn secondary" style="font-size: 0.72rem; padding: 2px 8px;" onclick="openArtistModal('{artist_esc}')">View All Top Tracks &rarr;</button>''' if len(top_tracks) > 5 else ''
+
+    return f'''
+    <div class="lastfm-card" id="lastfm-intelligence-widget" style="margin-bottom: 20px;">
+        <div class="lastfm-header">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 1.2rem;">📻</span>
+                <span style="font-weight: 700; color: #E1E8F0; font-family: 'Montserrat', sans-serif;">Last.fm Music Intelligence</span>
+            </div>
+            <button type="button" class="pill-btn secondary" style="font-size: 0.75rem; padding: 4px 10px;" onclick="openArtistModal('{artist_esc}')">
+                👤 {artist_esc} Profile
+            </button>
+        </div>
+
+        <div style="margin-top: 10px;">
+            <div style="font-size: 0.76rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #A5C8FF; margin-bottom: 4px;">Track Top Tags</div>
+            <div class="lastfm-tag-cloud">{track_tags_html}</div>
+        </div>
+
+        <div style="margin-top: 12px;">
+            <div style="font-size: 0.76rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #C5B8FF; margin-bottom: 4px;">Artist Genres &amp; Tags</div>
+            <div class="lastfm-tag-cloud">{artist_tags_html}</div>
+        </div>
+
+        <div style="margin-top: 14px; border-top: 1px solid rgba(165, 200, 255, 0.12); padding-top: 10px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <span style="font-size: 0.76rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #A5C8FF;">Top Tracks by {artist_esc}</span>
+                {view_more_btn}
+            </div>
+            <div class="lastfm-tracks-list">
+                {top_tracks_html}
+            </div>
+        </div>
+    </div>
+    '''
+
 
 ACCESS_TOKEN = GENIUS_ACCESS_TOKEN
 SERVER_PORT = None
@@ -1823,6 +1952,164 @@ PAGE_HTML = r'''<!DOCTYPE html>
                 font-size: 0.72rem;
             }
         }
+
+        /* Last.fm Music Intelligence Card & Badges */
+        .lastfm-card {
+            background: rgba(11, 30, 63, 0.75);
+            border: 1px solid rgba(165, 200, 255, 0.22);
+            border-radius: 12px;
+            padding: 18px 20px;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+
+        .lastfm-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid rgba(165, 200, 255, 0.12);
+        }
+
+        .lastfm-tag-cloud {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            align-items: center;
+        }
+
+        .lastfm-tag-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.78rem;
+            font-weight: 500;
+            text-decoration: none;
+            transition: all 0.2s ease;
+        }
+
+        .lastfm-tag-chip.track-tag {
+            background: rgba(75, 140, 255, 0.18);
+            border: 1px solid rgba(165, 200, 255, 0.35);
+            color: #C4DFFF;
+        }
+
+        .lastfm-tag-chip.artist-tag {
+            background: rgba(140, 100, 255, 0.18);
+            border: 1px solid rgba(195, 175, 255, 0.35);
+            color: #D8CEFF;
+        }
+
+        .lastfm-tag-chip:hover {
+            transform: translateY(-1px);
+            border-color: #A5C8FF;
+            color: #FFFFFF;
+            box-shadow: 0 2px 8px rgba(165, 200, 255, 0.3);
+        }
+
+        .lastfm-chip-count {
+            font-size: 0.68rem;
+            background: rgba(0, 0, 0, 0.3);
+            color: rgba(225, 232, 240, 0.75);
+            padding: 1px 5px;
+            border-radius: 8px;
+        }
+
+        .lastfm-tracks-list {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .lastfm-track-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            padding: 7px 12px;
+            background: rgba(5, 10, 20, 0.45);
+            border-radius: 8px;
+            border: 1px solid rgba(165, 200, 255, 0.1);
+            font-size: 0.84rem;
+            transition: background 0.15s ease, border-color 0.15s ease;
+        }
+
+        .lastfm-track-row:hover {
+            background: rgba(25, 70, 133, 0.3);
+            border-color: rgba(165, 200, 255, 0.3);
+        }
+
+        .lastfm-track-rank {
+            font-weight: 700;
+            color: #A5C8FF;
+            min-width: 18px;
+        }
+
+        .lastfm-track-name {
+            flex: 1;
+            font-weight: 500;
+            color: #E1E8F0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .lastfm-track-meta {
+            font-size: 0.74rem;
+            color: rgba(225, 232, 240, 0.5);
+            white-space: nowrap;
+        }
+
+        .lastfm-quick-load-btn {
+            background: linear-gradient(135deg, #194685, #2563EB);
+            color: #FFFFFF;
+            border: none;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            white-space: nowrap;
+        }
+
+        .lastfm-quick-load-btn:hover {
+            background: linear-gradient(135deg, #2563EB, #4285F4);
+            transform: scale(1.04);
+        }
+
+        /* Artist Info Modal */
+        .artist-modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 9999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(3, 7, 18, 0.75);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+
+        .artist-modal {
+            position: relative;
+            width: min(560px, 94vw);
+            max-height: 85vh;
+            overflow-y: auto;
+            background: rgba(11, 30, 63, 0.95);
+            border: 1px solid rgba(165, 200, 255, 0.35);
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.7);
+            animation: modal-pop-in 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+        }
     </style>
 </head>
 <body>
@@ -1849,6 +2136,21 @@ PAGE_HTML = r'''<!DOCTYPE html>
             <div class="analysis-loading-notice">
                 <span class="notice-lock-icon">🔒</span>
                 <span>Please keep this page open. Leaving or navigating away will cancel the analysis.</span>
+            </div>
+        </div>
+    </div>
+    <!-- Artist Info Modal -->
+    <div id="artist-modal-overlay" class="artist-modal-overlay" style="display: none;" onclick="closeArtistModalOnBackdrop(event)">
+        <div class="artist-modal" role="dialog" aria-modal="true" aria-labelledby="artist-modal-title">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 16px; border-bottom: 1px solid rgba(165, 200, 255, 0.15); padding-bottom: 12px;">
+                <div>
+                    <h2 id="artist-modal-title" style="margin: 0; font-family: 'Montserrat', sans-serif; font-size: 1.35rem; color: #E1E8F0;">Artist Intelligence</h2>
+                    <div id="artist-modal-subtitle" style="font-size: 0.85rem; color: #A5C8FF; margin-top: 4px;">Last.fm Top Tags &amp; Catalog</div>
+                </div>
+                <button type="button" onclick="closeArtistModal()" style="background: transparent; border: none; color: #A5C8FF; font-size: 1.6rem; cursor: pointer; line-height: 1; padding: 4px;" aria-label="Close modal">&times;</button>
+            </div>
+            <div id="artist-modal-content">
+                <div style="text-align: center; color: #A5C8FF; padding: 30px;">Loading artist data...</div>
             </div>
         </div>
     </div>
@@ -1881,17 +2183,20 @@ PAGE_HTML = r'''<!DOCTYPE html>
 
                 <div id="band-history-group" style="{band_select_display} margin-bottom: 14px;">
                     <label for="band_select" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                        <span>Previous Bands</span>
+                        <span>Previously Searched Artists &amp; Bands</span>
                         <span style="font-size: 0.72rem; color: #A5C8FF; background: rgba(165, 200, 255, 0.15); padding: 2px 8px; border-radius: 10px; font-weight: 400;">{band_count_text}</span>
                     </label>
                     <select id="band_select" onchange="onBandSelected(this.value)">
-                        <option value="">-- Select a previous band --</option>
+                        <option value="">-- Select a previously searched artist --</option>
                         {band_options}
                     </select>
                 </div>
 
-                <label for="artist">Artist Name</label>
-                <input type="text" id="artist" name="artist" placeholder="e.g. Adele" value="{artist_value}" list="bands-datalist" autocomplete="off" required onchange="fetchBandSongs(this.value)">
+                <label for="artist" style="display: flex; justify-content: space-between; align-items: center;">
+                    <span>Artist Name</span>
+                    <button type="button" id="btn-artist-profile" class="pill-btn secondary" style="font-size: 0.72rem; padding: 2px 8px; {artist_info_btn_display}" onclick="openArtistModal(document.getElementById('artist').value)">👤 Artist Profile</button>
+                </label>
+                <input type="text" id="artist" name="artist" placeholder="e.g. Adele" value="{artist_value}" list="bands-datalist" autocomplete="off" required oninput="onArtistInput(this.value)" onchange="onArtistChange(this.value)">
                 <datalist id="bands-datalist">
                     {band_datalist_options}
                 </datalist>
@@ -1950,6 +2255,8 @@ PAGE_HTML = r'''<!DOCTYPE html>
                 </div>
             </div>
             
+            {lastfm_widget}
+
             <div class="analysis-form" style="{analysis_form_display}">
                 <form id="analyze-form" method="post" action="/analyze" onsubmit="return startAnalysisSubmit(event);">
                     <input type="hidden" name="artist" value="{artist_value}">
@@ -2270,19 +2577,145 @@ PAGE_HTML = r'''<!DOCTYPE html>
             if (controls) controls.style.display = 'none';
         }
 
+        function quickLoadTrack(artist, track) {
+            const artistInput = document.getElementById('artist');
+            const songInput = document.getElementById('song');
+            if (artistInput && songInput) {
+                artistInput.value = artist;
+                songInput.value = track;
+                switchWorkspaceTab('search');
+                const form = document.getElementById('search-form');
+                if (form) form.submit();
+            }
+        }
+
+        function openArtistModal(artistName) {
+            if (!artistName || !artistName.trim()) return;
+            const overlay = document.getElementById('artist-modal-overlay');
+            const title = document.getElementById('artist-modal-title');
+            const content = document.getElementById('artist-modal-content');
+            if (!overlay || !content) return;
+            if (title) title.textContent = artistName;
+            overlay.style.display = 'flex';
+            content.innerHTML = '<div style="text-align: center; color: #A5C8FF; padding: 30px;">Fetching Last.fm intelligence...</div>';
+
+            fetch('/api/lastfm/artist?artist=' + encodeURIComponent(artistName))
+                .then(r => r.json())
+                .then(data => {
+                    let html = '';
+                    if (data.tags && data.tags.length > 0) {
+                        html += '<div style="margin-bottom: 16px;">';
+                        html += '<div style="font-size: 0.76rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #C5B8FF; margin-bottom: 8px;">Top Genres &amp; Tags</div>';
+                        html += '<div class="lastfm-tag-cloud">';
+                        data.tags.forEach(t => {
+                            const tagUrl = t.url || ('https://www.last.fm/tag/' + encodeURIComponent(t.name));
+                            html += `<a href="${escapeHtml(tagUrl)}" target="_blank" class="lastfm-tag-chip artist-tag">#${escapeHtml(t.name)}</a> `;
+                        });
+                        html += '</div></div>';
+                    }
+
+                    if (data.top_tracks && data.top_tracks.length > 0) {
+                        html += '<div>';
+                        html += '<div style="font-size: 0.76rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #A5C8FF; margin-bottom: 8px;">Top Tracks</div>';
+                        html += '<div class="lastfm-tracks-list">';
+                        data.top_tracks.forEach(t => {
+                            const rank = t.rank || '';
+                            const playText = t.listeners ? (Number(t.listeners).toLocaleString() + ' listeners') : (t.playcount ? Number(t.playcount).toLocaleString() + ' plays' : '');
+                            html += `
+                                <div class="lastfm-track-row">
+                                    <span class="lastfm-track-rank">${rank}</span>
+                                    <span class="lastfm-track-name" title="${escapeHtml(t.name)}">${escapeHtml(t.name)}</span>
+                                    <span class="lastfm-track-meta">${playText}</span>
+                                    <button type="button" class="lastfm-quick-load-btn" onclick="quickLoadTrack('${escapeHtml(artistName)}', '${escapeHtml(t.name)}')">⚡ Analyze</button>
+                                </div>
+                            `;
+                        });
+                        html += '</div></div>';
+                    } else if (!data.has_key) {
+                        html += '<div style="color: #A5C8FF; font-size: 0.88rem; padding: 10px 0; line-height: 1.5;">Set <code>LASTFM_API_KEY</code> in <code>calling_hours_secrets.py</code> to browse Last.fm artist info.<br><a href="https://www.last.fm/api/account/create" target="_blank" style="color: #C4DFFF; text-decoration: underline; margin-top: 6px; display: inline-block;">Get a free API key &rarr;</a></div>';
+                    } else {
+                        html += '<div style="color: rgba(225, 232, 240, 0.6); font-style: italic; padding: 20px; text-align: center;">No Last.fm metadata found for this artist.</div>';
+                    }
+                    content.innerHTML = html;
+                })
+                .catch(err => {
+                    content.innerHTML = '<div style="color: #ff6e6e; padding: 20px;">Failed to load artist details: ' + escapeHtml(err.message) + '</div>';
+                });
+        }
+
+        function closeArtistModal() {
+            const overlay = document.getElementById('artist-modal-overlay');
+            if (overlay) overlay.style.display = 'none';
+        }
+
+        function closeArtistModalOnBackdrop(e) {
+            if (e.target && e.target.id === 'artist-modal-overlay') {
+                closeArtistModal();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                closeArtistModal();
+            }
+        });
+
         // Previous Bands & Songs handling
         function onBandSelected(band) {
             const artistInput = document.getElementById('artist');
-            if (artistInput && band) {
-                artistInput.value = band;
+            const songInput = document.getElementById('song');
+            const artistBtn = document.getElementById('btn-artist-profile');
+            if (artistInput) {
+                const prev = artistInput.value.trim().toLowerCase();
+                artistInput.value = band || '';
+                if (songInput && band && band.trim().toLowerCase() !== prev) {
+                    songInput.value = '';
+                }
+            }
+            if (artistBtn) {
+                artistBtn.style.display = (band && band.trim().length > 0) ? 'inline-block' : 'none';
             }
             fetchBandSongs(band);
+        }
+
+        let artistInputTimeout = null;
+        function onArtistInput(val) {
+            const bandSelect = document.getElementById('band_select');
+            const artistBtn = document.getElementById('btn-artist-profile');
+            const trimmed = (val || '').trim().toLowerCase();
+            if (artistBtn) {
+                artistBtn.style.display = (trimmed.length > 0) ? 'inline-block' : 'none';
+            }
+            if (bandSelect) {
+                let matched = false;
+                for (let i = 0; i < bandSelect.options.length; i++) {
+                    if (bandSelect.options[i].value && bandSelect.options[i].value.toLowerCase() === trimmed) {
+                        bandSelect.selectedIndex = i;
+                        matched = true;
+                        break;
+                    }
+                }
+                if (!matched) {
+                    bandSelect.selectedIndex = 0;
+                }
+            }
+
+            clearTimeout(artistInputTimeout);
+            artistInputTimeout = setTimeout(() => {
+                fetchBandSongs(val);
+            }, 250);
+        }
+
+        function onArtistChange(val) {
+            clearTimeout(artistInputTimeout);
+            fetchBandSongs(val);
         }
 
         function fetchBandSongs(band) {
             const songsGroup = document.getElementById('band-songs-group');
             const songSelect = document.getElementById('band_song_select');
             const quickLoadBtn = document.getElementById('btn-quick-load');
+            const currentSongInput = document.getElementById('song');
             if (!songsGroup || !songSelect) return;
 
             if (!band || !band.trim()) {
@@ -2296,6 +2729,8 @@ PAGE_HTML = r'''<!DOCTYPE html>
                 .then(data => {
                     if (data.songs && data.songs.length > 0) {
                         songSelect.innerHTML = '<option value="">-- Or pick a previous song (' + data.songs.length + ') --</option>';
+                        const currentSongVal = (currentSongInput ? currentSongInput.value.trim().toLowerCase() : '');
+                        let foundMatch = false;
                         data.songs.forEach(s => {
                             const opt = document.createElement('option');
                             opt.value = s.id;
@@ -2307,9 +2742,16 @@ PAGE_HTML = r'''<!DOCTYPE html>
                             }
                             opt.textContent = label;
                             opt.dataset.song = s.song;
+                            if (currentSongVal && s.song.trim().toLowerCase() === currentSongVal) {
+                                opt.selected = true;
+                                foundMatch = true;
+                            }
                             songSelect.appendChild(opt);
                         });
                         songsGroup.style.display = 'block';
+                        if (quickLoadBtn) {
+                            quickLoadBtn.style.display = foundMatch ? 'inline-block' : 'none';
+                        }
                     } else {
                         songsGroup.style.display = 'none';
                         if (quickLoadBtn) quickLoadBtn.style.display = 'none';
@@ -2511,6 +2953,16 @@ PAGE_HTML = r'''<!DOCTYPE html>
         document.addEventListener('DOMContentLoaded', () => {
             const artistInput = document.getElementById('artist');
             if (artistInput && artistInput.value.trim()) {
+                const bandSelect = document.getElementById('band_select');
+                if (bandSelect) {
+                    const trimmed = artistInput.value.trim().toLowerCase();
+                    for (let i = 0; i < bandSelect.options.length; i++) {
+                        if (bandSelect.options[i].value && bandSelect.options[i].value.toLowerCase() === trimmed) {
+                            bandSelect.selectedIndex = i;
+                            break;
+                        }
+                    }
+                }
                 fetchBandSongs(artistInput.value.trim());
             }
 
@@ -2576,6 +3028,21 @@ PROMPTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
 HISTORY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
     <div class="stars"></div>
     <div class="horizon"></div>
+    <!-- Artist Info Modal -->
+    <div id="artist-modal-overlay" class="artist-modal-overlay" style="display: none;" onclick="closeArtistModalOnBackdrop(event)">
+        <div class="artist-modal" role="dialog" aria-modal="true" aria-labelledby="artist-modal-title">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 16px; border-bottom: 1px solid rgba(165, 200, 255, 0.15); padding-bottom: 12px;">
+                <div>
+                    <h2 id="artist-modal-title" style="margin: 0; font-family: 'Montserrat', sans-serif; font-size: 1.35rem; color: #E1E8F0;">Artist Intelligence</h2>
+                    <div id="artist-modal-subtitle" style="font-size: 0.85rem; color: #A5C8FF; margin-top: 4px;">Last.fm Top Tags &amp; Catalog</div>
+                </div>
+                <button type="button" onclick="closeArtistModal()" style="background: transparent; border: none; color: #A5C8FF; font-size: 1.6rem; cursor: pointer; line-height: 1; padding: 4px;" aria-label="Close modal">&times;</button>
+            </div>
+            <div id="artist-modal-content">
+                <div style="text-align: center; color: #A5C8FF; padding: 30px;">Loading artist data...</div>
+            </div>
+        </div>
+    </div>
     {app_header}
     <div class="container" style="flex-direction: column; width: min(880px, 95vw);">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 12px;">
@@ -2583,8 +3050,28 @@ HISTORY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             <a href="/" style="color:#A5C8FF; text-decoration:none; font-size: 1rem; border-bottom: 1px dotted #A5C8FF;">&larr; Back to Song</a>
         </div>
 
-        <div style="margin-bottom: 24px;">
-            <input type="text" id="history-filter" placeholder="Filter history by artist or song title..." oninput="filterHistory(this.value)">
+        <div style="margin-bottom: 16px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">
+            <div style="flex: 1; min-width: 260px;">
+                <input type="text" id="history-filter" placeholder="Filter history by artist or song title..." oninput="filterHistory(this.value)">
+            </div>
+            <div style="min-width: 220px;">
+                <select id="history-artist-filter" onchange="filterByArtist(this.value)" style="width: 100%; padding: 12px 14px; background: rgba(11, 30, 63, 0.7); border: 1px solid rgba(165, 200, 255, 0.3); border-radius: 8px; color: #E1E8F0; font-size: 0.95rem;">
+                    <option value="">All Artists ({total_artists_count})</option>
+                    {artist_filter_options}
+                </select>
+            </div>
+        </div>
+
+        <div id="history-artist-chips" style="{artist_chips_display} margin-bottom: 22px;">
+            <div style="font-size: 0.76rem; text-transform: uppercase; letter-spacing: 0.07em; color: #A5C8FF; margin-bottom: 8px; font-weight: 600;">
+                Previously Searched Artists
+            </div>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+                <button type="button" class="artist-chip" id="chip-all" onclick="filterByArtist('')" style="{all_chip_active_style} border: 1px solid; padding: 5px 12px; border-radius: 20px; font-size: 0.82rem; cursor: pointer; transition: all 0.2s ease;">
+                    All ({total_songs_count})
+                </button>
+                {artist_chips_html}
+            </div>
         </div>
 
         <div id="history-list" style="display: flex; flex-direction: column; gap: 14px;">
@@ -2593,21 +3080,153 @@ HISTORY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
     </div>
 
     <script>
+        let activeArtistFilter = '{initial_artist_filter}';
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        function quickLoadTrack(artist, track) {
+            window.location.href = '/?artist=' + encodeURIComponent(artist) + '&song=' + encodeURIComponent(track);
+        }
+
+        function openArtistModal(artistName) {
+            if (!artistName || !artistName.trim()) return;
+            const overlay = document.getElementById('artist-modal-overlay');
+            const title = document.getElementById('artist-modal-title');
+            const content = document.getElementById('artist-modal-content');
+            if (!overlay || !content) return;
+            if (title) title.textContent = artistName;
+            overlay.style.display = 'flex';
+            content.innerHTML = '<div style="text-align: center; color: #A5C8FF; padding: 30px;">Fetching Last.fm intelligence...</div>';
+
+            fetch('/api/lastfm/artist?artist=' + encodeURIComponent(artistName))
+                .then(r => r.json())
+                .then(data => {
+                    let html = '';
+                    if (data.tags && data.tags.length > 0) {
+                        html += '<div style="margin-bottom: 16px;">';
+                        html += '<div style="font-size: 0.76rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #C5B8FF; margin-bottom: 8px;">Top Genres &amp; Tags</div>';
+                        html += '<div class="lastfm-tag-cloud">';
+                        data.tags.forEach(t => {
+                            const tagUrl = t.url || ('https://www.last.fm/tag/' + encodeURIComponent(t.name));
+                            html += `<a href="${escapeHtml(tagUrl)}" target="_blank" class="lastfm-tag-chip artist-tag">#${escapeHtml(t.name)}</a> `;
+                        });
+                        html += '</div></div>';
+                    }
+
+                    if (data.top_tracks && data.top_tracks.length > 0) {
+                        html += '<div>';
+                        html += '<div style="font-size: 0.76rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #A5C8FF; margin-bottom: 8px;">Top Tracks</div>';
+                        html += '<div class="lastfm-tracks-list">';
+                        data.top_tracks.forEach(t => {
+                            const rank = t.rank || '';
+                            const playText = t.listeners ? (Number(t.listeners).toLocaleString() + ' listeners') : (t.playcount ? Number(t.playcount).toLocaleString() + ' plays' : '');
+                            html += `
+                                <div class="lastfm-track-row">
+                                    <span class="lastfm-track-rank">${rank}</span>
+                                    <span class="lastfm-track-name" title="${escapeHtml(t.name)}">${escapeHtml(t.name)}</span>
+                                    <span class="lastfm-track-meta">${playText}</span>
+                                    <button type="button" class="lastfm-quick-load-btn" onclick="quickLoadTrack('${escapeHtml(artistName)}', '${escapeHtml(t.name)}')">⚡ Load</button>
+                                </div>
+                            `;
+                        });
+                        html += '</div></div>';
+                    } else if (!data.has_key) {
+                        html += '<div style="color: #A5C8FF; font-size: 0.88rem; padding: 10px 0; line-height: 1.5;">Set <code>LASTFM_API_KEY</code> in <code>calling_hours_secrets.py</code> to browse Last.fm artist info.<br><a href="https://www.last.fm/api/account/create" target="_blank" style="color: #C4DFFF; text-decoration: underline; margin-top: 6px; display: inline-block;">Get a free API key &rarr;</a></div>';
+                    } else {
+                        html += '<div style="color: rgba(225, 232, 240, 0.6); font-style: italic; padding: 20px; text-align: center;">No Last.fm metadata found for this artist.</div>';
+                    }
+                    content.innerHTML = html;
+                })
+                .catch(err => {
+                    content.innerHTML = '<div style="color: #ff6e6e; padding: 20px;">Failed to load artist details: ' + escapeHtml(err.message) + '</div>';
+                });
+        }
+
+        function closeArtistModal() {
+            const overlay = document.getElementById('artist-modal-overlay');
+            if (overlay) overlay.style.display = 'none';
+        }
+
+        function closeArtistModalOnBackdrop(e) {
+            if (e.target && e.target.id === 'artist-modal-overlay') {
+                closeArtistModal();
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                closeArtistModal();
+            }
+        });
+
+        function filterByArtist(artist) {
+            activeArtistFilter = (artist || '').trim().toLowerCase();
+            const selectEl = document.getElementById('history-artist-filter');
+            if (selectEl) {
+                let found = false;
+                for (let i = 0; i < selectEl.options.length; i++) {
+                    if (selectEl.options[i].value && selectEl.options[i].value.toLowerCase() === activeArtistFilter) {
+                        selectEl.selectedIndex = i;
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) selectEl.selectedIndex = 0;
+            }
+
+            const chips = document.querySelectorAll('.artist-chip');
+            chips.forEach(chip => {
+                const chipArtist = (chip.dataset.artist || '').toLowerCase();
+                if ((!activeArtistFilter && chip.id === 'chip-all') || (activeArtistFilter && chipArtist === activeArtistFilter)) {
+                    chip.style.background = 'rgba(165, 200, 255, 0.35)';
+                    chip.style.borderColor = '#A5C8FF';
+                    chip.style.color = '#FFFFFF';
+                } else {
+                    chip.style.background = 'rgba(11, 30, 63, 0.6)';
+                    chip.style.borderColor = 'rgba(165, 200, 255, 0.2)';
+                    chip.style.color = '#A5C8FF';
+                }
+            });
+
+            applyCombinedFilter();
+        }
+
         function filterHistory(query) {
-            const q = (query || '').toLowerCase().trim();
+            applyCombinedFilter();
+        }
+
+        function applyCombinedFilter() {
+            const query = (document.getElementById('history-filter')?.value || '').toLowerCase().trim();
             const cards = document.querySelectorAll('.history-card');
             let visible = 0;
             cards.forEach(card => {
-                const text = card.textContent.toLowerCase();
-                const match = text.includes(q);
-                card.style.display = match ? 'flex' : 'none';
-                if (match) visible++;
+                const cardArtist = (card.dataset.artist || '').toLowerCase();
+                const cardText = card.textContent.toLowerCase();
+                const matchesArtist = !activeArtistFilter || cardArtist === activeArtistFilter;
+                const matchesQuery = !query || cardText.includes(query);
+                const show = matchesArtist && matchesQuery;
+                card.style.display = show ? 'flex' : 'none';
+                if (show) visible++;
             });
             const noMatchEl = document.getElementById('history-no-matches');
             if (noMatchEl) {
                 noMatchEl.style.display = (visible === 0 && cards.length > 0) ? 'block' : 'none';
             }
         }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            if (activeArtistFilter) {
+                filterByArtist(activeArtistFilter);
+            }
+        });
     </script>
 </body>
 </html>'''
@@ -3186,7 +3805,9 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             return
 
         if parsed.path == '/history':
-            self.render_history_page()
+            params = urllib.parse.parse_qs(parsed.query)
+            selected_artist = params.get('artist', [''])[0].strip()
+            self.render_history_page(selected_artist=selected_artist)
             return
 
         if parsed.path == '/history/delete':
@@ -3227,22 +3848,64 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(json.dumps({'search': record}).encode('utf-8'))
             return
 
+        if parsed.path == '/api/lastfm/track-tags':
+            params = urllib.parse.parse_qs(parsed.query)
+            artist = params.get('artist', [''])[0].strip()
+            song = params.get('song', [''])[0].strip()
+            refresh = params.get('refresh', ['0'])[0] == '1'
+            tags = lastfm.get_or_fetch_track_tags(artist, song, api_key=LASTFM_API_KEY, force_refresh=refresh) if (artist and song) else []
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(json.dumps({'tags': tags, 'has_key': bool(LASTFM_API_KEY)}).encode('utf-8'))
+            return
+
+        if parsed.path == '/api/lastfm/artist':
+            params = urllib.parse.parse_qs(parsed.query)
+            artist = params.get('artist', [''])[0].strip()
+            refresh = params.get('refresh', ['0'])[0] == '1'
+            metadata = lastfm.get_or_fetch_artist_metadata(artist, api_key=LASTFM_API_KEY, force_refresh=refresh) if artist else {'artist': '', 'tags': [], 'top_tracks': []}
+            metadata['has_key'] = bool(LASTFM_API_KEY)
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(json.dumps(metadata).encode('utf-8'))
+            return
+
         if parsed.path not in ('/', '/load'):
             self.send_error(404, 'Not Found')
             return
 
         params = urllib.parse.parse_qs(parsed.query)
         load_id = params.get('id', [''])[0].strip()
+        artist_param = params.get('artist', [''])[0].strip()
+        song_param = params.get('song', [''])[0].strip()
         if load_id.isdigit():
             rec = database.get_search_by_id(int(load_id))
             if rec:
                 artist = rec['artist']
                 song = rec['song']
+                try:
+                    database.touch_search(artist, song)
+                except Exception as e:
+                    print(f"Touch search error: {e}")
                 lyrics = rec['lyrics'] or ''
                 analysis = rec['analysis'] or ''
                 source = rec['source'] or 'Database'
                 model_name = rec['model_name'] or DEFAULT_GEMINI_MODEL
                 song_url = rec.get('song_url')
+                track_tags = rec.get('track_tags') or []
+                if not track_tags and LASTFM_API_KEY:
+                    try:
+                        track_tags = lastfm.get_or_fetch_track_tags(artist, song, api_key=LASTFM_API_KEY)
+                    except Exception as lfe:
+                        print(f"Last.fm track tags load error: {lfe}")
+                artist_metadata = None
+                try:
+                    artist_metadata = lastfm.get_or_fetch_artist_metadata(artist, api_key=LASTFM_API_KEY)
+                except Exception as lfe:
+                    print(f"Last.fm artist metadata load error: {lfe}")
+
                 genius_link = f' <a href="{html_escape(song_url)}" target="_blank" style="color:#A8D2FF; text-decoration:underline;">View on Genius</a>' if song_url else ''
                 has_analysis_msg = ' with saved analysis' if analysis else ''
                 message = (
@@ -3258,7 +3921,69 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                     song_value=html_escape(song),
                     analysis_result=analysis,
                     selected_model=model_name,
-                    show_editor=bool(lyrics or analysis)
+                    show_editor=bool(lyrics or analysis),
+                    track_tags=track_tags,
+                    artist_metadata=artist_metadata
+                )
+                return
+        elif artist_param and song_param:
+            rec = database.get_search(artist_param, song_param)
+            if rec:
+                artist = rec['artist']
+                song = rec['song']
+                try:
+                    database.touch_search(artist, song)
+                except Exception as e:
+                    print(f"Touch search error: {e}")
+                lyrics = rec['lyrics'] or ''
+                analysis = rec['analysis'] or ''
+                source = rec['source'] or 'Database'
+                model_name = rec['model_name'] or DEFAULT_GEMINI_MODEL
+                song_url = rec.get('song_url')
+                track_tags = rec.get('track_tags') or []
+                if not track_tags and LASTFM_API_KEY:
+                    try:
+                        track_tags = lastfm.get_or_fetch_track_tags(artist, song, api_key=LASTFM_API_KEY)
+                    except Exception as lfe:
+                        print(f"Last.fm track tags load error: {lfe}")
+                artist_metadata = None
+                try:
+                    artist_metadata = lastfm.get_or_fetch_artist_metadata(artist, api_key=LASTFM_API_KEY)
+                except Exception as lfe:
+                    print(f"Last.fm artist metadata load error: {lfe}")
+
+                genius_link = f' <a href="{html_escape(song_url)}" target="_blank" style="color:#A8D2FF; text-decoration:underline;">View on Genius</a>' if song_url else ''
+                has_analysis_msg = ' with saved analysis' if analysis else ''
+                message = (
+                    f'<div class="message">'
+                    f'Loaded saved search for <strong>{html_escape(artist)}</strong> - <strong>{html_escape(song)}</strong> from database{has_analysis_msg}.'
+                    f'{genius_link}'
+                    f'</div>'
+                )
+                self.render_page(
+                    message=message,
+                    lyrics_text=lyrics,
+                    artist_value=html_escape(artist),
+                    song_value=html_escape(song),
+                    analysis_result=analysis,
+                    selected_model=model_name,
+                    show_editor=bool(lyrics or analysis),
+                    track_tags=track_tags,
+                    artist_metadata=artist_metadata
+                )
+                return
+            else:
+                artist_metadata = None
+                try:
+                    artist_metadata = lastfm.get_or_fetch_artist_metadata(artist_param, api_key=LASTFM_API_KEY)
+                except Exception as lfe:
+                    print(f"Last.fm artist metadata error: {lfe}")
+                self.render_page(
+                    message='',
+                    lyrics_text='',
+                    artist_value=html_escape(artist_param),
+                    song_value=html_escape(song_param),
+                    artist_metadata=artist_metadata
                 )
                 return
 
@@ -3405,6 +4130,10 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                         song_url = cached.get('song_url')
                         cached_analysis = cached.get('analysis') or ''
                         cached_model = cached.get('model_name') or DEFAULT_GEMINI_MODEL
+                        try:
+                            database.touch_search(artist, song)
+                        except Exception as e:
+                            print(f"Touch search error: {e}")
 
                 if not lyrics:
                     # 1. Attempt Genius song search if credentials or access token are present
@@ -3440,17 +4169,38 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                         except Exception as e:
                             print(f"LRCLIB fallback error: {e}")
 
-                    # 4. Save search result into SQLite database
+                    track_tags = []
+                    artist_metadata = None
                     try:
-                        database.save_search(
-                            artist=artist,
-                            song=song,
-                            lyrics=lyrics,
-                            source=source if lyrics else None,
-                            song_url=song_url
-                        )
-                    except Exception as e:
-                        print(f"Database save error: {e}")
+                        track_tags = lastfm.get_or_fetch_track_tags(artist, song, api_key=LASTFM_API_KEY, force_refresh=force_refresh)
+                    except Exception as lfe:
+                        print(f"Last.fm track tags error on submit: {lfe}")
+                    try:
+                        artist_metadata = lastfm.get_or_fetch_artist_metadata(artist, api_key=LASTFM_API_KEY, force_refresh=force_refresh)
+                    except Exception as lfe:
+                        print(f"Last.fm artist metadata error on submit: {lfe}")
+
+                    # 4. Save search result into database only if lyrics were found
+                    if lyrics:
+                        try:
+                            database.save_search(
+                                artist=artist,
+                                song=song,
+                                lyrics=lyrics,
+                                source=source,
+                                song_url=song_url,
+                                track_tags=track_tags
+                            )
+                        except Exception as e:
+                            print(f"Database save error: {e}")
+                else:
+                    track_tags = []
+                    artist_metadata = None
+                    if artist:
+                        try:
+                            artist_metadata = lastfm.get_or_fetch_artist_metadata(artist, api_key=LASTFM_API_KEY, force_refresh=force_refresh)
+                        except Exception as lfe:
+                            print(f"Last.fm artist metadata error on submit: {lfe}")
 
                 refresh_link = ' <a href="#" onclick="forceRefreshSearch(); return false;" style="color:#A8D2FF; text-decoration:underline; font-size:0.85em; margin-left:8px;">[Re-fetch fresh]</a>'
                 if lyrics:
@@ -3483,7 +4233,9 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 song_value=html_escape(song),
                 analysis_result=cached_analysis,
                 selected_model=cached_model,
-                show_editor=show_editor
+                show_editor=show_editor,
+                track_tags=track_tags,
+                artist_metadata=artist_metadata
             )
             
         elif self.path == '/analyze':
@@ -3496,6 +4248,18 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 model_name = DEFAULT_GEMINI_MODEL
             analysis_result = ''
             
+            track_tags = []
+            artist_metadata = None
+            if artist and song:
+                try:
+                    track_tags = lastfm.get_or_fetch_track_tags(artist, song, api_key=LASTFM_API_KEY)
+                except Exception as lfe:
+                    print(f"Last.fm track tags error on analyze: {lfe}")
+                try:
+                    artist_metadata = lastfm.get_or_fetch_artist_metadata(artist, api_key=LASTFM_API_KEY)
+                except Exception as lfe:
+                    print(f"Last.fm artist metadata error on analyze: {lfe}")
+
             prompt_idx = 0
             try:
                 prompt_idx = int(prompt_idx_str)
@@ -3534,7 +4298,9 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                             song=song,
                             analysis=analysis_result,
                             model_name=model_name,
-                            prompt_name=prompt_name
+                            prompt_name=prompt_name,
+                            lyrics=lyrics_text,
+                            track_tags=track_tags
                         )
                     except Exception as e:
                         print(f"Error saving analysis to database: {e}")
@@ -3550,7 +4316,9 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 analysis_result=analysis_result,
                 selected_model=model_name,
                 selected_prompt=prompt_idx,
-                show_editor=True
+                show_editor=True,
+                track_tags=track_tags,
+                artist_metadata=artist_metadata
             )
 
     def handle_authorize(self):
@@ -3598,13 +4366,33 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
 
         self.render_page(message=message, lyrics_text='')
 
-    def render_page(self, message: str, lyrics_text: str, artist_value: str = '', song_value: str = '', analysis_result: str = '', selected_model: str = DEFAULT_GEMINI_MODEL, selected_prompt: int = 0, show_editor: bool = False):
+    def render_page(self, message: str, lyrics_text: str, artist_value: str = '', song_value: str = '', analysis_result: str = '', selected_model: str = DEFAULT_GEMINI_MODEL, selected_prompt: int = 0, show_editor: bool = False, track_tags: Optional[List[Dict[str, Any]]] = None, artist_metadata: Optional[Dict[str, Any]] = None):
         show_sections = bool(lyrics_text or show_editor)
         lyrics_display = '' if show_sections else 'display: none;'
         analysis_display = '' if show_sections else 'display: none;'
         analysis_form_display = 'display: none;' if analysis_result else ''
         analysis_result_display = 'display: none;' if not analysis_result else ''
         analysis_controls_display = 'display: flex;' if analysis_result else 'display: none;'
+
+        if artist_value and song_value and track_tags is None:
+            try:
+                track_tags = lastfm.get_or_fetch_track_tags(artist_value, song_value, api_key=LASTFM_API_KEY)
+            except Exception:
+                track_tags = []
+        if artist_value and artist_metadata is None:
+            try:
+                artist_metadata = lastfm.get_or_fetch_artist_metadata(artist_value, api_key=LASTFM_API_KEY)
+            except Exception:
+                artist_metadata = None
+
+        lastfm_widget = build_lastfm_widget(
+            artist=artist_value,
+            song=song_value,
+            track_tags=track_tags,
+            artist_metadata=artist_metadata,
+            has_api_key=bool(LASTFM_API_KEY)
+        )
+        artist_info_btn_display = '' if artist_value else 'display: none;'
         
         model_options = ''
         for m in AVAILABLE_GEMINI_MODELS:
@@ -3648,15 +4436,17 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                            .replace('{analysis_result_display}', analysis_result_display)\
                            .replace('{analysis_controls_display}', analysis_controls_display)\
                            .replace('{analysis_result}', html_escape(analysis_result))\
+                           .replace('{lastfm_widget}', lastfm_widget)\
+                           .replace('{artist_info_btn_display}', artist_info_btn_display)\
                            .replace('{model_options}', model_options)\
                            .replace('{prompt_options}', prompt_options)\
                            .replace('{band_options}', band_options)\
                            .replace('{band_datalist_options}', band_datalist_options)\
                            .replace('{band_select_display}', band_select_display)\
                            .replace('{band_count_text}', band_count_text)\
-                            .replace('{lyrics_badge_display}', lyrics_badge_display)\
-                            .replace('{analysis_badge_display}', analysis_badge_display)\
-                            .replace('{app_header}', build_app_header('song', user=self.get_current_user()))
+                           .replace('{lyrics_badge_display}', lyrics_badge_display)\
+                           .replace('{analysis_badge_display}', analysis_badge_display)\
+                           .replace('{app_header}', build_app_header('song', user=self.get_current_user()))
         self.send_response(200)
         self.send_header('Content-Type', 'text/html; charset=utf-8')
         self.send_header('Content-Length', str(len(content.encode('utf-8'))))
@@ -3690,8 +4480,27 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(content.encode('utf-8'))
 
-    def render_history_page(self):
+    def render_history_page(self, selected_artist: str = ''):
         searches = database.get_recent_searches(limit=200)
+        bands = database.get_distinct_bands()
+        total_songs_count = len(searches)
+        total_artists_count = len(bands)
+        artist_norm_target = selected_artist.strip().lower()
+
+        artist_filter_options = ''
+        artist_chips_html = ''
+        for b in bands:
+            b_artist = b['artist']
+            b_count = b['song_count']
+            songs_label = f"{b_count} song" if b_count == 1 else f"{b_count} songs"
+            sel = ' selected' if b_artist.lower() == artist_norm_target else ''
+            artist_filter_options += f'<option value="{html_escape(b_artist)}"{sel}>{html_escape(b_artist)} ({songs_label})</option>\n'
+            active_style = 'background: rgba(165, 200, 255, 0.35); border-color: #A5C8FF; color: #FFFFFF;' if b_artist.lower() == artist_norm_target else 'background: rgba(11, 30, 63, 0.6); border-color: rgba(165, 200, 255, 0.2); color: #A5C8FF;'
+            artist_chips_html += f'''<button type="button" class="artist-chip" data-artist="{html_escape(b_artist)}" onclick="filterByArtist('{html_escape(b_artist)}')" style="{active_style} border: 1px solid; padding: 5px 12px; border-radius: 20px; font-size: 0.82rem; cursor: pointer; transition: all 0.2s ease;">{html_escape(b_artist)} ({b_count})</button>\n'''
+
+        artist_chips_display = '' if bands else 'display: none;'
+        all_chip_active_style = 'background: rgba(165, 200, 255, 0.35); border-color: #A5C8FF; color: #FFFFFF;' if not artist_norm_target else 'background: rgba(11, 30, 63, 0.6); border-color: rgba(165, 200, 255, 0.2); color: #A5C8FF;'
+
         if not searches:
             history_list_html = '<p style="text-align: center; color: #A5C8FF; padding: 40px; font-style: italic;">No search history yet. Search for songs to build your collection!</p>'
         else:
@@ -3704,11 +4513,25 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 lyrics_badge = '<span style="color: #5af0a5; font-size: 0.78rem;">● Lyrics</span>' if s['has_lyrics'] else '<span style="color: #f08c5a; font-size: 0.78rem;">○ No lyrics</span>'
                 analysis_badge = '<span style="background: rgba(120, 90, 255, 0.3); color: #C5B8FF; padding: 2px 8px; border-radius: 6px; font-size: 0.78rem;">✦ Analyzed</span>' if s['has_analysis'] else ''
                 date_str = html_escape(s['updated_at'] or '')
+
+                tags_list = s.get('track_tags') or []
+                tags_chips_html = ''
+                if tags_list:
+                    chips = []
+                    for tag in tags_list[:3]:
+                        t_name = html_escape(tag.get('name', '')) if isinstance(tag, dict) else html_escape(str(tag))
+                        if t_name:
+                            chips.append(f'<span class="lastfm-tag-chip track-tag" style="font-size: 0.70rem; padding: 1px 7px;">#{t_name}</span>')
+                    if chips:
+                        tags_chips_html = '<div style="display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px;">' + ''.join(chips) + '</div>'
+
                 cards.append(f'''
-                <div class="history-card" style="background: rgba(11, 30, 63, 0.6); padding: 14px 18px; border-radius: 10px; border: 1px solid rgba(165, 200, 255, 0.15); display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;">
+                <div class="history-card" data-artist="{artist_esc}" style="background: rgba(11, 30, 63, 0.6); padding: 14px 18px; border-radius: 10px; border: 1px solid rgba(165, 200, 255, 0.15); display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;">
                     <div style="flex: 1; min-width: 220px;">
-                        <div style="font-size: 1.1rem; font-weight: 700; color: #E1E8F0;">
-                            {artist_esc} <span style="font-weight: 300; color: #A5C8FF;">&mdash;</span> {song_esc}
+                        <div style="font-size: 1.1rem; font-weight: 700; color: #E1E8F0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                            <a href="#" onclick="filterByArtist('{artist_esc}'); return false;" style="color: inherit; text-decoration: none; border-bottom: 1px dotted rgba(165, 200, 255, 0.4);" title="Filter history by {artist_esc}">{artist_esc}</a>
+                            <button type="button" class="pill-btn secondary" style="font-size: 0.68rem; padding: 1px 6px; line-height: 1.3;" onclick="openArtistModal('{artist_esc}')" title="View Last.fm info for {artist_esc}">👤 Info</button>
+                            <span style="font-weight: 300; color: #A5C8FF;">&mdash;</span> {song_esc}
                         </div>
                         <div style="display: flex; gap: 8px; align-items: center; margin-top: 6px; flex-wrap: wrap;">
                             {source_badge}
@@ -3716,6 +4539,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                             {analysis_badge}
                             <span style="font-size: 0.75rem; color: rgba(225, 232, 240, 0.45);">{date_str}</span>
                         </div>
+                        {tags_chips_html}
                     </div>
                     <div style="display: flex; gap: 8px; align-items: center;">
                         <a href="/?id={s['id']}" style="background: #194685; color: #fff; padding: 7px 14px; border-radius: 6px; text-decoration: none; font-size: 0.85rem; font-weight: 500;">Load Song</a>
@@ -3727,6 +4551,13 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             history_list_html = '\n'.join(cards)
 
         content = HISTORY_PAGE_HTML.replace('{history_list}', history_list_html)\
+                                   .replace('{artist_filter_options}', artist_filter_options)\
+                                   .replace('{artist_chips_html}', artist_chips_html)\
+                                   .replace('{artist_chips_display}', artist_chips_display)\
+                                   .replace('{all_chip_active_style}', all_chip_active_style)\
+                                   .replace('{total_songs_count}', str(total_songs_count))\
+                                   .replace('{total_artists_count}', str(total_artists_count))\
+                                   .replace('{initial_artist_filter}', html_escape(selected_artist))\
                                    .replace('{app_header}', build_app_header('history', user=self.get_current_user()))
         self.send_response(200)
         self.send_header('Content-Type', 'text/html; charset=utf-8')
@@ -3736,11 +4567,6 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
 
     def log_message(self, format, *args):
         return
-
-def html_escape(text: Any) -> str:
-    if text is None:
-        return ""
-    return html.escape(str(text))
 
 def build_genius_api_headers():
     headers = {

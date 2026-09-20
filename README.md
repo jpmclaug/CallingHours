@@ -8,7 +8,8 @@ Calling Hours is a web application that fetches song lyrics via the Genius API a
 - **Admin User Management**: A dedicated `/admin` control center for administrators to grant access to other Google accounts, manage roles (Administrator vs Standard User), activate/suspend accounts, or remove users, with built-in safeguards protecting the primary superadmin.
 - **Genius & Open Lyrics Search**: Search for songs by artist and title via Genius with seamless automatic fallback to the **LRCLIB** open database (resilient to Cloudflare 403 blocks on cloud hosts like Cloud Run).
 - **Neon Serverless PostgreSQL Persistence**: Automatically saves searches, retrieved lyrics, users, sessions, and Gemini analyses in **Neon PostgreSQL** so data persists permanently across devices, sessions, and cloud restarts (with graceful fallback to local SQLite when offline). Select from previously searched bands via dropdown or autocomplete, browse past tracks for any band, and instantly load saved results without network latency.
-- **Search History Dashboard**: Dedicated `/history` view to browse, filter, quick-load, and manage previously searched songs and analyses.
+- **Last.fm Music Intelligence**: Community-driven track genre tags and comprehensive artist profiles (top tags and top songs) via the Last.fm 2.0 API. Persisted in both Neon PostgreSQL and SQLite, displayed alongside Gemini literary analyses and accessible on-demand via the interactive **Artist Profile** drawer.
+- **Search History Dashboard**: Dedicated `/history` view to browse, filter, quick-load, and manage previously searched songs and analyses, complete with Last.fm tag chips and artist intelligence drawers.
 - **Editable & Custom Lyrics**: An editable lyrics workspace allowing users to review, edit, or paste lyrics manually if needed.
 - **Gemini-Powered Analysis**: Deep lyric analysis analyzing themes, narrative, emotional tone, and poetic devices.
 - **Newest Gemini Free-Tier Models**:
@@ -34,7 +35,7 @@ Calling Hours is a web application that fetches song lyrics via the Genius API a
    ```bash
    cp calling_hours_secrets.example.py calling_hours_secrets.py
    ```
-   Add your Genius client ID & secret (from [Genius API Clients](https://genius.com/api-clients)) and your Gemini API key (from [Google AI Studio](https://aistudio.google.com/)).
+   Add your Genius client ID & secret (from [Genius API Clients](https://genius.com/api-clients)), your Gemini API key (from [Google AI Studio](https://aistudio.google.com/)), and optionally your Last.fm API key (from [Last.fm API Account Creation](https://www.last.fm/api/account/create)).
 
 4. **Run the application**:
    ```bash
@@ -57,7 +58,7 @@ gcloud run deploy callinghours \
   --source . \
   --region us-central1 \
   --allow-unauthenticated \
-  --set-env-vars GEMINI_API_KEY="your_gemini_api_key",GENIUS_ACCESS_TOKEN="your_genius_access_token"
+  --set-env-vars GEMINI_API_KEY="your_gemini_api_key",GENIUS_ACCESS_TOKEN="your_genius_access_token",LASTFM_API_KEY="your_lastfm_api_key"
 ```
 
 > **Where to get `GENIUS_ACCESS_TOKEN`**: On your [Genius API Clients](https://genius.com/api-clients) dashboard, click **"Generate Access Token"**.
@@ -69,13 +70,13 @@ If your service is already deployed on Cloud Run, you can set the environment va
 ```bash
 gcloud run services update callinghours \
   --region us-central1 \
-  --set-env-vars GEMINI_API_KEY="your_gemini_api_key",GENIUS_ACCESS_TOKEN="your_genius_access_token"
+  --set-env-vars GEMINI_API_KEY="your_gemini_api_key",GENIUS_ACCESS_TOKEN="your_genius_access_token",LASTFM_API_KEY="your_lastfm_api_key"
 ```
 
 Or via Google Cloud Console:
 1. Go to **Cloud Run** &rarr; click your **`callinghours`** service.
 2. Click **Edit & Deploy New Revision**.
-3. Under the **Variables & Secrets** tab, add `GEMINI_API_KEY` and `GENIUS_ACCESS_TOKEN`.
+3. Under the **Variables & Secrets** tab, add `GEMINI_API_KEY`, `GENIUS_ACCESS_TOKEN`, and `LASTFM_API_KEY`.
 4. Click **Deploy**.
 
 ### 3. Environment Variables
@@ -87,6 +88,7 @@ Or via Google Cloud Console:
 | `GOOGLE_REDIRECT_URI` | Explicit Google OAuth callback URL (e.g. `https://your-service.run.app/auth/google/callback`) | Dynamically resolved |
 | `GENIUS_ACCESS_TOKEN` | Genius Client Access Token (from Genius dashboard) | **Yes** (avoids OAuth flow) |
 | `GEMINI_API_KEY` | Google Gemini API Key (from AI Studio) | **Yes** |
+| `LASTFM_API_KEY` | Last.fm API Key for song tags and artist catalog intelligence ([Get API Key](https://www.last.fm/api/account/create)) | Optional (Free) |
 | `GENIUS_CLIENT_ID` | Genius Client ID (only needed if using OAuth) | Optional |
 | `GENIUS_CLIENT_SECRET` | Genius Client Secret (only needed if using OAuth) | Optional |
 | `PORT` | Container listen port (injected by Cloud Run) | `8080` |

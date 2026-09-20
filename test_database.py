@@ -1,6 +1,7 @@
 import os
 import tempfile
 import unittest
+import time
 import database
 
 class TestDatabase(unittest.TestCase):
@@ -190,6 +191,117 @@ class TestDatabase(unittest.TestCase):
         database.delete_session(token, db_path=self.db_path)
         self.assertIsNone(database.get_session_user(token, db_path=self.db_path))
 
+    def test_save_analysis_persists_and_updates_lyrics(self):
+        # 1. Direct save analysis without prior search
+        database.save_analysis(
+            artist="Fugazi",
+            song="Waiting Room",
+            analysis="Themes of patience and anticipation.",
+            model_name="gemini-3.8-flash",
+            prompt_name="Default Analysis",
+            lyrics="1 2 3, I am a patient boy...",
+            db_path=self.db_path
+        )
+        rec = database.get_search("Fugazi", "Waiting Room", db_path=self.db_path)
+        self.assertIsNotNone(rec)
+        self.assertEqual(rec["lyrics"], "1 2 3, I am a patient boy...")
+        self.assertEqual(rec["source"], "Manual")
+        self.assertEqual(rec["analysis"], "Themes of patience and anticipation.")
+
+        # 2. Update existing search lyrics via save_analysis (user edited lyrics)
+        database.save_analysis(
+            artist="fugazi",
+            song="waiting room",
+            analysis="Updated analysis.",
+            model_name="gemini-3.8-flash",
+            prompt_name="Default Analysis",
+            lyrics="1 2 3, I am a patient boy, I wait I wait I wait...",
+            db_path=self.db_path
+        )
+        rec2 = database.get_search("Fugazi", "Waiting Room", db_path=self.db_path)
+        self.assertEqual(rec2["lyrics"], "1 2 3, I am a patient boy, I wait I wait I wait...")
+        self.assertEqual(rec2["analysis"], "Updated analysis.")
+
+    def test_touch_search(self):
+        rec_id1 = database.save_search("ArtistA", "SongA", lyrics="Lyrics A", db_path=self.db_path)
+        rec_id2 = database.save_search("ArtistB", "SongB", lyrics="Lyrics B", db_path=self.db_path)
+
+        # Initially ArtistB is top because it was saved second
+        recent = database.get_recent_searches(limit=2, db_path=self.db_path)
+        self.assertEqual(recent[0]["artist"], "ArtistB")
+
+        # Sleep briefly so updated_at strictly increments on systems with lower clock granularity
+        time.sleep(0.02)
+
+        # Touch ArtistA to simulate re-searching or loading from cache
+        database.touch_search("ArtistA", "SongA", db_path=self.db_path)
+
+        # ArtistA should now be at the top of recent searches and distinct bands
+        recent_after = database.get_recent_searches(limit=2, db_path=self.db_path)
+        self.assertEqual(recent_after[0]["artist"], "ArtistA")
+
+        bands = database.get_distinct_bands(db_path=self.db_path)
+        self.assertEqual(bands[0]["artist"], "ArtistA")
+
+    def test_distinct_bands_preserves_proper_casing(self):
+        # Even if artist is entered, verify proper capitalization is maintained
+        database.save_search("The National", "Fake Empire", lyrics="Stay down...", db_path=self.db_path)
+        database.save_search("the national", "Bloodbuzz Ohio", lyrics="Stand up...", db_path=self.db_path)
+
+        bands = database.get_distinct_bands(db_path=self.db_path)
+        national_band = next(b for b in bands if b["artist"].lower() == "the national")
+        self.assertEqual(national_band["song_count"], 2)
+
+    def test_artist_metadata_crud(self):
+        tags = [{"name": "post-punk", "count": 100, "url": "https://last.fm/tag/post-punk"}]
+        tracks = [{"name": "Song 1", "playcount": 5000, "listeners": 1200, "rank": 1, "url": ""}]
+        
+        art_id = database.save_artist_metadata("Turnstile", tags=tags, top_tracks=tracks, db_path=self.db_path)
+        self.assertGreater(art_id, 0)
+
+        art = database.get_artist_metadata("turnstile", db_path=self.db_path)
+        self.assertIsNotNone(art)
+        self.assertEqual(art["artist"], "Turnstile")
+        self.assertEqual(len(art["tags"]), 1)
+        self.assertEqual(art["tags"][0]["name"], "post-punk")
+        self.assertEqual(len(art["top_tracks"]), 1)
+        self.assertEqual(art["top_tracks"][0]["name"], "Song 1")
+
+        # Update artist with new tags
+        new_tags = [{"name": "hardcore punk", "count": 120, "url": ""}]
+        database.save_artist_metadata("Turnstile", tags=new_tags, db_path=self.db_path)
+
+        art_updated = database.get_artist_metadata("turnstile", db_path=self.db_path)
+        self.assertEqual(len(art_updated["tags"]), 1)
+        self.assertEqual(art_updated["tags"][0]["name"], "hardcore punk")
+        # Previous top tracks should be preserved
+        self.assertEqual(len(art_updated["top_tracks"]), 1)
+
+    def test_track_tags_persistence(self):
+        track_tags = [
+            {"name": "hardcore", "count": 90, "url": ""},
+            {"name": "melodic", "count": 60, "url": ""}
+        ]
+        rec_id = database.save_search(
+            artist="Calling Hours",
+            song="Calling Hours",
+            lyrics="Here in the calling hours...",
+            track_tags=track_tags,
+            db_path=self.db_path
+        )
+        rec = database.get_search_by_id(rec_id, db_path=self.db_path)
+        self.assertEqual(len(rec["track_tags"]), 2)
+        self.assertEqual(rec["track_tags"][0]["name"], "hardcore")
+
+        # Update via save_track_tags
+        updated_tags = [{"name": "punk", "count": 100, "url": ""}]
+        database.save_track_tags("calling hours", "calling hours", updated_tags, db_path=self.db_path)
+
+        rec_updated = database.get_search("Calling Hours", "Calling Hours", db_path=self.db_path)
+        self.assertEqual(len(rec_updated["track_tags"]), 1)
+        self.assertEqual(rec_updated["track_tags"][0]["name"], "punk")
+
 if __name__ == "__main__":
     unittest.main()
+
 

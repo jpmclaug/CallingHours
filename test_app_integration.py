@@ -1,6 +1,7 @@
 import os
 import tempfile
 import unittest
+from unittest.mock import patch
 import threading
 import http.server
 import urllib.request
@@ -9,6 +10,7 @@ import json
 
 import database
 import calling_hours
+import lastfm
 
 class TestAppIntegration(unittest.TestCase):
     @classmethod
@@ -322,6 +324,146 @@ class TestAppIntegration(unittest.TestCase):
             self.assertIn('class="app-user-bar"', html)
             self.assertIn('max-width: 100vw;', html)
             self.assertIn('overflow-x: hidden;', html)
+
+    def test_15_history_artist_filtering_and_chips(self):
+        database.save_search(
+            artist="Soundgarden",
+            song="Black Hole Sun",
+            lyrics="In my eyes, indisposed...",
+            source="Genius",
+            db_path=self.db_path
+        )
+        database.save_search(
+            artist="Pearl Jam",
+            song="Alive",
+            lyrics="Son, she said, have I got a little story for you...",
+            source="Genius",
+            db_path=self.db_path
+        )
+
+        # 1. Verify history page has artist filter chips and artist dropdown
+        with self.authed_get("/history") as resp:
+            self.assertEqual(resp.status, 200)
+            html = resp.read().decode('utf-8')
+            self.assertIn('id="history-artist-filter"', html)
+            self.assertIn('id="history-artist-chips"', html)
+            self.assertIn('Previously Searched Artists', html)
+            self.assertIn('class="artist-chip"', html)
+            self.assertIn('data-artist="Soundgarden"', html)
+            self.assertIn('data-artist="Pearl Jam"', html)
+            self.assertIn('filterByArtist', html)
+
+        # 2. Verify /history?artist=Soundgarden pre-selects artist
+        with self.authed_get("/history?artist=Soundgarden") as resp:
+            self.assertEqual(resp.status, 200)
+            html = resp.read().decode('utf-8')
+            self.assertIn("Soundgarden", html)
+            self.assertIn("activeArtistFilter = 'Soundgarden'", html)
+
+    def test_16_submit_cache_hit_touches_search_timestamp(self):
+        # Insert initial search
+        rec_id = database.save_search(
+            artist="Nirvana",
+            song="In Bloom",
+            lyrics="He's the one who likes all our pretty songs...",
+            source="Genius",
+            db_path=self.db_path
+        )
+        rec_before = database.get_search("Nirvana", "In Bloom", db_path=self.db_path)
+        self.assertIsNotNone(rec_before)
+
+        # Re-submit the same song through POST /submit
+        with self.authed_post("/submit", {"artist": "Nirvana", "song": "In Bloom"}) as resp:
+            self.assertEqual(resp.status, 200)
+            html = resp.read().decode('utf-8')
+            self.assertIn("Successfully found lyrics for", html)
+            self.assertIn("Nirvana", html)
+            self.assertIn("In Bloom", html)
+
+        # In Bloom should now be at the top of recent searches
+        recent = database.get_recent_searches(limit=1, db_path=self.db_path)
+        self.assertEqual(recent[0]["artist"], "Nirvana")
+        self.assertEqual(recent[0]["song"], "In Bloom")
+
+    def test_17_search_form_artist_input_and_sync(self):
+        with self.authed_get("/") as resp:
+            self.assertEqual(resp.status, 200)
+            html = resp.read().decode('utf-8')
+            self.assertIn('oninput="onArtistInput(this.value)"', html)
+            self.assertIn('onchange="onArtistChange(this.value)"', html)
+            self.assertIn('onBandSelected', html)
+            self.assertIn('Previously Searched Artists &amp; Bands', html)
+
+    @patch("lastfm.get_or_fetch_track_tags")
+    def test_18_lastfm_track_tags_api(self, mock_track_tags):
+        mock_track_tags.return_value = [
+            {"name": "emo", "url": "https://www.last.fm/tag/emo", "count": 100},
+            {"name": "alternative rock", "url": "https://www.last.fm/tag/alternative+rock", "count": 80}
+        ]
+        url = "/api/lastfm/track-tags?artist=" + urllib.parse.quote("Jimmy Eat World") + "&song=" + urllib.parse.quote("The Middle")
+        with self.authed_get(url) as resp:
+            self.assertEqual(resp.status, 200)
+            data = json.loads(resp.read().decode('utf-8'))
+            self.assertIn("tags", data)
+            self.assertEqual(len(data["tags"]), 2)
+            self.assertEqual(data["tags"][0]["name"], "emo")
+
+    @patch("lastfm.get_or_fetch_artist_metadata")
+    def test_19_lastfm_artist_api(self, mock_artist_meta):
+        mock_artist_meta.return_value = {
+            "artist": "Jimmy Eat World",
+            "tags": [{"name": "emo", "url": "https://www.last.fm/tag/emo"}],
+            "top_tracks": [{"name": "The Middle", "rank": "1", "listeners": "1000000", "playcount": "5000000"}]
+        }
+        url = "/api/lastfm/artist?artist=" + urllib.parse.quote("Jimmy Eat World")
+        with self.authed_get(url) as resp:
+            self.assertEqual(resp.status, 200)
+            data = json.loads(resp.read().decode('utf-8'))
+            self.assertEqual(data["artist"], "Jimmy Eat World")
+            self.assertEqual(len(data["tags"]), 1)
+            self.assertEqual(data["top_tracks"][0]["name"], "The Middle")
+
+    def test_20_lastfm_ui_and_history_chips(self):
+        # Save a search with track_tags
+        tags = [
+            {"name": "shoegaze", "url": "https://www.last.fm/tag/shoegaze"},
+            {"name": "dream pop", "url": "https://www.last.fm/tag/dream+pop"}
+        ]
+        database.save_search(
+            artist="Slowdive",
+            song="Alison",
+            lyrics="Listen close, and don't be slow...",
+            source="Genius",
+            track_tags=tags,
+            db_path=self.db_path
+        )
+
+        # 1. Verify Home page contains Last.fm modal markup and artist profile button
+        with self.authed_get("/") as resp:
+            self.assertEqual(resp.status, 200)
+            html = resp.read().decode('utf-8')
+            self.assertIn('id="artist-modal-overlay"', html)
+            self.assertIn('id="btn-artist-profile"', html)
+            self.assertIn('openArtistModal', html)
+
+        # 2. Verify History page contains modal markup and track tag chips
+        with self.authed_get("/history") as resp:
+            self.assertEqual(resp.status, 200)
+            html = resp.read().decode('utf-8')
+            self.assertIn('id="artist-modal-overlay"', html)
+            self.assertIn('#shoegaze', html)
+            self.assertIn('#dream pop', html)
+            self.assertIn('openArtistModal(\'Slowdive\')', html)
+
+        # 3. Verify loading song via artist & song query params (e.g. from quickLoadTrack)
+        url = "/?artist=" + urllib.parse.quote("Slowdive") + "&song=" + urllib.parse.quote("Alison")
+        with self.authed_get(url) as resp:
+            self.assertEqual(resp.status, 200)
+            html = resp.read().decode('utf-8')
+            self.assertIn("Loaded saved search for", html)
+            self.assertIn("Slowdive", html)
+            self.assertIn("Alison", html)
+            self.assertIn("#shoegaze", html)
 
 if __name__ == "__main__":
     unittest.main()
