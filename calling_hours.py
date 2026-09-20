@@ -32,6 +32,7 @@ except ImportError:
 from google import genai
 import database
 import lastfm
+import theaudiodb
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPT_DIR)
@@ -90,7 +91,7 @@ DEFAULT_GEMINI_MODEL = "gemini-3.8-flash"
 _local_secrets = {}
 try:
     import calling_hours_secrets
-    for attr in ('GENIUS_CLIENT_ID', 'GENIUS_CLIENT_SECRET', 'GENIUS_ACCESS_TOKEN', 'GEMINI_API_KEY', 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_REDIRECT_URI', 'LASTFM_API_KEY'):
+    for attr in ('GENIUS_CLIENT_ID', 'GENIUS_CLIENT_SECRET', 'GENIUS_ACCESS_TOKEN', 'GEMINI_API_KEY', 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_REDIRECT_URI', 'LASTFM_API_KEY', 'THEAUDIODB_API_KEY'):
         if hasattr(calling_hours_secrets, attr):
             _local_secrets[attr] = getattr(calling_hours_secrets, attr)
 except ImportError:
@@ -105,6 +106,142 @@ GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID') or _local_secrets.get('GOO
 GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET') or _local_secrets.get('GOOGLE_CLIENT_SECRET', '')
 GOOGLE_REDIRECT_URI = os.environ.get('GOOGLE_REDIRECT_URI') or _local_secrets.get('GOOGLE_REDIRECT_URI', '')
 LASTFM_API_KEY = os.environ.get('LASTFM_API_KEY') or _local_secrets.get('LASTFM_API_KEY', '')
+THEAUDIODB_API_KEY = os.environ.get('THEAUDIODB_API_KEY') or _local_secrets.get('THEAUDIODB_API_KEY', '123')
+
+def build_theaudiodb_widget(
+    artist: str,
+    song: str,
+    theaudiodb_data: Optional[Dict[str, Any]] = None
+) -> str:
+    if not artist and not song:
+        return ""
+
+    if not theaudiodb_data:
+        return f'''
+        <div class="audiodb-card" id="audiodb-intelligence-widget" style="margin-bottom: 20px;">
+            <div class="audiodb-header">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 1.2rem;">🎵</span>
+                    <span style="font-weight: 700; color: #E1E8F0; font-family: 'Montserrat', sans-serif;">TheAudioDB Track Insights</span>
+                </div>
+            </div>
+            <div style="font-size: 0.82rem; color: rgba(225, 232, 240, 0.5); font-style: italic; padding: 8px 0;">
+                No additional track details found on TheAudioDB.
+            </div>
+        </div>
+        '''
+
+    data = theaudiodb_data
+    track_title = html_escape(data.get("track") or song)
+    album = html_escape(data.get("album") or "")
+    genre = html_escape(data.get("genre") or "")
+    style = html_escape(data.get("style") or "")
+    mood = html_escape(data.get("mood") or "")
+    theme = html_escape(data.get("theme") or "")
+    tempo = data.get("tempo")
+    key = html_escape(data.get("key") or "")
+    open_key = html_escape(data.get("open_key") or "")
+    time_sig = html_escape(data.get("time_signature") or "")
+    duration_fmt = html_escape(data.get("duration_formatted") or "")
+    description = html_escape(data.get("description") or "")
+    thumb_url = html_escape(data.get("thumbnail_url") or "")
+    music_vid_url = html_escape(data.get("music_vid_url") or "")
+    vid_views = html_escape(data.get("music_vid_views_formatted") or "")
+    vid_director = html_escape(data.get("music_vid_director") or "")
+    spotify_id = html_escape(data.get("spotify_id") or "")
+
+    # Attribute pills
+    pills = []
+    if tempo:
+        pills.append(f'<span class="audiodb-pill tempo" title="Tempo / Beats per minute">⏱️ {tempo} BPM</span>')
+    if key:
+        key_label = f"🎹 Key: {key}" + (f" ({open_key})" if open_key else "")
+        pills.append(f'<span class="audiodb-pill key" title="Musical Key">{key_label}</span>')
+    if time_sig:
+        pills.append(f'<span class="audiodb-pill" title="Time Signature">🎼 {time_sig}</span>')
+    if duration_fmt:
+        pills.append(f'<span class="audiodb-pill" title="Duration">⏳ {duration_fmt}</span>')
+    if genre:
+        pills.append(f'<span class="audiodb-pill" title="Genre">🎸 {genre}</span>')
+    if mood:
+        pills.append(f'<span class="audiodb-pill mood" title="Mood">🎨 {mood}</span>')
+    if theme:
+        pills.append(f'<span class="audiodb-pill" title="Theme">💡 {theme}</span>')
+    if style and style.lower() != genre.lower():
+        pills.append(f'<span class="audiodb-pill" title="Style">✨ {style}</span>')
+
+    pills_html = " ".join(pills) if pills else ""
+
+    # Audio Feature Meters
+    meters = []
+    feature_labels = [
+        ("energy", "⚡ Energy", "#3B82F6"),
+        ("danceability", "💃 Danceability", "#EC4899"),
+        ("valence", "😊 Valence", "#10B981"),
+        ("acousticness", "🎻 Acousticness", "#F59E0B"),
+        ("liveness", "🎤 Liveness", "#8B5CF6"),
+        ("speechiness", "🗣️ Speechiness", "#06B6D4"),
+    ]
+    for key_name, label, color in feature_labels:
+        val = data.get(key_name)
+        if val is not None and isinstance(val, (int, float)) and val > 0:
+            meters.append(f'''
+                <div class="audiodb-meter-item">
+                    <div class="audiodb-meter-label">
+                        <span>{label}</span>
+                        <span style="font-weight: 700; color: #E1E8F0;">{int(val)}%</span>
+                    </div>
+                    <div class="audiodb-meter-bar-bg">
+                        <div class="audiodb-meter-bar-fill" style="width: {min(max(int(val), 0), 100)}%; background: {color};"></div>
+                    </div>
+                </div>
+            ''')
+    meters_html = f'<div class="audiodb-meter-container">{"".join(meters)}</div>' if meters else ""
+
+    # Story / Background
+    story_html = ""
+    if description:
+        story_html = f'''
+        <div style="margin-top: 14px;">
+            <div style="font-size: 0.76rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #93C5FD; margin-bottom: 6px;">📖 Story &amp; Background</div>
+            <div class="audiodb-story-box">{description}</div>
+        </div>
+        '''
+
+    # Media / Action Links
+    media_links = []
+    if music_vid_url:
+        view_note = f" ({vid_views})" if vid_views else ""
+        director_note = f" &bull; Dir: {vid_director}" if vid_director else ""
+        media_links.append(f'<a href="{music_vid_url}" target="_blank" class="pill-btn secondary" style="font-size: 0.76rem; padding: 4px 10px; display: inline-flex; align-items: center; gap: 6px; text-decoration: none;" title="Watch Music Video{director_note}">▶ Official Video{view_note}</a>')
+    if spotify_id:
+        media_links.append(f'<a href="https://open.spotify.com/track/{spotify_id}" target="_blank" class="pill-btn secondary" style="font-size: 0.76rem; padding: 4px 10px; text-decoration: none;" title="Open in Spotify">🎧 Spotify</a>')
+    media_links_html = f'<div style="display: flex; gap: 8px; flex-wrap: wrap;">{" ".join(media_links)}</div>' if media_links else ""
+
+    thumb_html = f'<img src="{thumb_url}" alt="{track_title}" style="width: 48px; height: 48px; border-radius: 8px; object-fit: cover; border: 1px solid rgba(165, 200, 255, 0.3); flex-shrink: 0;">' if thumb_url else ''
+    album_info = f'<div style="font-size: 0.8rem; color: rgba(225, 232, 240, 0.7); margin-top: 2px;">Album: <strong style="color: #E1E8F0;">{album}</strong></div>' if album else ''
+
+    return f'''
+    <div class="audiodb-card" id="audiodb-intelligence-widget" style="margin-bottom: 20px;">
+        <div class="audiodb-header">
+            <div style="display: flex; align-items: center; gap: 12px;">
+                {thumb_html}
+                <div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-size: 1.1rem;">🎵</span>
+                        <span style="font-weight: 700; color: #E1E8F0; font-family: 'Montserrat', sans-serif;">TheAudioDB Track Insights</span>
+                    </div>
+                    {album_info}
+                </div>
+            </div>
+            {media_links_html}
+        </div>
+
+        {f'<div style="margin-top: 12px; display: flex; flex-wrap: wrap; gap: 6px;">{pills_html}</div>' if pills_html else ''}
+        {meters_html}
+        {story_html}
+    </div>
+    '''
 
 def build_lastfm_widget(
     artist: str,
@@ -2123,6 +2260,107 @@ PAGE_HTML = r'''<!DOCTYPE html>
             box-shadow: 0 2px 8px rgba(66, 133, 244, 0.4);
         }
 
+        /* TheAudioDB Track Insights Card */
+        .audiodb-card {
+            background: rgba(11, 30, 63, 0.75);
+            border: 1px solid rgba(165, 200, 255, 0.22);
+            border-radius: 12px;
+            padding: 18px 20px;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            margin-bottom: 20px;
+        }
+
+        .audiodb-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid rgba(165, 200, 255, 0.12);
+            flex-wrap: wrap;
+        }
+
+        .audiodb-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.78rem;
+            font-weight: 500;
+            background: rgba(37, 99, 235, 0.18);
+            border: 1px solid rgba(165, 200, 255, 0.35);
+            color: #C4DFFF;
+        }
+
+        .audiodb-pill.mood {
+            background: rgba(236, 72, 153, 0.18);
+            border-color: rgba(244, 114, 182, 0.35);
+            color: #FBCFE8;
+        }
+
+        .audiodb-pill.tempo {
+            background: rgba(16, 185, 129, 0.18);
+            border-color: rgba(52, 211, 153, 0.35);
+            color: #A7F3D0;
+        }
+
+        .audiodb-pill.key {
+            background: rgba(245, 158, 11, 0.18);
+            border-color: rgba(251, 191, 36, 0.35);
+            color: #FDE68A;
+        }
+
+        .audiodb-meter-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        .audiodb-meter-item {
+            background: rgba(5, 10, 20, 0.45);
+            border-radius: 8px;
+            padding: 8px 10px;
+            border: 1px solid rgba(165, 200, 255, 0.1);
+        }
+
+        .audiodb-meter-label {
+            font-size: 0.72rem;
+            color: rgba(225, 232, 240, 0.7);
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 4px;
+        }
+
+        .audiodb-meter-bar-bg {
+            background: rgba(255, 255, 255, 0.1);
+            height: 6px;
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .audiodb-meter-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #3B82F6, #10B981);
+            border-radius: 3px;
+        }
+
+        .audiodb-story-box {
+            margin-top: 6px;
+            padding: 10px 14px;
+            background: rgba(5, 10, 20, 0.4);
+            border-left: 3px solid #60A5FA;
+            border-radius: 0 8px 8px 0;
+            font-size: 0.84rem;
+            color: rgba(225, 232, 240, 0.9);
+            line-height: 1.55;
+            max-height: 180px;
+            overflow-y: auto;
+        }
+
         /* Artist Info Modal */
         .artist-modal-overlay {
             position: fixed;
@@ -2317,6 +2555,7 @@ PAGE_HTML = r'''<!DOCTYPE html>
                 </div>
             </div>
             
+            {theaudiodb_widget}
             {lastfm_widget}
 
             <div class="analysis-form" style="{analysis_form_display}">
@@ -3934,6 +4173,18 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(json.dumps(metadata).encode('utf-8'))
             return
 
+        if parsed.path == '/api/theaudiodb/track':
+            params = urllib.parse.parse_qs(parsed.query)
+            artist = params.get('artist', [''])[0].strip()
+            song = params.get('song', [''])[0].strip()
+            refresh = params.get('refresh', ['0'])[0] == '1'
+            data = theaudiodb.get_or_fetch_track_metadata(artist, song, api_key=THEAUDIODB_API_KEY, force_refresh=refresh) if (artist and song) else None
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(json.dumps({'theaudiodb_data': data}).encode('utf-8'))
+            return
+
         if parsed.path not in ('/', '/load'):
             self.send_error(404, 'Not Found')
             return
@@ -3962,6 +4213,12 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                         track_tags = lastfm.get_or_fetch_track_tags(artist, song, api_key=LASTFM_API_KEY)
                     except Exception as lfe:
                         print(f"Last.fm track tags load error: {lfe}")
+                theaudiodb_data = rec.get('theaudiodb_data')
+                if not theaudiodb_data:
+                    try:
+                        theaudiodb_data = theaudiodb.get_or_fetch_track_metadata(artist, song, api_key=THEAUDIODB_API_KEY)
+                    except Exception as adbe:
+                        print(f"TheAudioDB load error: {adbe}")
                 artist_metadata = None
                 try:
                     artist_metadata = lastfm.get_or_fetch_artist_metadata(artist, api_key=LASTFM_API_KEY)
@@ -3985,7 +4242,8 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                     selected_model=model_name,
                     show_editor=bool(lyrics or analysis),
                     track_tags=track_tags,
-                    artist_metadata=artist_metadata
+                    artist_metadata=artist_metadata,
+                    theaudiodb_data=theaudiodb_data
                 )
                 return
         elif artist_param and song_param:
@@ -4008,6 +4266,12 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                         track_tags = lastfm.get_or_fetch_track_tags(artist, song, api_key=LASTFM_API_KEY)
                     except Exception as lfe:
                         print(f"Last.fm track tags load error: {lfe}")
+                theaudiodb_data = rec.get('theaudiodb_data')
+                if not theaudiodb_data:
+                    try:
+                        theaudiodb_data = theaudiodb.get_or_fetch_track_metadata(artist, song, api_key=THEAUDIODB_API_KEY)
+                    except Exception as adbe:
+                        print(f"TheAudioDB load error: {adbe}")
                 artist_metadata = None
                 try:
                     artist_metadata = lastfm.get_or_fetch_artist_metadata(artist, api_key=LASTFM_API_KEY)
@@ -4031,7 +4295,8 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                     selected_model=model_name,
                     show_editor=bool(lyrics or analysis),
                     track_tags=track_tags,
-                    artist_metadata=artist_metadata
+                    artist_metadata=artist_metadata,
+                    theaudiodb_data=theaudiodb_data
                 )
                 return
             else:
@@ -4040,12 +4305,18 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                     artist_metadata = lastfm.get_or_fetch_artist_metadata(artist_param, api_key=LASTFM_API_KEY)
                 except Exception as lfe:
                     print(f"Last.fm artist metadata error: {lfe}")
+                theaudiodb_data = None
+                try:
+                    theaudiodb_data = theaudiodb.get_or_fetch_track_metadata(artist_param, song_param, api_key=THEAUDIODB_API_KEY)
+                except Exception as adbe:
+                    print(f"TheAudioDB track error: {adbe}")
                 self.render_page(
                     message='',
                     lyrics_text='',
                     artist_value=html_escape(artist_param),
                     song_value=html_escape(song_param),
-                    artist_metadata=artist_metadata
+                    artist_metadata=artist_metadata,
+                    theaudiodb_data=theaudiodb_data
                 )
                 return
 
@@ -4243,12 +4514,19 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
 
                     track_tags = []
                     artist_metadata = None
+                    theaudiodb_data = None
                     try:
                         track_tags = lastfm.get_or_fetch_track_tags(effective_artist, effective_song, api_key=LASTFM_API_KEY, force_refresh=force_refresh)
                         if not track_tags and effective_artist != artist:
                             track_tags = lastfm.get_or_fetch_track_tags(artist, song, api_key=LASTFM_API_KEY, force_refresh=force_refresh)
                     except Exception as lfe:
                         print(f"Last.fm track tags error on submit: {lfe}")
+                    try:
+                        theaudiodb_data = theaudiodb.get_or_fetch_track_metadata(effective_artist, effective_song, api_key=THEAUDIODB_API_KEY, force_refresh=force_refresh)
+                        if not theaudiodb_data and effective_artist != artist:
+                            theaudiodb_data = theaudiodb.get_or_fetch_track_metadata(artist, song, api_key=THEAUDIODB_API_KEY, force_refresh=force_refresh)
+                    except Exception as adbe:
+                        print(f"TheAudioDB track fetch error on submit: {adbe}")
                     try:
                         artist_metadata = lastfm.get_or_fetch_artist_metadata(effective_artist, api_key=LASTFM_API_KEY, force_refresh=force_refresh)
                         if not artist_metadata and effective_artist != artist:
@@ -4265,7 +4543,8 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                                 lyrics=lyrics,
                                 source=source,
                                 song_url=song_url,
-                                track_tags=track_tags
+                                track_tags=track_tags,
+                                theaudiodb_data=theaudiodb_data
                             )
                             if canonical_artist and (canonical_artist.lower() != artist.lower() or (canonical_song and canonical_song.lower() != song.lower())):
                                 database.save_search(
@@ -4274,13 +4553,15 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                                     lyrics=lyrics,
                                     source=source,
                                     song_url=song_url,
-                                    track_tags=track_tags
+                                    track_tags=track_tags,
+                                    theaudiodb_data=theaudiodb_data
                                 )
                         except Exception as e:
                             print(f"Database save error: {e}")
                 else:
                     track_tags = []
                     artist_metadata = None
+                    theaudiodb_data = None
                     if artist:
                         try:
                             artist_metadata = lastfm.get_or_fetch_artist_metadata(artist, api_key=LASTFM_API_KEY, force_refresh=force_refresh)
@@ -4323,7 +4604,8 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 selected_model=cached_model,
                 show_editor=show_editor,
                 track_tags=track_tags,
-                artist_metadata=artist_metadata
+                artist_metadata=artist_metadata,
+                theaudiodb_data=theaudiodb_data
             )
             
         elif self.path == '/analyze':
@@ -4338,11 +4620,16 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             
             track_tags = []
             artist_metadata = None
+            theaudiodb_data = None
             if artist and song:
                 try:
                     track_tags = lastfm.get_or_fetch_track_tags(artist, song, api_key=LASTFM_API_KEY)
                 except Exception as lfe:
                     print(f"Last.fm track tags error on analyze: {lfe}")
+                try:
+                    theaudiodb_data = theaudiodb.get_or_fetch_track_metadata(artist, song, api_key=THEAUDIODB_API_KEY)
+                except Exception as adbe:
+                    print(f"TheAudioDB track error on analyze: {adbe}")
                 try:
                     artist_metadata = lastfm.get_or_fetch_artist_metadata(artist, api_key=LASTFM_API_KEY)
                 except Exception as lfe:
@@ -4388,7 +4675,8 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                             model_name=model_name,
                             prompt_name=prompt_name,
                             lyrics=lyrics_text,
-                            track_tags=track_tags
+                            track_tags=track_tags,
+                            theaudiodb_data=theaudiodb_data
                         )
                     except Exception as e:
                         print(f"Error saving analysis to database: {e}")
@@ -4406,7 +4694,8 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 selected_prompt=prompt_idx,
                 show_editor=True,
                 track_tags=track_tags,
-                artist_metadata=artist_metadata
+                artist_metadata=artist_metadata,
+                theaudiodb_data=theaudiodb_data
             )
 
     def handle_authorize(self):
@@ -4454,7 +4743,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
 
         self.render_page(message=message, lyrics_text='')
 
-    def render_page(self, message: str, lyrics_text: str, artist_value: str = '', song_value: str = '', analysis_result: str = '', selected_model: str = DEFAULT_GEMINI_MODEL, selected_prompt: int = 0, show_editor: bool = False, track_tags: Optional[List[Dict[str, Any]]] = None, artist_metadata: Optional[Dict[str, Any]] = None):
+    def render_page(self, message: str, lyrics_text: str, artist_value: str = '', song_value: str = '', analysis_result: str = '', selected_model: str = DEFAULT_GEMINI_MODEL, selected_prompt: int = 0, show_editor: bool = False, track_tags: Optional[List[Dict[str, Any]]] = None, artist_metadata: Optional[Dict[str, Any]] = None, theaudiodb_data: Optional[Dict[str, Any]] = None):
         show_sections = bool(lyrics_text or show_editor)
         lyrics_display = '' if show_sections else 'display: none;'
         analysis_display = '' if show_sections else 'display: none;'
@@ -4472,6 +4761,17 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 artist_metadata = lastfm.get_or_fetch_artist_metadata(artist_value, api_key=LASTFM_API_KEY)
             except Exception:
                 artist_metadata = None
+        if artist_value and song_value and theaudiodb_data is None:
+            try:
+                theaudiodb_data = theaudiodb.get_or_fetch_track_metadata(artist_value, song_value, api_key=THEAUDIODB_API_KEY)
+            except Exception:
+                theaudiodb_data = None
+
+        theaudiodb_widget = build_theaudiodb_widget(
+            artist=artist_value,
+            song=song_value,
+            theaudiodb_data=theaudiodb_data
+        )
 
         lastfm_widget = build_lastfm_widget(
             artist=artist_value,
@@ -4524,6 +4824,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                            .replace('{analysis_result_display}', analysis_result_display)\
                            .replace('{analysis_controls_display}', analysis_controls_display)\
                            .replace('{analysis_result}', html_escape(analysis_result))\
+                           .replace('{theaudiodb_widget}', theaudiodb_widget)\
                            .replace('{lastfm_widget}', lastfm_widget)\
                            .replace('{artist_info_btn_display}', artist_info_btn_display)\
                            .replace('{model_options}', model_options)\

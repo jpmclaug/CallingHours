@@ -93,6 +93,16 @@ def _format_search_record(rec: Any) -> Optional[Dict[str, Any]]:
             d['track_tags'] = []
     else:
         d['track_tags'] = []
+    if 'theaudiodb_data' in d and d['theaudiodb_data'] is not None:
+        if isinstance(d['theaudiodb_data'], str):
+            try:
+                d['theaudiodb_data'] = json.loads(d['theaudiodb_data'])
+            except Exception:
+                d['theaudiodb_data'] = None
+        elif not isinstance(d['theaudiodb_data'], dict):
+            d['theaudiodb_data'] = None
+    else:
+        d['theaudiodb_data'] = None
     return d
 
 def _format_artist_record(rec: Any) -> Optional[Dict[str, Any]]:
@@ -185,6 +195,8 @@ def init_db(db_path: Optional[str] = None) -> None:
                     analysis TEXT,
                     model_name TEXT,
                     prompt_name TEXT,
+                    track_tags TEXT,
+                    theaudiodb_data TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     UNIQUE(artist_normalized, song_normalized)
@@ -253,6 +265,9 @@ def init_db(db_path: Optional[str] = None) -> None:
                 ALTER TABLE searches ADD COLUMN IF NOT EXISTS track_tags TEXT;
             """)
             cursor.execute("""
+                ALTER TABLE searches ADD COLUMN IF NOT EXISTS theaudiodb_data TEXT;
+            """)
+            cursor.execute("""
                 INSERT INTO users (email, is_admin, is_active, created_at)
                 VALUES (%s, TRUE, TRUE, CURRENT_TIMESTAMP)
                 ON CONFLICT (email) DO UPDATE SET is_admin = TRUE, is_active = TRUE;
@@ -272,6 +287,7 @@ def init_db(db_path: Optional[str] = None) -> None:
                     model_name TEXT,
                     prompt_name TEXT,
                     track_tags TEXT,
+                    theaudiodb_data TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     UNIQUE(artist_normalized, song_normalized)
@@ -308,6 +324,8 @@ def init_db(db_path: Optional[str] = None) -> None:
             existing_cols = [col[1] for col in cursor.fetchall()]
             if 'track_tags' not in existing_cols:
                 cursor.execute("ALTER TABLE searches ADD COLUMN track_tags TEXT;")
+            if 'theaudiodb_data' not in existing_cols:
+                cursor.execute("ALTER TABLE searches ADD COLUMN theaudiodb_data TEXT;")
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS users (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -356,11 +374,12 @@ def save_search(
     source: Optional[str] = None,
     song_url: Optional[str] = None,
     track_tags: Optional[Union[str, List[Dict[str, Any]]]] = None,
+    theaudiodb_data: Optional[Union[str, Dict[str, Any]]] = None,
     db_path: Optional[str] = None
 ) -> int:
     """
     Save or update a search result. If the artist and song already exist,
-    updates lyrics/source/song_url/track_tags (if provided) and updates timestamp while preserving previous analysis.
+    updates lyrics/source/song_url/track_tags/theaudiodb_data (if provided) and updates timestamp while preserving previous analysis.
     Returns the record ID.
     """
     artist_clean = artist.strip()
@@ -368,13 +387,14 @@ def save_search(
     artist_norm = normalize_text(artist_clean)
     song_norm = normalize_text(song_clean)
     tags_json = json.dumps(track_tags) if isinstance(track_tags, (list, dict)) else track_tags
+    audiodb_json = json.dumps(theaudiodb_data) if isinstance(theaudiodb_data, (list, dict)) else theaudiodb_data
     target = get_db_target(db_path)
 
     with get_connection(target) as conn:
         if is_postgres(target):
             cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cursor.execute(
-                "SELECT id, lyrics, source, song_url, track_tags FROM searches WHERE artist_normalized = %s AND song_normalized = %s",
+                "SELECT id, lyrics, source, song_url, track_tags, theaudiodb_data FROM searches WHERE artist_normalized = %s AND song_normalized = %s",
                 (artist_norm, song_norm)
             )
             row = cursor.fetchone()
@@ -385,6 +405,7 @@ def save_search(
                 new_source = source if source else row['source']
                 new_url = song_url if song_url else row['song_url']
                 new_tags = tags_json if tags_json is not None else row['track_tags']
+                new_audiodb = audiodb_json if audiodb_json is not None else row['theaudiodb_data']
                 cursor.execute("""
                     UPDATE searches
                     SET artist = %s,
@@ -393,23 +414,24 @@ def save_search(
                         source = %s,
                         song_url = %s,
                         track_tags = %s,
+                        theaudiodb_data = %s,
                         updated_at = CURRENT_TIMESTAMP
                     WHERE id = %s
-                """, (artist_clean, song_clean, new_lyrics, new_source, new_url, new_tags, record_id))
+                """, (artist_clean, song_clean, new_lyrics, new_source, new_url, new_tags, new_audiodb, record_id))
                 return record_id
             else:
                 cursor.execute("""
                     INSERT INTO searches (
                         artist, song, artist_normalized, song_normalized,
-                        lyrics, source, song_url, track_tags, created_at, updated_at
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                        lyrics, source, song_url, track_tags, theaudiodb_data, created_at, updated_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                     RETURNING id;
-                """, (artist_clean, song_clean, artist_norm, song_norm, lyrics, source, song_url, tags_json))
+                """, (artist_clean, song_clean, artist_norm, song_norm, lyrics, source, song_url, tags_json, audiodb_json))
                 return cursor.fetchone()['id']
         else:
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT id, lyrics, source, song_url, track_tags FROM searches WHERE artist_normalized = ? AND song_normalized = ?",
+                "SELECT id, lyrics, source, song_url, track_tags, theaudiodb_data FROM searches WHERE artist_normalized = ? AND song_normalized = ?",
                 (artist_norm, song_norm)
             )
             row = cursor.fetchone()
@@ -420,6 +442,7 @@ def save_search(
                 new_source = source if source else row['source']
                 new_url = song_url if song_url else row['song_url']
                 new_tags = tags_json if tags_json is not None else row['track_tags']
+                new_audiodb = audiodb_json if audiodb_json is not None else row['theaudiodb_data']
                 cursor.execute("""
                     UPDATE searches
                     SET artist = ?,
@@ -428,17 +451,18 @@ def save_search(
                         source = ?,
                         song_url = ?,
                         track_tags = ?,
+                        theaudiodb_data = ?,
                         updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now')
                     WHERE id = ?
-                """, (artist_clean, song_clean, new_lyrics, new_source, new_url, new_tags, record_id))
+                """, (artist_clean, song_clean, new_lyrics, new_source, new_url, new_tags, new_audiodb, record_id))
                 return record_id
             else:
                 cursor.execute("""
                     INSERT INTO searches (
                         artist, song, artist_normalized, song_normalized,
-                        lyrics, source, song_url, track_tags, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'), strftime('%Y-%m-%d %H:%M:%f', 'now'))
-                """, (artist_clean, song_clean, artist_norm, song_norm, lyrics, source, song_url, tags_json))
+                        lyrics, source, song_url, track_tags, theaudiodb_data, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'), strftime('%Y-%m-%d %H:%M:%f', 'now'))
+                """, (artist_clean, song_clean, artist_norm, song_norm, lyrics, source, song_url, tags_json, audiodb_json))
                 return cursor.lastrowid
 
 def save_analysis(
@@ -449,6 +473,7 @@ def save_analysis(
     prompt_name: Optional[str] = None,
     lyrics: Optional[str] = None,
     track_tags: Optional[Union[str, List[Dict[str, Any]]]] = None,
+    theaudiodb_data: Optional[Union[str, Dict[str, Any]]] = None,
     db_path: Optional[str] = None
 ) -> None:
     """Save or update the Gemini analysis result for a given artist and song, ensuring lyrics are preserved."""
@@ -457,13 +482,14 @@ def save_analysis(
     artist_norm = normalize_text(artist_clean)
     song_norm = normalize_text(song_clean)
     tags_json = json.dumps(track_tags) if isinstance(track_tags, (list, dict)) else track_tags
+    audiodb_json = json.dumps(theaudiodb_data) if isinstance(theaudiodb_data, (list, dict)) else theaudiodb_data
     target = get_db_target(db_path)
 
     with get_connection(target) as conn:
         if is_postgres(target):
             cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cursor.execute(
-                "SELECT id, lyrics, source, track_tags FROM searches WHERE artist_normalized = %s AND song_normalized = %s",
+                "SELECT id, lyrics, source, track_tags, theaudiodb_data FROM searches WHERE artist_normalized = %s AND song_normalized = %s",
                 (artist_norm, song_norm)
             )
             row = cursor.fetchone()
@@ -472,6 +498,7 @@ def save_analysis(
                 new_lyrics = lyrics if (lyrics and lyrics.strip()) else row['lyrics']
                 new_source = row['source'] or ('Manual' if new_lyrics else None)
                 new_tags = tags_json if tags_json is not None else row['track_tags']
+                new_audiodb = audiodb_json if audiodb_json is not None else row['theaudiodb_data']
                 cursor.execute("""
                     UPDATE searches
                     SET artist = %s,
@@ -482,21 +509,22 @@ def save_analysis(
                         model_name = %s,
                         prompt_name = %s,
                         track_tags = %s,
+                        theaudiodb_data = %s,
                         updated_at = CURRENT_TIMESTAMP
                     WHERE id = %s
-                """, (artist_clean, song_clean, new_lyrics, new_source, analysis, model_name, prompt_name, new_tags, row['id']))
+                """, (artist_clean, song_clean, new_lyrics, new_source, analysis, model_name, prompt_name, new_tags, new_audiodb, row['id']))
             else:
                 new_source = 'Manual' if (lyrics and lyrics.strip()) else None
                 cursor.execute("""
                     INSERT INTO searches (
                         artist, song, artist_normalized, song_normalized,
-                        lyrics, source, analysis, model_name, prompt_name, track_tags, created_at, updated_at
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                """, (artist_clean, song_clean, artist_norm, song_norm, lyrics, new_source, analysis, model_name, prompt_name, tags_json))
+                        lyrics, source, analysis, model_name, prompt_name, track_tags, theaudiodb_data, created_at, updated_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """, (artist_clean, song_clean, artist_norm, song_norm, lyrics, new_source, analysis, model_name, prompt_name, tags_json, audiodb_json))
         else:
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT id, lyrics, source, track_tags FROM searches WHERE artist_normalized = ? AND song_normalized = ?",
+                "SELECT id, lyrics, source, track_tags, theaudiodb_data FROM searches WHERE artist_normalized = ? AND song_normalized = ?",
                 (artist_norm, song_norm)
             )
             row = cursor.fetchone()
@@ -505,6 +533,7 @@ def save_analysis(
                 new_lyrics = lyrics if (lyrics and lyrics.strip()) else row['lyrics']
                 new_source = row['source'] or ('Manual' if new_lyrics else None)
                 new_tags = tags_json if tags_json is not None else row['track_tags']
+                new_audiodb = audiodb_json if audiodb_json is not None else row['theaudiodb_data']
                 cursor.execute("""
                     UPDATE searches
                     SET artist = ?,
@@ -515,17 +544,18 @@ def save_analysis(
                         model_name = ?,
                         prompt_name = ?,
                         track_tags = ?,
+                        theaudiodb_data = ?,
                         updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now')
                     WHERE id = ?
-                """, (artist_clean, song_clean, new_lyrics, new_source, analysis, model_name, prompt_name, new_tags, row['id']))
+                """, (artist_clean, song_clean, new_lyrics, new_source, analysis, model_name, prompt_name, new_tags, new_audiodb, row['id']))
             else:
                 new_source = 'Manual' if (lyrics and lyrics.strip()) else None
                 cursor.execute("""
                     INSERT INTO searches (
                         artist, song, artist_normalized, song_normalized,
-                        lyrics, source, analysis, model_name, prompt_name, track_tags, created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'), strftime('%Y-%m-%d %H:%M:%f', 'now'))
-                """, (artist_clean, song_clean, artist_norm, song_norm, lyrics, new_source, analysis, model_name, prompt_name, tags_json))
+                        lyrics, source, analysis, model_name, prompt_name, track_tags, theaudiodb_data, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'), strftime('%Y-%m-%d %H:%M:%f', 'now'))
+                """, (artist_clean, song_clean, artist_norm, song_norm, lyrics, new_source, analysis, model_name, prompt_name, tags_json, audiodb_json))
 
 
 def save_track_tags(
@@ -554,6 +584,64 @@ def save_track_tags(
                 SET track_tags = {ph}, updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now')
                 WHERE artist_normalized = {ph} AND song_normalized = {ph}
             """, (tags_json, artist_norm, song_norm))
+
+
+def save_theaudiodb_data(
+    artist: str,
+    song: str,
+    theaudiodb_data: Union[str, Dict[str, Any]],
+    db_path: Optional[str] = None
+) -> None:
+    """Save or update TheAudioDB track metadata for a given artist and song in searches table."""
+    artist_clean = artist.strip()
+    song_clean = song.strip()
+    artist_norm = normalize_text(artist_clean)
+    song_norm = normalize_text(song_clean)
+    audiodb_json = json.dumps(theaudiodb_data) if isinstance(theaudiodb_data, (list, dict)) else theaudiodb_data
+    target = get_db_target(db_path)
+    with get_connection(target) as conn:
+        cursor = conn.cursor()
+        ph = "%s" if is_postgres(target) else "?"
+        if is_postgres(target):
+            cursor.execute(f"""
+                UPDATE searches
+                SET theaudiodb_data = {ph}, updated_at = CURRENT_TIMESTAMP
+                WHERE artist_normalized = {ph} AND song_normalized = {ph}
+            """, (audiodb_json, artist_norm, song_norm))
+            if cursor.rowcount == 0:
+                cursor.execute("""
+                    INSERT INTO searches (
+                        artist, song, artist_normalized, song_normalized, theaudiodb_data, created_at, updated_at
+                    ) VALUES (%s, %s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    ON CONFLICT (artist_normalized, song_normalized) DO UPDATE
+                    SET theaudiodb_data = EXCLUDED.theaudiodb_data, updated_at = CURRENT_TIMESTAMP
+                """, (artist_clean, song_clean, artist_norm, song_norm, audiodb_json))
+        else:
+            cursor.execute(f"""
+                UPDATE searches
+                SET theaudiodb_data = {ph}, updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now')
+                WHERE artist_normalized = {ph} AND song_normalized = {ph}
+            """, (audiodb_json, artist_norm, song_norm))
+            if cursor.rowcount == 0:
+                cursor.execute("""
+                    INSERT INTO searches (
+                        artist, song, artist_normalized, song_normalized, theaudiodb_data, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'), strftime('%Y-%m-%d %H:%M:%f', 'now'))
+                    ON CONFLICT (artist_normalized, song_normalized) DO UPDATE
+                    SET theaudiodb_data = excluded.theaudiodb_data, updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now')
+                """, (artist_clean, song_clean, artist_norm, song_norm, audiodb_json))
+
+
+def get_theaudiodb_data(
+    artist: str,
+    song: str,
+    db_path: Optional[str] = None
+) -> Optional[Dict[str, Any]]:
+    """Retrieve TheAudioDB track metadata for a given artist and song."""
+    rec = get_search(artist, song, db_path=db_path)
+    if rec and rec.get("theaudiodb_data"):
+        return rec["theaudiodb_data"]
+    return None
 
 
 def save_artist_metadata(
@@ -723,6 +811,7 @@ def get_songs_by_band(artist: str, db_path: Optional[str] = None) -> List[Dict[s
                 source,
                 song_url,
                 track_tags,
+                theaudiodb_data,
                 (lyrics IS NOT NULL AND LENGTH(TRIM(lyrics)) > 0) as has_lyrics,
                 (analysis IS NOT NULL AND LENGTH(TRIM(analysis)) > 0) as has_analysis,
                 model_name,
@@ -787,6 +876,7 @@ def get_recent_searches(limit: int = 100, db_path: Optional[str] = None) -> List
                 source,
                 song_url,
                 track_tags,
+                theaudiodb_data,
                 (lyrics IS NOT NULL AND LENGTH(TRIM(lyrics)) > 0) as has_lyrics,
                 (analysis IS NOT NULL AND LENGTH(TRIM(analysis)) > 0) as has_analysis,
                 model_name,

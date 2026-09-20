@@ -27,3 +27,8 @@ NEON_DATABASE_URL = ""
 # Obtain a free key from https://www.last.fm/api/account/create
 LASTFM_API_KEY = ""
 
+# TheAudioDB V1 API Key (for track insights, tempo/BPM, key, mood, audio features, story & media)
+# The default free test key is "123" (public test key documented at https://www.theaudiodb.com/free_music_api)
+# Can also be set to your premium API key if subscribed
+THEAUDIODB_API_KEY = "123"
+

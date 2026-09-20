@@ -492,6 +492,66 @@ class TestAppIntegration(unittest.TestCase):
         self.assertIn('class="lastfm-quick-load-btn"', widget)
         self.assertIn("quickLoadTrack('The Hotelier', 'Your Deep Rest')", widget)
 
+    def test_22_theaudiodb_api_and_widget_rendering(self):
+        # 1. Verify /api/theaudiodb/track endpoint
+        mock_track_data = {
+            "track": "Karma Police",
+            "artist": "Radiohead",
+            "album": "OK Computer",
+            "tempo": 75,
+            "key": "Am",
+            "genre": "Alternative Rock",
+            "mood": "Melancholic",
+            "energy": 60,
+            "valence": 35,
+            "danceability": 45,
+            "description": "Karma Police is a song by the English alternative rock band Radiohead.",
+            "music_vid_url": "https://www.youtube.com/watch?v=1uYWYWPc9HU",
+            "music_vid_views_formatted": "150M",
+            "spotify_id": "63OQupATfueENZJaC0fltO"
+        }
+
+        with patch("theaudiodb.get_or_fetch_track_metadata", return_value=mock_track_data):
+            url = "/api/theaudiodb/track?artist=" + urllib.parse.quote("Radiohead") + "&song=" + urllib.parse.quote("Karma Police")
+            with self.authed_get(url) as resp:
+                self.assertEqual(resp.status, 200)
+                data = json.loads(resp.read().decode('utf-8'))
+                self.assertIn("theaudiodb_data", data)
+                self.assertEqual(data["theaudiodb_data"]["tempo"], 75)
+                self.assertEqual(data["theaudiodb_data"]["key"], "Am")
+
+        # 2. Save search with theaudiodb_data and verify page renders the widget
+        rec_id = database.save_search(
+            artist="Radiohead",
+            song="Karma Police",
+            lyrics="Karma police, arrest this man",
+            source="Genius",
+            theaudiodb_data=mock_track_data,
+            db_path=self.db_path
+        )
+        self.assertGreater(rec_id, 0)
+
+        with self.authed_get(f"/load?id={rec_id}") as resp:
+            self.assertEqual(resp.status, 200)
+            html = resp.read().decode('utf-8')
+            self.assertIn("TheAudioDB Track Insights", html)
+            self.assertIn("75 BPM", html)
+            self.assertIn("Key: Am", html)
+            self.assertIn("Melancholic", html)
+            self.assertIn("Karma Police is a song by the English alternative rock band Radiohead.", html)
+            self.assertIn("Official Video", html)
+
+        # 3. Test build_theaudiodb_widget directly
+        widget = calling_hours.build_theaudiodb_widget("Radiohead", "Karma Police", mock_track_data)
+        self.assertIn("TheAudioDB Track Insights", widget)
+        self.assertIn("75 BPM", widget)
+        self.assertIn("Key: Am", widget)
+        self.assertIn("OK Computer", widget)
+        self.assertIn("Energy", widget)
+        self.assertIn("Danceability", widget)
+        self.assertIn("Valence", widget)
+
+
 if __name__ == "__main__":
     unittest.main()
 

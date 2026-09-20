@@ -301,6 +301,69 @@ class TestDatabase(unittest.TestCase):
         self.assertEqual(len(rec_updated["track_tags"]), 1)
         self.assertEqual(rec_updated["track_tags"][0]["name"], "punk")
 
+    def test_theaudiodb_data_persistence(self):
+        audiodb_data = {
+            "track": "Yellow",
+            "artist": "Coldplay",
+            "album": "Parachutes",
+            "tempo": 86,
+            "key": "B",
+            "mood": "Relaxed",
+            "genre": "Pop-Rock",
+            "energy": 66,
+            "valence": 28,
+            "danceability": 43,
+            "description": "Yellow is a song by British alternative rock band Coldplay.",
+            "music_vid_url": "https://www.youtube.com/watch?v=yKNxeF4KMsY"
+        }
+
+        # 1. Save search with theaudiodb_data
+        rec_id = database.save_search(
+            artist="Coldplay",
+            song="Yellow",
+            lyrics="Look at the stars, look how they shine for you",
+            theaudiodb_data=audiodb_data,
+            db_path=self.db_path
+        )
+        rec = database.get_search_by_id(rec_id, db_path=self.db_path)
+        self.assertIsNotNone(rec["theaudiodb_data"])
+        self.assertEqual(rec["theaudiodb_data"]["tempo"], 86)
+        self.assertEqual(rec["theaudiodb_data"]["key"], "B")
+        self.assertEqual(rec["theaudiodb_data"]["mood"], "Relaxed")
+
+        # 2. get_theaudiodb_data helper
+        direct_data = database.get_theaudiodb_data("coldplay", "yellow", db_path=self.db_path)
+        self.assertIsNotNone(direct_data)
+        self.assertEqual(direct_data["album"], "Parachutes")
+
+        # 3. Update via save_theaudiodb_data
+        updated_data = dict(audiodb_data)
+        updated_data["tempo"] = 88
+        database.save_theaudiodb_data("coldplay", "yellow", updated_data, db_path=self.db_path)
+
+        rec_updated = database.get_search("Coldplay", "Yellow", db_path=self.db_path)
+        self.assertEqual(rec_updated["theaudiodb_data"]["tempo"], 88)
+
+        # 4. save_analysis preserves theaudiodb_data
+        database.save_analysis(
+            artist="Coldplay",
+            song="Yellow",
+            analysis="Deep themes of love and devotion.",
+            db_path=self.db_path
+        )
+        rec_after_analysis = database.get_search("Coldplay", "Yellow", db_path=self.db_path)
+        self.assertEqual(rec_after_analysis["analysis"], "Deep themes of love and devotion.")
+        self.assertIsNotNone(rec_after_analysis["theaudiodb_data"])
+        self.assertEqual(rec_after_analysis["theaudiodb_data"]["tempo"], 88)
+
+        # 5. Standalone save_theaudiodb_data for new track (upsert)
+        new_track_data = {"track": "Shiver", "artist": "Coldplay", "tempo": 125}
+        database.save_theaudiodb_data("Coldplay", "Shiver", new_track_data, db_path=self.db_path)
+        shiver_rec = database.get_search("Coldplay", "Shiver", db_path=self.db_path)
+        self.assertIsNotNone(shiver_rec)
+        self.assertEqual(shiver_rec["theaudiodb_data"]["tempo"], 125)
+
+
 if __name__ == "__main__":
     unittest.main()
 
