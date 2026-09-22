@@ -13,6 +13,7 @@ import json
 import secrets
 import difflib
 from typing import Any, Optional, Dict, List
+import traceback
 
 import requests
 try:
@@ -213,11 +214,14 @@ def build_theaudiodb_widget(
     # Media / Action Links
     media_links = []
     if music_vid_url:
+        clean_vid_url = music_vid_url
+        if clean_vid_url.lower().startswith("http://"):
+            clean_vid_url = "https://" + clean_vid_url[7:]
         view_note = f" ({vid_views})" if vid_views else ""
         director_note = f" &bull; Dir: {vid_director}" if vid_director else ""
-        media_links.append(f'<a href="{music_vid_url}" target="_blank" class="pill-btn secondary" style="font-size: 0.76rem; padding: 4px 10px; display: inline-flex; align-items: center; gap: 6px; text-decoration: none;" title="Watch Music Video{director_note}">▶ Official Video{view_note}</a>')
+        media_links.append(f'<a href="{clean_vid_url}" target="_blank" rel="noopener noreferrer" class="pill-btn secondary" style="font-size: 0.76rem; padding: 4px 10px; display: inline-flex; align-items: center; gap: 6px; text-decoration: none;" title="Watch Music Video{director_note}">▶ Official Video{view_note}</a>')
     if spotify_id:
-        media_links.append(f'<a href="https://open.spotify.com/track/{spotify_id}" target="_blank" class="pill-btn secondary" style="font-size: 0.76rem; padding: 4px 10px; text-decoration: none;" title="Open in Spotify">🎧 Spotify</a>')
+        media_links.append(f'<a href="https://open.spotify.com/track/{spotify_id}" target="_blank" rel="noopener noreferrer" class="pill-btn secondary" style="font-size: 0.76rem; padding: 4px 10px; text-decoration: none;" title="Open in Spotify">🎧 Spotify</a>')
     media_links_html = f'<div style="display: flex; gap: 8px; flex-wrap: wrap;">{" ".join(media_links)}</div>' if media_links else ""
 
     thumb_html = f'<img src="{thumb_url}" alt="{track_title}" style="width: 48px; height: 48px; border-radius: 8px; object-fit: cover; border: 1px solid rgba(165, 200, 255, 0.3); flex-shrink: 0;">' if thumb_url else ''
@@ -274,7 +278,7 @@ def build_lastfm_widget(
             </div>
             <div style="font-size: 0.85rem; color: rgba(225, 232, 240, 0.7); line-height: 1.5; padding: 6px 0;">
                 Connect community tags and artist top tracks by adding <code>LASTFM_API_KEY</code> to <code>calling_hours_secrets.py</code> or environment variables.
-                <a href="https://www.last.fm/api/account/create" target="_blank" style="color: #A5C8FF; text-decoration: underline; margin-left: 6px;">Get a free API key &rarr;</a>
+                <a href="https://www.last.fm/api/account/create" target="_blank" rel="noopener noreferrer" style="color: #A5C8FF; text-decoration: underline; margin-left: 6px;">Get a free API key &rarr;</a>
             </div>
         </div>
         '''
@@ -283,11 +287,12 @@ def build_lastfm_widget(
     if tags:
         track_chips = []
         for t in tags[:10]:
-            name = html_escape(t.get("name", ""))
+            raw_name = str(t.get("name", "") or "").strip()
+            name = html_escape(raw_name)
             count = t.get("count", 0)
-            url = html_escape(t.get("url") or f"https://www.last.fm/tag/{urllib.parse.quote_plus(name)}")
+            url = html_escape(t.get("url") or f"https://www.last.fm/tag/{urllib.parse.quote_plus(raw_name)}")
             badge = f'<span class="lastfm-chip-count">{count}</span>' if count > 0 else ''
-            track_chips.append(f'<a href="{url}" target="_blank" class="lastfm-tag-chip track-tag" title="Last.fm tag: {name}">#{name}{badge}</a>')
+            track_chips.append(f'<a href="{url}" target="_blank" rel="noopener noreferrer" class="lastfm-tag-chip track-tag" title="Last.fm tag: {name}">#{name}{badge}</a>')
         track_tags_html = " ".join(track_chips)
     else:
         track_tags_html = '<span style="font-size: 0.82rem; color: rgba(225, 232, 240, 0.5); font-style: italic;">No track tags found on Last.fm.</span>'
@@ -296,9 +301,10 @@ def build_lastfm_widget(
     if art_tags:
         art_chips = []
         for t in art_tags[:8]:
-            name = html_escape(t.get("name", ""))
-            url = html_escape(t.get("url") or f"https://www.last.fm/tag/{urllib.parse.quote_plus(name)}")
-            art_chips.append(f'<a href="{url}" target="_blank" class="lastfm-tag-chip artist-tag" title="Artist genre: {name}">#{name}</a>')
+            raw_name = str(t.get("name", "") or "").strip()
+            name = html_escape(raw_name)
+            url = html_escape(t.get("url") or f"https://www.last.fm/tag/{urllib.parse.quote_plus(raw_name)}")
+            art_chips.append(f'<a href="{url}" target="_blank" rel="noopener noreferrer" class="lastfm-tag-chip artist-tag" title="Artist genre: {name}">#{name}</a>')
         artist_tags_html = " ".join(art_chips)
     else:
         artist_tags_html = '<span style="font-size: 0.82rem; color: rgba(225, 232, 240, 0.5); font-style: italic;">No artist genres found.</span>'
@@ -382,7 +388,7 @@ GOOGLE_USERINFO_URL = 'https://www.googleapis.com/oauth2/v3/userinfo'
 # Cloud Run injects K_SERVICE and PORT (default 8080)
 IS_CLOUD_RUN = bool(os.environ.get('K_SERVICE'))
 PORT = int(os.environ.get('PORT', 8080 if IS_CLOUD_RUN else 8000))
-HOST = os.environ.get('HOST', '0.0.0.0' if (IS_CLOUD_RUN or 'PORT' in os.environ) else '127.0.0.1')
+HOST = os.environ.get('HOST', '0.0.0.0')
 OAUTH_PORT = PORT
 
 def get_genius_missing_message(action='authorize') -> str:
@@ -494,7 +500,7 @@ def build_app_header(active_page: str = 'song', user: Optional[Dict[str, Any]] =
                 </a>
                 <a href="/history" class="app-nav-link{history_active}" id="nav-link-history">
                     <span class="nav-icon">📜</span>
-                    <span class="nav-text">Search History</span>
+                    <span class="nav-text"><span class="desktop-only-text">Search </span>History</span>
                 </a>
                 <a href="/prompts" class="app-nav-link{prompts_active}" id="nav-link-prompts">
                     <span class="nav-icon">⚙️</span>
@@ -538,6 +544,7 @@ PAGE_HTML = r'''<!DOCTYPE html>
         // iOS PWA Standalone Mode link handler: ensures internal navigation stays inside standalone app
         if (('standalone' in window.navigator) && window.navigator.standalone) {
             document.addEventListener('click', function(e) {
+                if (e.defaultPrevented) return;
                 let node = e.target;
                 while (node && node.nodeName !== 'A' && node.nodeName !== 'HTML') {
                     node = node.parentNode;
@@ -1839,20 +1846,26 @@ PAGE_HTML = r'''<!DOCTYPE html>
 
         @media (max-width: 768px) {
             body {
-                padding: 0 0 36px 0;
+                padding: 0 0 calc(76px + env(safe-area-inset-bottom, 0px)) 0 !important;
+            }
+
+            .desktop-only-text {
+                display: none;
             }
 
             .app-header {
-                margin-bottom: 16px;
+                margin-bottom: 14px;
             }
 
             .app-header-inner {
-                padding: 10px 14px;
-                flex-direction: column;
-                align-items: stretch;
-                gap: 10px;
+                padding: 8px 14px;
+                flex-direction: row;
+                align-items: center;
+                justify-content: space-between;
+                gap: 8px;
                 width: 100%;
                 box-sizing: border-box;
+                min-height: 48px;
             }
 
             .app-header-top {
@@ -1861,58 +1874,65 @@ PAGE_HTML = r'''<!DOCTYPE html>
                 justify-content: space-between;
                 width: 100%;
                 gap: 8px;
-                order: 1;
             }
 
             .app-brand {
-                order: 1;
                 flex-shrink: 1;
                 min-width: 0;
             }
 
             .app-brand-text {
-                font-size: 1.1rem;
+                font-size: 1.05rem;
                 white-space: nowrap;
                 overflow: hidden;
                 text-overflow: ellipsis;
             }
 
             .app-user-bar {
-                order: 2;
-                margin-left: 0;
+                margin-left: auto;
                 flex-shrink: 0;
-                gap: 8px;
+                gap: 6px;
                 justify-content: flex-end;
             }
 
             .user-profile-badge {
                 padding: 3px 8px 3px 5px;
-                gap: 6px;
-                font-size: 0.8rem;
+                gap: 5px;
+                font-size: 0.78rem;
             }
 
             .user-display-name {
-                max-width: 90px;
+                max-width: 80px;
             }
 
             .btn-logout {
-                padding: 5px 10px;
-                font-size: 0.78rem;
+                padding: 4px 8px;
+                font-size: 0.75rem;
                 white-space: nowrap;
                 flex-shrink: 0;
             }
 
+            /* Fixed Bottom Navigation Bar - Optimized for One-Handed Thumb Access */
             .app-nav {
-                order: 2;
-                margin-left: 0;
+                position: fixed;
+                bottom: 0;
+                left: 0;
+                right: 0;
                 width: 100%;
+                margin: 0;
+                z-index: 1000;
+                background: rgba(5, 10, 20, 0.94);
+                backdrop-filter: blur(20px);
+                -webkit-backdrop-filter: blur(20px);
+                border-top: 1px solid rgba(165, 200, 255, 0.22);
+                box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.6);
                 display: flex;
                 align-items: center;
-                justify-content: space-between;
-                gap: 6px;
-                overflow-x: auto;
-                -webkit-overflow-scrolling: touch;
-                padding-bottom: 2px;
+                justify-content: space-around;
+                gap: 2px;
+                padding: 6px 8px max(8px, env(safe-area-inset-bottom, 0px)) 8px;
+                box-sizing: border-box;
+                overflow: hidden;
             }
 
             .app-nav::-webkit-scrollbar {
@@ -1920,19 +1940,66 @@ PAGE_HTML = r'''<!DOCTYPE html>
             }
 
             .app-nav-link {
-                flex: 1 1 auto;
+                flex: 1 1 0;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
                 justify-content: center;
-                padding: 7px 6px;
-                font-size: 0.74rem;
-                gap: 4px;
+                gap: 2px;
+                padding: 5px 2px;
+                border-radius: 10px;
+                color: #A5C8FF;
+                background: transparent;
+                border: 1px solid transparent;
+                text-decoration: none;
+                font-size: 0.66rem;
+                letter-spacing: 0.02em;
+                min-height: 48px;
+                touch-action: manipulation;
+                -webkit-tap-highlight-color: transparent;
+                transition: all 0.15s ease;
+            }
+
+            .app-nav-link .nav-icon {
+                font-size: 1.25rem;
+                line-height: 1;
+                display: block;
+                transition: transform 0.15s ease;
+            }
+
+            .app-nav-link .nav-text {
+                font-size: 0.65rem;
+                font-weight: 700;
+                line-height: 1.1;
+                text-align: center;
                 white-space: nowrap;
             }
 
+            .app-nav-link:active {
+                background: rgba(165, 200, 255, 0.15);
+                transform: scale(0.95);
+            }
+
+            .app-nav-link.active {
+                background: rgba(165, 200, 255, 0.16);
+                border-color: rgba(165, 200, 255, 0.4);
+                color: #FFFFFF;
+                box-shadow: 0 0 12px rgba(165, 200, 255, 0.25);
+            }
+
+            .app-nav-link.active .nav-icon {
+                transform: scale(1.12);
+            }
+
             .workspace-tabs {
-                top: calc(var(--app-header-height, 110px) + 4px);
-                scroll-margin-top: calc(var(--app-header-height, 110px) + 10px);
+                top: calc(var(--app-header-height, 50px) + 4px);
+                scroll-margin-top: calc(var(--app-header-height, 50px) + 8px);
                 margin-bottom: 14px;
                 padding: 4px;
+                border-radius: 12px;
+                background: rgba(11, 30, 63, 0.88);
+                backdrop-filter: blur(12px);
+                -webkit-backdrop-filter: blur(12px);
             }
 
             .tab-btn {
@@ -3372,7 +3439,53 @@ PAGE_HTML = r'''<!DOCTYPE html>
                 initialTab = 'lyrics';
             }
             switchWorkspaceTab(initialTab, false);
+            initMobileTabSwipes();
         });
+
+        function initMobileTabSwipes() {
+            let startX = 0;
+            let startY = 0;
+            let startTime = 0;
+            const container = document.querySelector('.container');
+            if (!container) return;
+
+            const tabs = ['search', 'lyrics', 'analysis'];
+
+            container.addEventListener('touchstart', (e) => {
+                if (e.touches.length === 1) {
+                    startX = e.touches[0].clientX;
+                    startY = e.touches[0].clientY;
+                    startTime = Date.now();
+                }
+            }, { passive: true });
+
+            container.addEventListener('touchend', (e) => {
+                if (window.innerWidth > 1080) return;
+                if (!e.changedTouches || e.changedTouches.length === 0) return;
+
+                const dx = e.changedTouches[0].clientX - startX;
+                const dy = e.changedTouches[0].clientY - startY;
+                const elapsed = Date.now() - startTime;
+
+                if (elapsed > 550) return;
+                if (Math.abs(dx) < 55 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+
+                const target = e.target;
+                if (target && (target.tagName === 'TEXTAREA' || target.tagName === 'INPUT' || target.isContentEditable)) {
+                    return;
+                }
+
+                const currentTab = container.getAttribute('data-active-tab') || 'search';
+                const idx = tabs.indexOf(currentTab);
+                if (idx === -1) return;
+
+                if (dx < 0 && idx < tabs.length - 1) {
+                    switchWorkspaceTab(tabs[idx + 1]);
+                } else if (dx > 0 && idx > 0) {
+                    switchWorkspaceTab(tabs[idx - 1]);
+                }
+            }, { passive: true });
+        }
     </script>
 </body>
 </html>'''
@@ -3428,6 +3541,35 @@ HISTORY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
         </div>
     </div>
     {app_header}
+    <style>
+        @media (max-width: 768px) {
+            .history-card {
+                flex-direction: column !important;
+                align-items: flex-start !important;
+                gap: 12px !important;
+                padding: 14px !important;
+            }
+            .history-card > div:last-child {
+                width: 100%;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                border-top: 1px solid rgba(165, 200, 255, 0.1);
+                padding-top: 10px;
+                margin-top: 4px;
+            }
+            .history-card > div:last-child a:first-child {
+                flex: 1;
+                text-align: center;
+                padding: 9px 16px !important;
+            }
+            .artist-modal {
+                padding: 16px !important;
+                width: 95vw !important;
+                max-height: 90vh !important;
+            }
+        }
+    </style>
     <div class="container" style="flex-direction: column; width: min(880px, 95vw);">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 12px;">
             <h1 style="font-size: 2rem; margin: 0; text-align: left;">Search History</h1>
@@ -3505,7 +3647,7 @@ HISTORY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
                         html += '<div class="lastfm-tag-cloud">';
                         data.tags.forEach(t => {
                             const tagUrl = t.url || ('https://www.last.fm/tag/' + encodeURIComponent(t.name));
-                            html += `<a href="${escapeHtml(tagUrl)}" target="_blank" class="lastfm-tag-chip artist-tag">#${escapeHtml(t.name)}</a> `;
+                            html += `<a href="${escapeHtml(tagUrl)}" target="_blank" rel="noopener noreferrer" class="lastfm-tag-chip artist-tag">#${escapeHtml(t.name)}</a> `;
                         });
                         html += '</div></div>';
                     }
@@ -3528,7 +3670,7 @@ HISTORY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
                         });
                         html += '</div></div>';
                     } else if (!data.has_key) {
-                        html += '<div style="color: #A5C8FF; font-size: 0.88rem; padding: 10px 0; line-height: 1.5;">Set <code>LASTFM_API_KEY</code> in <code>calling_hours_secrets.py</code> to browse Last.fm artist info.<br><a href="https://www.last.fm/api/account/create" target="_blank" style="color: #C4DFFF; text-decoration: underline; margin-top: 6px; display: inline-block;">Get a free API key &rarr;</a></div>';
+                        html += '<div style="color: #A5C8FF; font-size: 0.88rem; padding: 10px 0; line-height: 1.5;">Set <code>LASTFM_API_KEY</code> in <code>calling_hours_secrets.py</code> to browse Last.fm artist info.<br><a href="https://www.last.fm/api/account/create" target="_blank" rel="noopener noreferrer" style="color: #C4DFFF; text-decoration: underline; margin-top: 6px; display: inline-block;">Get a free API key &rarr;</a></div>';
                     } else {
                         html += '<div style="color: rgba(225, 232, 240, 0.6); font-style: italic; padding: 20px; text-align: center;">No Last.fm metadata found for this artist.</div>';
                     }
@@ -3615,6 +3757,7 @@ HISTORY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             if (activeArtistFilter) {
                 filterByArtist(activeArtistFilter);
             }
+        });
     </script>
 </body>
 </html>'''
@@ -3900,6 +4043,78 @@ ARTIST_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             color: #FFFFFF;
             border-color: #A5C8FF;
             transform: scale(1.03);
+        }
+        @media (max-width: 768px) {
+            .artist-page-container {
+                width: 95vw;
+                margin-bottom: 40px;
+                gap: 16px;
+            }
+            .artist-top-bar {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 12px;
+            }
+            .artist-search-form {
+                max-width: 100%;
+                width: 100%;
+            }
+            .artist-hero-card {
+                padding: 20px 16px;
+            }
+            .artist-hero-inner {
+                flex-direction: column;
+                align-items: center;
+                text-align: center;
+                gap: 18px;
+            }
+            .artist-avatar-img,
+            .artist-avatar-placeholder {
+                width: 100px;
+                height: 100px;
+                font-size: 2.5rem;
+            }
+            .artist-heading {
+                font-size: 1.8rem !important;
+                text-align: center;
+            }
+            .artist-badges-row,
+            .artist-links-row {
+                justify-content: center;
+            }
+            .nc-spotlight-card,
+            .tour-history-card,
+            .songs-table-card {
+                padding: 18px 16px;
+            }
+            .tour-cards-grid {
+                grid-template-columns: 1fr;
+            }
+            .artist-song-row {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 10px;
+                padding: 10px 8px;
+            }
+            .artist-song-row .btn-analyze-song {
+                width: 100%;
+                justify-content: center;
+                text-align: center;
+            }
+        }
+        @media (max-width: 480px) {
+            .artist-heading {
+                font-size: 1.5rem !important;
+            }
+            .artist-meta-badge {
+                font-size: 0.76rem;
+                padding: 3px 8px;
+            }
+            .artist-links-row .pill-btn {
+                flex: 1 1 100%;
+                text-align: center;
+                justify-content: center;
+            }
         }
     </style>
 
@@ -4354,7 +4569,33 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(content.encode('utf-8'))
 
+    def _handle_internal_error(self, err: Exception, is_post: bool = False):
+        traceback.print_exc()
+        try:
+            parsed = urllib.parse.urlparse(self.path)
+            if parsed.path.startswith('/api/'):
+                self.send_response(500)
+                self.send_header('Content-Type', 'application/json; charset=utf-8')
+                self.end_headers()
+                self.wfile.write(json.dumps({'error': 'Internal Server Error', 'detail': str(err)}).encode('utf-8'))
+                return
+            err_msg = f'<div class="message error"><strong>Notice:</strong> An unexpected error occurred: {html_escape(str(err))}. Please try again.</div>'
+            self.send_response(200)
+            self.render_page(message=err_msg, lyrics_text='')
+        except Exception as fallback_e:
+            print(f"Fallback error rendering failed: {fallback_e}")
+            try:
+                self.send_error(500, "Internal Server Error")
+            except Exception:
+                pass
+
     def do_GET(self):
+        try:
+            self._do_GET()
+        except Exception as e:
+            self._handle_internal_error(e)
+
+    def _do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
 
         # 1. Health check (unauthenticated)
@@ -4476,6 +4717,18 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
 
         if parsed.path == '/callback':
             self.handle_callback(parsed.query)
+            return
+
+        if parsed.path in ('/submit', '/analyze'):
+            self.send_response(302)
+            self.send_header('Location', '/')
+            self.end_headers()
+            return
+
+        if parsed.path == '/prompts/save':
+            self.send_response(302)
+            self.send_header('Location', '/prompts')
+            self.end_headers()
             return
 
         if parsed.path == '/prompts':
@@ -4743,35 +4996,61 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 lyrics = ''
                 song_url = None
                 source = None
-                genius_info = search_genius_song_details(artist_param, song_param)
-                if genius_info and genius_info.get('url'):
-                    song_url = genius_info['url']
-                    source = 'Genius'
-                    fetched = fetch_genius_lyrics(song_url)
-                    if fetched:
-                        lyrics = fetched
+                canonical_artist = None
+                canonical_song = None
+
+                if ACCESS_TOKEN or (GENIUS_CLIENT_ID and GENIUS_CLIENT_SECRET):
+                    try:
+                        genius_info = search_genius_song_details(artist_param, song_param)
+                        if genius_info:
+                            song_url = genius_info.get('url')
+                            canonical_artist = genius_info.get('artist')
+                            canonical_song = genius_info.get('song')
+                    except Exception as gse:
+                        print(f"Genius search error in do_GET: {gse}")
+
+                if song_url:
+                    try:
+                        fetched = fetch_genius_lyrics(song_url)
+                        if fetched:
+                            lyrics = fetched
+                            source = 'Genius'
+                    except Exception as gfe:
+                        print(f"Genius lyrics fetch error in do_GET: {gfe}")
+
                 if not lyrics:
-                    lrclib_lyrics = fetch_lrclib_lyrics(artist_param, song_param)
-                    if lrclib_lyrics:
-                        lyrics = lrclib_lyrics
-                        source = 'LRCLIB'
+                    try:
+                        lrclib_lyrics = fetch_lrclib_lyrics(
+                            artist=artist_param,
+                            song=song_param,
+                            canonical_artist=canonical_artist,
+                            canonical_song=canonical_song
+                        )
+                        if lrclib_lyrics:
+                            lyrics = lrclib_lyrics
+                            source = 'LRCLIB'
+                    except Exception as lre:
+                        print(f"LRCLIB fetch error in do_GET: {lre}")
+
+                effective_artist = canonical_artist or artist_param
+                effective_song = canonical_song or song_param
 
                 track_tags = []
                 if LASTFM_API_KEY:
                     try:
-                        track_tags = lastfm.get_or_fetch_track_tags(artist_param, song_param, api_key=LASTFM_API_KEY)
+                        track_tags = lastfm.get_or_fetch_track_tags(effective_artist, effective_song, api_key=LASTFM_API_KEY)
                     except Exception:
                         pass
 
                 theaudiodb_data = None
                 try:
-                    theaudiodb_data = theaudiodb.get_or_fetch_track_metadata(artist_param, song_param, api_key=THEAUDIODB_API_KEY)
+                    theaudiodb_data = theaudiodb.get_or_fetch_track_metadata(effective_artist, effective_song, api_key=THEAUDIODB_API_KEY)
                 except Exception:
                     pass
 
                 artist_metadata = None
                 try:
-                    artist_metadata = lastfm.get_or_fetch_artist_metadata(artist_param, api_key=LASTFM_API_KEY)
+                    artist_metadata = lastfm.get_or_fetch_artist_metadata(effective_artist, api_key=LASTFM_API_KEY)
                 except Exception:
                     pass
 
@@ -4779,8 +5058,8 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 if lyrics:
                     try:
                         database.save_search(
-                            artist=artist_param,
-                            song=song_param,
+                            artist=effective_artist,
+                            song=effective_song,
                             lyrics=lyrics,
                             source=source or 'Online',
                             song_url=song_url,
@@ -4794,13 +5073,13 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                         try:
                             prompts = load_prompts()
                             p_template = prompts[0]['text'] if prompts else "Analyze lyrics:\n{lyrics_text}"
-                            p_text = p_template.replace('{song}', song_param).replace('{artist}', artist_param).replace('{lyrics_text}', html.unescape(lyrics))
+                            p_text = p_template.replace('{song}', effective_song).replace('{artist}', effective_artist).replace('{lyrics_text}', html.unescape(lyrics))
                             client = genai.Client(api_key=GEMINI_API_KEY)
                             inter = client.interactions.create(model=DEFAULT_GEMINI_MODEL, input=p_text)
                             analysis = inter.output_text or ''
                             database.save_analysis(
-                                artist=artist_param,
-                                song=song_param,
+                                artist=effective_artist,
+                                song=effective_song,
                                 analysis=analysis,
                                 model_name=DEFAULT_GEMINI_MODEL,
                                 prompt_name="Default Analysis",
@@ -4811,13 +5090,13 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                         except Exception as aae:
                             print(f"Auto-analyze new song error: {aae}")
 
-                genius_link = f' <a href="{html_escape(song_url)}" target="_blank" style="color:#A8D2FF; text-decoration:underline;">View on Genius</a>' if song_url else ''
-                msg = f'<div class="message">Loaded <strong>{html_escape(artist_param)}</strong> - <strong>{html_escape(song_param)}</strong>.{genius_link}</div>' if lyrics else ''
+                genius_link = f' <a href="{html_escape(song_url)}" target="_blank" rel="noopener noreferrer" style="color:#A8D2FF; text-decoration:underline;">View on Genius</a>' if song_url else ''
+                msg = f'<div class="message">Loaded <strong>{html_escape(effective_artist)}</strong> - <strong>{html_escape(effective_song)}</strong>.{genius_link}</div>' if lyrics else ''
                 self.render_page(
                     message=msg,
                     lyrics_text=lyrics,
-                    artist_value=html_escape(artist_param),
-                    song_value=html_escape(song_param),
+                    artist_value=html_escape(effective_artist),
+                    song_value=html_escape(effective_song),
                     analysis_result=analysis,
                     selected_model=DEFAULT_GEMINI_MODEL,
                     show_editor=bool(lyrics or analysis),
@@ -4842,6 +5121,12 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         self.render_page(message=message, lyrics_text='')
 
     def do_POST(self):
+        try:
+            self._do_POST()
+        except Exception as e:
+            self._handle_internal_error(e, is_post=True)
+
+    def _do_POST(self):
         current_user = self.get_current_user()
         if not current_user:
             self.send_response(302)
@@ -5294,12 +5579,11 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             selected_attr = ' selected' if m['id'] == selected_model else ''
             model_options += f'<option value="{html_escape(m["id"])}"{selected_attr}>{html_escape(m["name"])}</option>\n'
 
+        prompts = load_prompts()
         prompt_options = ''
-        if show_sections:
-            prompts = load_prompts()
-            for idx, p in enumerate(prompts):
-                selected_attr = ' selected' if idx == selected_prompt else ''
-                prompt_options += f'<option value="{idx}"{selected_attr}>{html_escape(p["name"])}</option>\n'
+        for idx, p in enumerate(prompts):
+            selected_attr = ' selected' if idx == selected_prompt else ''
+            prompt_options += f'<option value="{idx}"{selected_attr}>{html_escape(p["name"])}</option>\n'
 
         bands = database.get_distinct_bands()
         band_options = ''
@@ -5316,8 +5600,8 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             band_select_display = 'display: none;'
             band_count_text = '0 saved'
 
-        lyrics_badge_display = 'inline-block;' if lyrics_text.strip() else 'display: none;'
-        analysis_badge_display = 'inline-block;' if analysis_result.strip() else 'display: none;'
+        lyrics_badge_display = 'display: inline-block;' if lyrics_text.strip() else 'display: none;'
+        analysis_badge_display = 'display: inline-block;' if analysis_result.strip() else 'display: none;'
 
         lyrics_text_attr = html.escape(lyrics_text, quote=True)
         content = PAGE_HTML.replace('{message_block}', message)\
@@ -5615,15 +5899,15 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         for t in (lastfm_data.get('tags') or [])[:8]:
             t_name = html_escape(t.get('name', ''))
             t_url = html_escape(t.get('url') or f"https://www.last.fm/tag/{urllib.parse.quote_plus(t.get('name', ''))}")
-            tags_chips.append(f'<a href="{t_url}" target="_blank" class="lastfm-tag-chip artist-tag">#{t_name}</a>')
+            tags_chips.append(f'<a href="{t_url}" target="_blank" rel="noopener noreferrer" class="lastfm-tag-chip artist-tag">#{t_name}</a>')
         tags_html = " ".join(tags_chips)
 
         # External Links
         ext_links = []
         if setlist_data.get('url'):
-            ext_links.append(f'<a href="{html_escape(setlist_data["url"])}" target="_blank" class="pill-btn secondary" style="font-size: 0.78rem; padding: 4px 10px;">🎤 Setlist.fm Profile &rarr;</a>')
-        ext_links.append(f'<a href="https://www.last.fm/music/{artist_url_param}" target="_blank" class="pill-btn secondary" style="font-size: 0.78rem; padding: 4px 10px;">📻 Last.fm Profile &rarr;</a>')
-        ext_links.append(f'<a href="https://genius.com/search?q={artist_url_param}" target="_blank" class="pill-btn secondary" style="font-size: 0.78rem; padding: 4px 10px;">📝 Genius Catalog &rarr;</a>')
+            ext_links.append(f'<a href="{html_escape(setlist_data["url"])}" target="_blank" rel="noopener noreferrer" class="pill-btn secondary" style="font-size: 0.78rem; padding: 4px 10px;">🎤 Setlist.fm Profile &rarr;</a>')
+        ext_links.append(f'<a href="https://www.last.fm/music/{artist_url_param}" target="_blank" rel="noopener noreferrer" class="pill-btn secondary" style="font-size: 0.78rem; padding: 4px 10px;">📻 Last.fm Profile &rarr;</a>')
+        ext_links.append(f'<a href="https://genius.com/search?q={artist_url_param}" target="_blank" rel="noopener noreferrer" class="pill-btn secondary" style="font-size: 0.78rem; padding: 4px 10px;">📝 Genius Catalog &rarr;</a>')
         ext_links.append(f'<a href="/artist?artist={artist_url_param}&refresh=1" class="pill-btn secondary" style="font-size: 0.78rem; padding: 4px 10px;" title="Bypass cache and reload data from all APIs">↻ Refresh Data</a>')
         links_html = " ".join(ext_links)
 
@@ -5676,7 +5960,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                             </h2>
                         </div>
                     </div>
-                    {f'<a href="{nc_url}" target="_blank" class="pill-btn primary" style="padding: 8px 16px; font-size: 0.86rem; text-decoration: none; white-space: nowrap;">View NC Setlist on Setlist.fm &rarr;</a>' if nc_url else ''}
+                    {f'<a href="{nc_url}" target="_blank" rel="noopener noreferrer" class="pill-btn primary" style="padding: 8px 16px; font-size: 0.86rem; text-decoration: none; white-space: nowrap;">View NC Setlist on Setlist.fm &rarr;</a>' if nc_url else ''}
                 </div>
                 <div style="margin-top: 14px; font-size: 1.05rem; color: #E1E8F0; line-height: 1.5;">
                     🏟️ <strong>{nc_venue}</strong> &bull; {nc_city}, {nc_state}
@@ -5752,7 +6036,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                         </div>
                         {f'<div style="margin-top: 10px; font-size: 0.8rem; color: rgba(225, 232, 240, 0.65); font-style: italic;">Note: {notes}</div>' if notes else ''}
                     </div>
-                    {f'<div style="margin-top: 14px; text-align: right;"><a href="{tour_url}" target="_blank" class="pill-btn secondary" style="font-size: 0.76rem; padding: 4px 10px;">View Tour Setlist &rarr;</a></div>' if tour_url else ''}
+                    {f'<div style="margin-top: 14px; text-align: right;"><a href="{tour_url}" target="_blank" rel="noopener noreferrer" class="pill-btn secondary" style="font-size: 0.76rem; padding: 4px 10px;">View Tour Setlist &rarr;</a></div>' if tour_url else ''}
                 </div>
                 ''')
 
@@ -5811,7 +6095,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                             {s_count} songs played {songs_preview}
                         </div>
                     </div>
-                    {f'<a href="{s_url}" target="_blank" class="pill-btn secondary" style="font-size: 0.74rem; padding: 3px 8px;">Setlist &rarr;</a>' if s_url else ''}
+                    {f'<a href="{s_url}" target="_blank" rel="noopener noreferrer" class="pill-btn secondary" style="font-size: 0.74rem; padding: 3px 8px;">Setlist &rarr;</a>' if s_url else ''}
                 </div>
                 ''')
 
@@ -5819,7 +6103,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             <div class="tour-history-card">
                 <div class="section-header-row">
                     <h2 class="section-title"><span>🎤</span> Recent Concert Setlists</h2>
-                    {f'<a href="{html_escape(setlist_data.get("url"))}" target="_blank" style="color: #A5C8FF; font-size: 0.82rem; text-decoration: none;">View all {total_concerts} concerts on Setlist.fm &rarr;</a>' if setlist_data.get('url') else ''}
+                    {f'<a href="{html_escape(setlist_data.get("url"))}" target="_blank" rel="noopener noreferrer" style="color: #A5C8FF; font-size: 0.82rem; text-decoration: none;">View all {total_concerts} concerts on Setlist.fm &rarr;</a>' if setlist_data.get('url') else ''}
                 </div>
                 <div style="display: flex; flex-direction: column;">
                     {"".join(setlist_rows)}
@@ -6144,38 +6428,42 @@ def search_genius_song_details(artist: str, song: str) -> Dict[str, str] | None:
     query = f"{artist} {song}".strip()
 
     if ACCESS_TOKEN:
-        response = requests.get(GENIUS_API_SEARCH_URL, params={'q': query}, headers=build_genius_headers(), timeout=10)
-        response.raise_for_status()
-        data = response.json()
-
-        for hit in data.get('response', {}).get('hits', []):
-            result = hit.get('result')
-            if result and (hit.get('type') == 'song' or result.get('_type') == 'song' or result.get('type') == 'song'):
-                url = result.get('url')
-                resolved_artist = result.get('primary_artist', {}).get('name') or result.get('artist_names')
-                resolved_song = result.get('title')
-                return {
-                    'url': url,
-                    'artist': resolved_artist or artist,
-                    'song': resolved_song or song
-                }
+        try:
+            response = requests.get(GENIUS_API_SEARCH_URL, params={'q': query}, headers=build_genius_headers(), timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                for hit in data.get('response', {}).get('hits', []):
+                    result = hit.get('result')
+                    if result and (hit.get('type') == 'song' or result.get('_type') == 'song' or result.get('type') == 'song'):
+                        url = result.get('url')
+                        resolved_artist = result.get('primary_artist', {}).get('name') or result.get('artist_names')
+                        resolved_song = result.get('title')
+                        return {
+                            'url': url,
+                            'artist': resolved_artist or artist,
+                            'song': resolved_song or song
+                        }
+        except Exception as e:
+            print(f"Genius API search error: {e}")
     else:
-        response = requests.get(GENIUS_WEB_SEARCH_URL, params={'q': query}, headers=build_genius_headers(), timeout=10)
-        response.raise_for_status()
-        data = response.json()
-
-        for section in data.get('response', {}).get('sections', []):
-            for hit in section.get('hits', []):
-                result = hit.get('result') or hit.get('hit', {}).get('result')
-                if result and (hit.get('type') == 'song' or result.get('_type') == 'song' or result.get('type') == 'song'):
-                    url = result.get('url')
-                    resolved_artist = result.get('primary_artist', {}).get('name') or result.get('artist_names')
-                    resolved_song = result.get('title')
-                    return {
-                        'url': url,
-                        'artist': resolved_artist or artist,
-                        'song': resolved_song or song
-                    }
+        try:
+            response = requests.get(GENIUS_WEB_SEARCH_URL, params={'q': query}, headers=build_genius_headers(), timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                for section in data.get('response', {}).get('sections', []):
+                    for hit in section.get('hits', []):
+                        result = hit.get('result') or hit.get('hit', {}).get('result')
+                        if result and (hit.get('type') == 'song' or result.get('_type') == 'song' or result.get('type') == 'song'):
+                            url = result.get('url')
+                            resolved_artist = result.get('primary_artist', {}).get('name') or result.get('artist_names')
+                            resolved_song = result.get('title')
+                            return {
+                                'url': url,
+                                'artist': resolved_artist or artist,
+                                'song': resolved_song or song
+                            }
+        except Exception as e:
+            print(f"Genius web search error: {e}")
 
     return None
 
@@ -6200,9 +6488,17 @@ def fetch_genius_lyrics(song_url: str) -> str | None:
 
     # 2. Fallback to standard requests if curl_cffi was unavailable or didn't fetch HTML
     if not html_text:
-        response = requests.get(song_url, headers=headers, timeout=10)
-        response.raise_for_status()
-        html_text = response.text
+        try:
+            response = requests.get(song_url, headers=headers, timeout=10)
+            if response.status_code == 200:
+                html_text = response.text
+            else:
+                print(f"Genius standard requests status: {response.status_code}")
+        except Exception as re_err:
+            print(f"Genius standard requests error: {re_err}")
+
+    if not html_text:
+        return None
 
     # 3. Parse lyrics using BeautifulSoup if available
     if HAS_BS4:

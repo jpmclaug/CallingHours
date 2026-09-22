@@ -764,6 +764,101 @@ class TestAppIntegration(unittest.TestCase):
             self.assertIn("filterByArtist(this.dataset.artist)", html)
             self.assertIn("openArtistModal(this.dataset.artist)", html)
 
+    def test_24_mobile_redirects_for_post_endpoints(self):
+        class NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+            def redirect_request(self, req, fp, code, msg, headers, newurl):
+                return None
+
+        opener = urllib.request.build_opener(NoRedirectHandler)
+
+        # GET /submit should redirect 302 to /
+        req = urllib.request.Request(f"{self.base_url}/submit", headers=self.auth_headers)
+        try:
+            resp = opener.open(req)
+            self.assertEqual(resp.status, 302)
+            self.assertEqual(resp.headers.get("Location"), "/")
+        except urllib.error.HTTPError as e:
+            self.assertEqual(e.code, 302)
+            self.assertEqual(e.headers.get("Location"), "/")
+
+        # GET /analyze should redirect 302 to /
+        req = urllib.request.Request(f"{self.base_url}/analyze", headers=self.auth_headers)
+        try:
+            resp = opener.open(req)
+            self.assertEqual(resp.status, 302)
+            self.assertEqual(resp.headers.get("Location"), "/")
+        except urllib.error.HTTPError as e:
+            self.assertEqual(e.code, 302)
+            self.assertEqual(e.headers.get("Location"), "/")
+
+        # GET /prompts/save should redirect 302 to /prompts
+        req = urllib.request.Request(f"{self.base_url}/prompts/save", headers=self.auth_headers)
+        try:
+            resp = opener.open(req)
+            self.assertEqual(resp.status, 302)
+            self.assertEqual(resp.headers.get("Location"), "/prompts")
+        except urllib.error.HTTPError as e:
+            self.assertEqual(e.code, 302)
+            self.assertEqual(e.headers.get("Location"), "/prompts")
+
+    def test_25_genius_403_graceful_handling_in_do_get(self):
+        # Simulate Genius blocking requests with 403 Forbidden
+        with patch("calling_hours.search_genius_song_details", return_value={"url": "https://genius.com/blocked-song", "artist": "BlockedBand", "song": "BlockedSong"}), \
+             patch("calling_hours.fetch_genius_lyrics", side_effect=calling_hours.requests.exceptions.HTTPError("403 Client Error: Forbidden")), \
+             patch("calling_hours.fetch_lrclib_lyrics", return_value="LRCLIB fallback lyrics content"):
+            
+            url = f"/?artist={urllib.parse.quote('BlockedBand')}&song={urllib.parse.quote('BlockedSong')}"
+            with self.authed_get(url) as resp:
+                self.assertEqual(resp.status, 200)
+                html = resp.read().decode('utf-8')
+                self.assertIn("LRCLIB fallback lyrics content", html)
+                self.assertIn("BlockedBand", html)
+                self.assertIn("BlockedSong", html)
+
+    def test_26_history_page_syntax_and_mobile_styles(self):
+        with self.authed_get("/history") as resp:
+            self.assertEqual(resp.status, 200)
+            html = resp.read().decode('utf-8')
+            # Verify missing }); is fixed (no unclosed DOMContentLoaded)
+            self.assertIn("filterByArtist(activeArtistFilter);\n            }\n        });", html)
+            # Verify mobile responsive style is present
+            self.assertIn("@media (max-width: 768px)", html)
+            self.assertIn(".history-card", html)
+            # Verify rel="noopener noreferrer" is in modal links
+            self.assertIn('rel="noopener noreferrer"', html)
+
+    def test_27_artist_page_mobile_styles(self):
+        with self.authed_get("/artist?artist=TestArtist") as resp:
+            self.assertEqual(resp.status, 200)
+            html = resp.read().decode('utf-8')
+            self.assertIn("@media (max-width: 768px)", html)
+            self.assertIn("@media (max-width: 480px)", html)
+            self.assertIn(".artist-page-container", html)
+            self.assertIn(".artist-hero-card", html)
+
+    def test_28_render_page_tab_badges_and_prompts(self):
+        with self.authed_get("/") as resp:
+            self.assertEqual(resp.status, 200)
+            html = resp.read().decode('utf-8')
+            # Invalid CSS style="inline-block;" must not be present
+            self.assertNotIn('style="inline-block;"', html)
+            # Prompt dropdown options must be populated even on empty search
+            self.assertIn('<select name="prompt_idx" id="prompt_idx">', html)
+            self.assertIn('Default Analysis', html)
+
+    def test_29_mobile_bottom_navigation_bar_and_swipes(self):
+        with self.authed_get("/") as resp:
+            self.assertEqual(resp.status, 200)
+            html = resp.read().decode('utf-8')
+            # Verify bottom navigation styling
+            self.assertIn("position: fixed;", html)
+            self.assertIn("bottom: 0;", html)
+            self.assertIn("calc(76px + env(safe-area-inset-bottom", html)
+            # Verify desktop-only-text for Search History
+            self.assertIn('<span class="desktop-only-text">Search </span>History', html)
+            # Verify swipe navigation script
+            self.assertIn("initMobileTabSwipes", html)
+
 
 if __name__ == "__main__":
     unittest.main()
