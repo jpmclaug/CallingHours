@@ -445,11 +445,18 @@ def build_app_header(active_page: str = 'song', user: Optional[Dict[str, Any]] =
     admin_active = ' active' if active_page == 'admin' else ''
 
     admin_nav_link = ''
+    admin_bottom_nav_link = ''
     user_menu_html = ''
     if user:
         if user.get('is_admin'):
             admin_nav_link = f'''
                 <a href="/admin" class="app-nav-link{admin_active}" id="nav-link-admin">
+                    <span class="nav-icon">🛡️</span>
+                    <span class="nav-text">Admin</span>
+                </a>
+            '''
+            admin_bottom_nav_link = f'''
+                <a href="/admin" class="app-bottom-nav-link{admin_active}" id="mobile-nav-link-admin">
                     <span class="nav-icon">🛡️</span>
                     <span class="nav-text">Admin</span>
                 </a>
@@ -510,6 +517,25 @@ def build_app_header(active_page: str = 'song', user: Optional[Dict[str, Any]] =
             </nav>
         </div>
     </header>
+    <nav class="app-bottom-nav" aria-label="Mobile Navigation">
+        <a href="/" class="app-bottom-nav-link{song_active}" id="mobile-nav-link-song">
+            <span class="nav-icon">🎵</span>
+            <span class="nav-text">Song</span>
+        </a>
+        <a href="/artist" class="app-bottom-nav-link{artist_active}" id="mobile-nav-link-artist">
+            <span class="nav-icon">👤</span>
+            <span class="nav-text">Artists</span>
+        </a>
+        <a href="/history" class="app-bottom-nav-link{history_active}" id="mobile-nav-link-history">
+            <span class="nav-icon">📜</span>
+            <span class="nav-text">History</span>
+        </a>
+        <a href="/prompts" class="app-bottom-nav-link{prompts_active}" id="mobile-nav-link-prompts">
+            <span class="nav-icon">⚙️</span>
+            <span class="nav-text">Prompts</span>
+        </a>
+        {admin_bottom_nav_link}
+    </nav>
     '''
 
 PAGE_HTML = r'''<!DOCTYPE html>
@@ -765,6 +791,11 @@ PAGE_HTML = r'''<!DOCTYPE html>
             color: #f08c5a;
             border-color: rgba(240, 140, 90, 0.4);
             background: rgba(240, 140, 90, 0.08);
+        }
+
+        /* Mobile Bottom Navigation Bar (Hidden on desktop > 1080px) */
+        .app-bottom-nav {
+            display: none;
         }
 
         /* Analysis Loading & Non-Dismissible Overlay */
@@ -1797,6 +1828,14 @@ PAGE_HTML = r'''<!DOCTYPE html>
 
         /* Responsive & Mobile Enhancements */
         @media (max-width: 1080px) {
+            body {
+                padding: 0 0 calc(76px + env(safe-area-inset-bottom, 0px)) 0 !important;
+            }
+
+            .desktop-only-text {
+                display: none;
+            }
+
             .workspace-tabs {
                 display: flex;
             }
@@ -1842,17 +1881,8 @@ PAGE_HTML = r'''<!DOCTYPE html>
                 min-width: 0;
                 width: 100%;
             }
-        }
 
-        @media (max-width: 768px) {
-            body {
-                padding: 0 0 calc(76px + env(safe-area-inset-bottom, 0px)) 0 !important;
-            }
-
-            .desktop-only-text {
-                display: none;
-            }
-
+            /* Compact top header on mobile */
             .app-header {
                 margin-bottom: 14px;
             }
@@ -1912,21 +1942,26 @@ PAGE_HTML = r'''<!DOCTYPE html>
                 flex-shrink: 0;
             }
 
-            /* Fixed Bottom Navigation Bar - Optimized for One-Handed Thumb Access */
-            .app-nav {
+            /* Hide desktop navigation in top header on mobile */
+            .app-header .app-nav {
+                display: none !important;
+            }
+
+            /* Fixed Bottom Navigation Bar - Rendered directly in body, free from backdrop-filter containing block trap */
+            .app-bottom-nav {
                 position: fixed;
                 bottom: 0;
                 left: 0;
                 right: 0;
                 width: 100%;
                 margin: 0;
-                z-index: 1000;
-                background: rgba(5, 10, 20, 0.94);
+                z-index: 9990;
+                background: rgba(5, 10, 20, 0.96);
                 backdrop-filter: blur(20px);
                 -webkit-backdrop-filter: blur(20px);
                 border-top: 1px solid rgba(165, 200, 255, 0.22);
                 box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.6);
-                display: flex;
+                display: flex !important;
                 align-items: center;
                 justify-content: space-around;
                 gap: 2px;
@@ -1935,11 +1970,11 @@ PAGE_HTML = r'''<!DOCTYPE html>
                 overflow: hidden;
             }
 
-            .app-nav::-webkit-scrollbar {
+            .app-bottom-nav::-webkit-scrollbar {
                 display: none;
             }
 
-            .app-nav-link {
+            .app-bottom-nav-link {
                 flex: 1 1 0;
                 display: flex;
                 flex-direction: column;
@@ -1960,14 +1995,14 @@ PAGE_HTML = r'''<!DOCTYPE html>
                 transition: all 0.15s ease;
             }
 
-            .app-nav-link .nav-icon {
+            .app-bottom-nav-link .nav-icon {
                 font-size: 1.25rem;
                 line-height: 1;
                 display: block;
                 transition: transform 0.15s ease;
             }
 
-            .app-nav-link .nav-text {
+            .app-bottom-nav-link .nav-text {
                 font-size: 0.65rem;
                 font-weight: 700;
                 line-height: 1.1;
@@ -1975,21 +2010,24 @@ PAGE_HTML = r'''<!DOCTYPE html>
                 white-space: nowrap;
             }
 
-            .app-nav-link:active {
+            .app-bottom-nav-link:active {
                 background: rgba(165, 200, 255, 0.15);
                 transform: scale(0.95);
             }
 
-            .app-nav-link.active {
+            .app-bottom-nav-link.active {
                 background: rgba(165, 200, 255, 0.16);
                 border-color: rgba(165, 200, 255, 0.4);
                 color: #FFFFFF;
                 box-shadow: 0 0 12px rgba(165, 200, 255, 0.25);
             }
 
-            .app-nav-link.active .nav-icon {
+            .app-bottom-nav-link.active .nav-icon {
                 transform: scale(1.12);
             }
+        }
+
+        @media (max-width: 768px) {
 
             .workspace-tabs {
                 top: calc(var(--app-header-height, 50px) + 4px);
@@ -2185,14 +2223,14 @@ PAGE_HTML = r'''<!DOCTYPE html>
                 font-size: 0.74rem;
             }
 
-            .app-nav {
-                gap: 4px;
+            .app-bottom-nav {
+                gap: 2px;
             }
 
-            .app-nav-link {
-                padding: 6px 4px;
-                font-size: 0.7rem;
-                gap: 3px;
+            .app-bottom-nav-link {
+                padding: 5px 2px;
+                font-size: 0.62rem;
+                gap: 2px;
             }
 
             .container {
@@ -2206,8 +2244,8 @@ PAGE_HTML = r'''<!DOCTYPE html>
             }
 
             .workspace-tabs {
-                top: calc(var(--app-header-height, 110px) + 4px);
-                scroll-margin-top: calc(var(--app-header-height, 110px) + 8px);
+                top: calc(var(--app-header-height, 50px) + 4px);
+                scroll-margin-top: calc(var(--app-header-height, 50px) + 8px);
                 gap: 4px;
             }
 

@@ -858,6 +858,39 @@ class TestAppIntegration(unittest.TestCase):
             self.assertIn('<span class="desktop-only-text">Search </span>History', html)
             # Verify swipe navigation script
             self.assertIn("initMobileTabSwipes", html)
+            # Verify app-bottom-nav element exists and is strictly outside header (not trapped by backdrop-filter)
+            self.assertIn('class="app-bottom-nav"', html)
+            header_end = html.find('</header>')
+            bottom_nav_pos = html.find('class="app-bottom-nav"')
+            self.assertGreater(header_end, 0)
+            self.assertGreater(bottom_nav_pos, header_end, "app-bottom-nav must be outside <header> to avoid containing block trap")
+            # Verify mobile nav links and active state on /
+            self.assertIn('id="mobile-nav-link-song"', html)
+            self.assertIn('id="mobile-nav-link-artist"', html)
+            self.assertIn('id="mobile-nav-link-history"', html)
+            self.assertIn('id="mobile-nav-link-prompts"', html)
+            self.assertIn('class="app-bottom-nav-link active" id="mobile-nav-link-song"', html)
+
+        # Verify bottom nav on /history
+        with self.authed_get("/history") as resp:
+            self.assertEqual(resp.status, 200)
+            html = resp.read().decode('utf-8')
+            self.assertIn('class="app-bottom-nav"', html)
+            self.assertIn('class="app-bottom-nav-link active" id="mobile-nav-link-history"', html)
+
+        # Verify bottom nav on /prompts
+        with self.authed_get("/prompts") as resp:
+            self.assertEqual(resp.status, 200)
+            html = resp.read().decode('utf-8')
+            self.assertIn('class="app-bottom-nav"', html)
+            self.assertIn('class="app-bottom-nav-link active" id="mobile-nav-link-prompts"', html)
+
+        # Verify bottom nav on /artist
+        with self.authed_get("/artist") as resp:
+            self.assertEqual(resp.status, 200)
+            html = resp.read().decode('utf-8')
+            self.assertIn('class="app-bottom-nav"', html)
+            self.assertIn('class="app-bottom-nav-link active" id="mobile-nav-link-artist"', html)
 
 
 if __name__ == "__main__":
