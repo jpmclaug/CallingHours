@@ -59,6 +59,7 @@ except Exception as e:
         print(f"SQLite fallback error: {sqle}")
 
 
+DATABASE_PATH = os.environ.get('DATABASE_PATH')
 PROMPTS_FILE = os.environ.get('PROMPTS_FILE_PATH') or os.path.join(SCRIPT_DIR, 'prompts.json')
 
 def load_prompts():
@@ -4105,6 +4106,230 @@ ARTIST_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             border-color: #A5C8FF;
             transform: scale(1.03);
         }
+        /* Spotify Analytics Card Styles */
+        .spotify-analytics-card {
+            background: linear-gradient(135deg, rgba(8, 36, 32, 0.88) 0%, rgba(6, 20, 28, 0.95) 100%);
+            border: 1px solid rgba(16, 185, 129, 0.35);
+            border-left: 6px solid #10B981;
+            border-radius: 14px;
+            padding: 26px 28px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+        }
+        .spotify-kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 14px;
+            margin: 18px 0;
+        }
+        .spotify-kpi-item {
+            background: rgba(16, 185, 129, 0.08);
+            border: 1px solid rgba(16, 185, 129, 0.22);
+            border-radius: 10px;
+            padding: 14px 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .spotify-kpi-label {
+            font-size: 0.74rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: #6EE7B7;
+        }
+        .spotify-kpi-value {
+            font-family: 'Montserrat', sans-serif;
+            font-size: 1.45rem;
+            font-weight: 900;
+            color: #FFFFFF;
+        }
+        .spotify-kpi-sub {
+            font-size: 0.78rem;
+            color: rgba(225, 232, 240, 0.65);
+        }
+        .popularity-gauge-wrap {
+            margin-top: 4px;
+            width: 100%;
+            height: 7px;
+            background: rgba(255, 255, 255, 0.12);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .popularity-gauge-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #10B981 0%, #34D399 100%);
+            border-radius: 4px;
+            box-shadow: 0 0 8px rgba(16, 185, 129, 0.5);
+        }
+        .spotify-track-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 14px;
+            border-bottom: 1px solid rgba(16, 185, 129, 0.12);
+            gap: 12px;
+            flex-wrap: wrap;
+            border-radius: 8px;
+            transition: background 0.15s ease;
+        }
+        .spotify-track-row:hover {
+            background: rgba(16, 185, 129, 0.08);
+        }
+        .spotify-track-thumb {
+            width: 44px;
+            height: 44px;
+            border-radius: 6px;
+            object-fit: cover;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            flex-shrink: 0;
+            background: #0B1E3F;
+        }
+        .spotify-track-thumb-placeholder {
+            width: 44px;
+            height: 44px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(16, 185, 129, 0.15);
+            color: #10B981;
+            font-size: 1.1rem;
+            flex-shrink: 0;
+        }
+        .spotify-preview-player {
+            height: 28px;
+            max-width: 130px;
+            outline: none;
+            filter: invert(0.9) hue-rotate(85deg);
+            border-radius: 14px;
+        }
+        .spotify-genre-badge {
+            background: rgba(16, 185, 129, 0.15);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            color: #A7F3D0;
+            padding: 3px 10px;
+            border-radius: 14px;
+            font-size: 0.78rem;
+            font-weight: 600;
+        }
+        .btn-analyze-song-sm {
+            background: linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%);
+            color: #FFFFFF;
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            border-radius: 6px;
+            padding: 4px 10px;
+            font-size: 0.76rem;
+            font-weight: 700;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            box-shadow: 0 2px 6px rgba(37, 99, 235, 0.35);
+            transition: all 0.2s ease;
+            white-space: nowrap;
+        }
+        .btn-analyze-song-sm:hover {
+            background: linear-gradient(135deg, #3B82F6 0%, #2563EB 100%);
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.55);
+            transform: translateY(-1px);
+        }
+
+        /* Top 10 Bands Played With Styles */
+        .top-bands-card {
+            background: rgba(11, 30, 63, 0.65);
+            border: 1px solid rgba(165, 200, 255, 0.25);
+            border-left: 6px solid #8B5CF6;
+            border-radius: 14px;
+            padding: 26px 28px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+        }
+        .top-bands-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 16px;
+            margin-top: 18px;
+        }
+        .top-band-item {
+            background: rgba(14, 38, 80, 0.6);
+            border: 1px solid rgba(165, 200, 255, 0.2);
+            border-radius: 12px;
+            padding: 18px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            gap: 14px;
+            position: relative;
+            transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        .top-band-item:hover {
+            transform: translateY(-2px);
+            border-color: rgba(165, 200, 255, 0.45);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+        }
+        .top-band-item.rank-1 {
+            border-color: rgba(245, 158, 11, 0.5);
+            background: linear-gradient(135deg, rgba(35, 30, 15, 0.6) 0%, rgba(14, 38, 80, 0.6) 100%);
+        }
+        .top-band-item.rank-2 {
+            border-color: rgba(203, 213, 225, 0.45);
+        }
+        .top-band-item.rank-3 {
+            border-color: rgba(217, 119, 6, 0.45);
+        }
+        .top-band-rank-badge {
+            font-family: 'Montserrat', sans-serif;
+            font-size: 0.8rem;
+            font-weight: 800;
+            padding: 2px 10px;
+            border-radius: 12px;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .rank-badge-1 {
+            background: rgba(245, 158, 11, 0.25);
+            border: 1px solid rgba(245, 158, 11, 0.6);
+            color: #FCD34D;
+        }
+        .rank-badge-2 {
+            background: rgba(203, 213, 225, 0.2);
+            border: 1px solid rgba(203, 213, 225, 0.5);
+            color: #E2E8F0;
+        }
+        .rank-badge-3 {
+            background: rgba(217, 119, 6, 0.25);
+            border: 1px solid rgba(217, 119, 6, 0.55);
+            color: #FDBA74;
+        }
+        .rank-badge-other {
+            background: rgba(165, 200, 255, 0.12);
+            border: 1px solid rgba(165, 200, 255, 0.25);
+            color: #93C5FD;
+        }
+        .top-band-name-link {
+            font-family: 'Montserrat', sans-serif;
+            font-size: 1.22rem;
+            font-weight: 800;
+            color: #FFFFFF;
+            text-decoration: none;
+            transition: color 0.15s ease;
+        }
+        .top-band-name-link:hover {
+            color: #A5C8FF;
+            text-decoration: underline;
+        }
+        .top-band-role-badge {
+            font-size: 0.74rem;
+            font-weight: 700;
+            background: rgba(139, 92, 246, 0.2);
+            border: 1px solid rgba(139, 92, 246, 0.4);
+            color: #DDD6FE;
+            padding: 2px 8px;
+            border-radius: 8px;
+            display: inline-flex;
+            align-items: center;
+        }
+
         @media (max-width: 768px) {
             .artist-page-container {
                 width: 95vw;
@@ -4145,11 +4370,22 @@ ARTIST_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             }
             .nc-spotlight-card,
             .tour-history-card,
-            .songs-table-card {
+            .songs-table-card,
+            .spotify-analytics-card,
+            .top-bands-card {
                 padding: 18px 16px;
             }
-            .tour-cards-grid {
+            .tour-cards-grid,
+            .top-bands-grid {
                 grid-template-columns: 1fr;
+            }
+            .spotify-kpi-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            .spotify-track-row {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 10px;
             }
             .artist-song-row {
                 flex-direction: column;
@@ -4175,6 +4411,9 @@ ARTIST_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
                 flex: 1 1 100%;
                 text-align: center;
                 justify-content: center;
+            }
+            .spotify-kpi-grid {
+                grid-template-columns: 1fr;
             }
         }
     </style>
@@ -5283,7 +5522,14 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify(payload)
             })
-            .then(r => r.json())
+            .then(async r => {
+                const text = await r.text();
+                try {
+                    return JSON.parse(text);
+                } catch (pe) {
+                    throw new Error(text || `Server returned empty or invalid response (HTTP ${r.status})`);
+                }
+            })
             .then(data => {
                 if (data.success) {
                     content.innerHTML = `
@@ -5339,9 +5585,10 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             .catch(err => {
                 content.innerHTML = `
                     <div style="padding: 10px 0;">
-                        <h4 style="margin: 0 0 10px 0; color: #f08c5a; text-align: center;">Export Error</h4>
-                        <p style="color: rgba(225, 232, 240, 0.8); font-size: 0.86rem; text-align: center;">
-                            Network or server error while exporting.
+                        <div style="color: #f08c5a; font-size: 2rem; text-align: center; margin-bottom: 10px;">⚠️</div>
+                        <h4 style="margin: 0 0 10px 0; color: #FFFFFF; text-align: center;">Export Error</h4>
+                        <p style="color: rgba(225, 232, 240, 0.85); font-size: 0.86rem; text-align: center; line-height: 1.4;">
+                            ${(err && err.message) ? err.message : 'Network or server error while exporting.'}
                         </p>
                         <div style="margin-top: 20px; display: flex; justify-content: center;">
                             <button type="button" class="btn-playlist-action btn-playlist-outline" onclick="closeSpotifyModal()">Close</button>
@@ -6180,19 +6427,36 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(json.dumps(data).encode('utf-8'))
             return
 
+        if parsed.path == '/api/spotify/artist':
+            params = urllib.parse.parse_qs(parsed.query)
+            artist = params.get('artist', [''])[0].strip()
+            refresh = params.get('refresh', ['0'])[0] == '1'
+            current_user = self.get_current_user()
+            user_email = current_user.get('email') if current_user else None
+            data = spotify.get_or_fetch_artist_spotify_data(artist, user_email=user_email, force_refresh=refresh, db_path=DATABASE_PATH) if artist else {}
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(json.dumps(data).encode('utf-8'))
+            return
+
         if parsed.path == '/api/artist':
             params = urllib.parse.parse_qs(parsed.query)
             artist = params.get('artist', [''])[0].strip()
             refresh = params.get('refresh', ['0'])[0] == '1'
-            s_data = setlistfm.get_or_fetch_artist_setlist_data(artist, api_key=SETLIST_FM_API_KEY, force_refresh=refresh) if artist else {}
-            l_data = lastfm.get_or_fetch_artist_metadata(artist, api_key=LASTFM_API_KEY, force_refresh=refresh) if artist else {}
-            a_data = theaudiodb.get_or_fetch_artist_details(artist, api_key=THEAUDIODB_API_KEY, force_refresh=refresh) if artist else {}
-            db_s = database.get_songs_by_band(artist) if artist else []
+            current_user = self.get_current_user()
+            user_email = current_user.get('email') if current_user else None
+            s_data = setlistfm.get_or_fetch_artist_setlist_data(artist, api_key=SETLIST_FM_API_KEY, force_refresh=refresh, db_path=DATABASE_PATH) if artist else {}
+            l_data = lastfm.get_or_fetch_artist_metadata(artist, api_key=LASTFM_API_KEY, force_refresh=refresh, db_path=DATABASE_PATH) if artist else {}
+            a_data = theaudiodb.get_or_fetch_artist_details(artist, api_key=THEAUDIODB_API_KEY, force_refresh=refresh, db_path=DATABASE_PATH) if artist else {}
+            sp_data = spotify.get_or_fetch_artist_spotify_data(artist, user_email=user_email, force_refresh=refresh, db_path=DATABASE_PATH) if artist else {}
+            db_s = database.get_songs_by_band(artist, db_path=DATABASE_PATH) if artist else []
             resp_payload = {
                 "artist": artist,
                 "setlistfm": s_data,
                 "lastfm": l_data,
                 "theaudiodb": a_data,
+                "spotify": sp_data,
                 "songs": db_s,
             }
             self.send_response(200)
@@ -7217,11 +7481,24 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             print(f"Last.fm artist metadata error for {clean_artist}: {le}")
 
         # 4. Database songs
-        db_songs = database.get_songs_by_band(clean_artist) or []
+        db_songs = database.get_songs_by_band(clean_artist, db_path=DATABASE_PATH) or []
+
+        # 5. Spotify Analytics
+        spotify_data = {}
+        user_email = current_user.get('email') if current_user else None
+        try:
+            spotify_data = spotify.get_or_fetch_artist_spotify_data(
+                clean_artist,
+                user_email=user_email,
+                force_refresh=refresh,
+                db_path=DATABASE_PATH
+            ) or {}
+        except Exception as spe:
+            print(f"Spotify artist data error for {clean_artist}: {spe}")
 
         # Build Hero Section
         banner_url = audiodb_data.get('banner_url') or audiodb_data.get('fanart_url')
-        thumb_url = audiodb_data.get('thumbnail_url')
+        thumb_url = audiodb_data.get('thumbnail_url') or spotify_data.get('image_url')
         logo_url = audiodb_data.get('logo_url')
         formed_year = audiodb_data.get('formed_year')
         country = audiodb_data.get('country')
@@ -7231,6 +7508,8 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         listeners = lastfm_data.get('listeners') or 0
         playcount = lastfm_data.get('playcount') or 0
         total_concerts = setlist_data.get('total_concerts') or 0
+        spotify_pop = spotify_data.get('popularity')
+        spotify_followers_fmt = spotify_data.get('followers_formatted')
 
         # Avatar
         if thumb_url:
@@ -7265,6 +7544,10 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             badges.append(f'<span class="artist-meta-badge">📻 Scrobbles: <strong>{playcount:,}</strong></span>')
         if total_concerts > 0:
             badges.append(f'<span class="artist-meta-badge">🎤 Setlist.fm Shows: <strong>{total_concerts:,}</strong></span>')
+        if spotify_pop is not None and spotify_pop > 0:
+            badges.append(f'<span class="artist-meta-badge">🟢 Spotify Popularity: <strong>{spotify_pop}/100</strong></span>')
+        if spotify_followers_fmt:
+            badges.append(f'<span class="artist-meta-badge">👥 Spotify Followers: <strong>{spotify_followers_fmt}</strong></span>')
         badges_html = "".join(badges)
 
         # Tags
@@ -7279,6 +7562,8 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         ext_links = []
         if setlist_data.get('url'):
             ext_links.append(f'<a href="{html_escape(setlist_data["url"])}" target="_blank" rel="noopener noreferrer" class="pill-btn secondary" style="font-size: 0.78rem; padding: 4px 10px;">🎤 Setlist.fm Profile &rarr;</a>')
+        if spotify_data.get('spotify_url'):
+            ext_links.append(f'<a href="{html_escape(spotify_data["spotify_url"])}" target="_blank" rel="noopener noreferrer" class="pill-btn secondary" style="font-size: 0.78rem; padding: 4px 10px;">🟢 Spotify Profile &rarr;</a>')
         ext_links.append(f'<a href="https://www.last.fm/music/{artist_url_param}" target="_blank" rel="noopener noreferrer" class="pill-btn secondary" style="font-size: 0.78rem; padding: 4px 10px;">📻 Last.fm Profile &rarr;</a>')
         ext_links.append(f'<a href="https://genius.com/search?q={artist_url_param}" target="_blank" rel="noopener noreferrer" class="pill-btn secondary" style="font-size: 0.78rem; padding: 4px 10px;">📝 Genius Catalog &rarr;</a>')
         ext_links.append(f'<a href="/artist?artist={artist_url_param}&refresh=1" class="pill-btn secondary" style="font-size: 0.78rem; padding: 4px 10px;" title="Bypass cache and reload data from all APIs">↻ Refresh Data</a>')
@@ -7299,6 +7584,271 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             </div>
         </div>
         '''
+
+        # Spotify Streaming & Catalog Analytics Card
+        spot_pop_val = int(spotify_data.get('popularity') or 0)
+        spot_tier_val = spotify_data.get('popularity_tier') or 'Catalog Artist'
+        spot_followers_val = spotify_data.get('followers_formatted') or '0'
+        spot_avg_pop_val = spotify_data.get('avg_track_popularity') or 0
+        spot_disco = spotify_data.get('discography') or {}
+        spot_albums = spot_disco.get('albums_count', 0)
+        spot_singles = spot_disco.get('singles_count', 0)
+        spot_span = spot_disco.get('years_active_span') or 'Recorded Catalog'
+        spot_latest = spot_disco.get('latest_release')
+        spot_tracks = spotify_data.get('top_tracks') or []
+        spot_genres = spotify_data.get('genres') or []
+        spot_url = spotify_data.get('spotify_url') or ''
+        spot_is_demo = spotify_data.get('is_demo', False)
+
+        spot_genre_badges = []
+        for g in spot_genres[:8]:
+            spot_genre_badges.append(f'<span class="spotify-genre-badge">{html_escape(g)}</span>')
+        genres_row_html = f'<div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px;">{" ".join(spot_genre_badges)}</div>' if spot_genre_badges else ''
+
+        spot_track_rows = []
+        for idx, t in enumerate(spot_tracks[:10]):
+            t_name = html_escape(t.get('name') or 'Unknown Track')
+            t_album = html_escape(t.get('album_name') or '')
+            t_year = html_escape(t.get('release_year') or '')
+            t_dur = html_escape(t.get('duration_formatted') or '0:00')
+            t_pop = int(t.get('popularity') or 0)
+            t_preview = t.get('preview_url') or ''
+            t_spot_url = t.get('spotify_url') or ''
+            t_img = t.get('album_image') or ''
+
+            thumb_el = f'<img src="{html_escape(t_img)}" alt="{t_name}" class="spotify-track-thumb">' if t_img else '<div class="spotify-track-thumb-placeholder">🎵</div>'
+            preview_el = f'<audio controls preload="none" src="{html_escape(t_preview)}" class="spotify-preview-player" title="Play 30s Audio Preview"></audio>' if t_preview else ''
+            spot_link_el = f'<a href="{html_escape(t_spot_url)}" target="_blank" rel="noopener noreferrer" class="pill-btn secondary" style="font-size: 0.74rem; padding: 3px 8px;" title="Open in Spotify">▶ Listen</a>' if t_spot_url else ''
+
+            spot_track_rows.append(f'''
+            <div class="spotify-track-row">
+                <div style="display: flex; align-items: center; gap: 12px; min-width: 220px; flex: 2;">
+                    <span style="font-family: \'Montserrat\', sans-serif; font-weight: 800; color: #10B981; font-size: 0.92rem; width: 22px; text-align: right;">{idx + 1}</span>
+                    {thumb_el}
+                    <div>
+                        <div style="font-size: 0.98rem; font-weight: 700; color: #FFFFFF; line-height: 1.25;">{t_name}</div>
+                        <div style="font-size: 0.8rem; color: rgba(225, 232, 240, 0.65); margin-top: 2px;">
+                            {t_album}{f" &bull; {t_year}" if t_year else ""}
+                        </div>
+                    </div>
+                </div>
+
+                <div style="display: flex; align-items: center; gap: 14px; flex: 1.5; justify-content: flex-end; flex-wrap: wrap;">
+                    <div style="min-width: 110px;">
+                        <div style="display: flex; justify-content: space-between; font-size: 0.72rem; color: #6EE7B7; font-weight: 700;">
+                            <span>POPULARITY</span>
+                            <span>{t_pop}%</span>
+                        </div>
+                        <div class="popularity-gauge-wrap" style="height: 5px;">
+                            <div class="popularity-gauge-fill" style="width: {t_pop}%;"></div>
+                        </div>
+                    </div>
+                    <span style="font-size: 0.8rem; color: rgba(225, 232, 240, 0.6); min-width: 36px; text-align: right;">{t_dur}</span>
+                    {preview_el}
+                    {spot_link_el}
+                    <a href="/?artist={artist_url_param}&song={urllib.parse.quote(t.get('name', ''))}&auto_analyze=1" class="btn-analyze-song-sm" title="Launch AI thematic lyrics analysis">
+                        ⚡ Analyze
+                    </a>
+                </div>
+            </div>
+            ''')
+
+        demo_badge_spot = '<span style="font-size: 0.76rem; background: rgba(245, 158, 11, 0.2); border: 1px solid rgba(245, 158, 11, 0.4); color: #FCD34D; padding: 2px 8px; border-radius: 6px; margin-left: 8px;">Preview Mode (Spotify Credentials Unconfigured)</span>' if spot_is_demo else ''
+
+        latest_release_html = ''
+        if spot_latest and spot_latest.get('name'):
+            lat_name = html_escape(spot_latest.get('name', ''))
+            lat_date = html_escape(spot_latest.get('release_date', ''))
+            lat_type = html_escape(spot_latest.get('type', 'Release'))
+            lat_img = spot_latest.get('image_url') or ''
+            lat_url = spot_latest.get('spotify_url') or ''
+            lat_thumb = f'<img src="{html_escape(lat_img)}" alt="{lat_name}" style="width: 50px; height: 50px; border-radius: 8px; object-fit: cover;">' if lat_img else ''
+            latest_release_html = f'''
+            <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 10px; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-top: 18px; flex-wrap: wrap;">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    {lat_thumb}
+                    <div>
+                        <div style="font-size: 0.74rem; font-weight: 700; color: #6EE7B7; text-transform: uppercase;">Latest {lat_type} Release</div>
+                        <div style="font-size: 1rem; font-weight: 800; color: #FFFFFF;">{lat_name}</div>
+                        <div style="font-size: 0.8rem; color: rgba(225, 232, 240, 0.65);">{lat_date}</div>
+                    </div>
+                </div>
+                {f'<a href="{html_escape(lat_url)}" target="_blank" rel="noopener noreferrer" class="pill-btn secondary" style="font-size: 0.76rem; padding: 4px 10px;">Listen &rarr;</a>' if lat_url else ''}
+            </div>
+            '''
+
+        spotify_analytics_html = f'''
+        <div class="spotify-analytics-card">
+            <div class="section-header-row" style="border-bottom-color: rgba(16, 185, 129, 0.25);">
+                <div>
+                    <h2 class="section-title" style="color: #6EE7B7;">
+                        <span>🟢</span> Spotify Catalog &amp; Streaming Analytics {demo_badge_spot}
+                    </h2>
+                    <div style="font-size: 0.84rem; color: rgba(225, 232, 240, 0.75); margin-top: 4px;">
+                        Streaming popularity, audience reach, top streamed tracks, and discography telemetry
+                    </div>
+                </div>
+                {f'<a href="{html_escape(spot_url)}" target="_blank" rel="noopener noreferrer" class="pill-btn primary" style="padding: 6px 14px; font-size: 0.82rem; background: #10B981; border-color: #34D399; text-decoration: none;">Open Spotify Profile &rarr;</a>' if spot_url else ''}
+            </div>
+
+            <!-- KPI Metric Cards -->
+            <div class="spotify-kpi-grid">
+                <div class="spotify-kpi-item">
+                    <span class="spotify-kpi-label">Artist Popularity</span>
+                    <span class="spotify-kpi-value">{spot_pop_val}<span style="font-size: 0.85rem; font-weight: normal; color: rgba(225, 232, 240, 0.5);">/100</span></span>
+                    <div class="popularity-gauge-wrap">
+                        <div class="popularity-gauge-fill" style="width: {spot_pop_val}%;"></div>
+                    </div>
+                    <span class="spotify-kpi-sub" style="color: #A7F3D0; font-weight: 600;">{spot_tier_val}</span>
+                </div>
+
+                <div class="spotify-kpi-item">
+                    <span class="spotify-kpi-label">Spotify Followers</span>
+                    <span class="spotify-kpi-value">{spot_followers_val}</span>
+                    <span class="spotify-kpi-sub">Global streaming followers</span>
+                </div>
+
+                <div class="spotify-kpi-item">
+                    <span class="spotify-kpi-label">Discography Breadth</span>
+                    <span class="spotify-kpi-value">{spot_albums} <span style="font-size: 0.9rem; font-weight: normal; color: rgba(225,232,240,0.6);">Albums</span></span>
+                    <span class="spotify-kpi-sub">{spot_singles} Singles &amp; EPs</span>
+                </div>
+
+                <div class="spotify-kpi-item">
+                    <span class="spotify-kpi-label">Catalog Active Span</span>
+                    <span class="spotify-kpi-value" style="font-size: 1.15rem;">{spot_span}</span>
+                    <span class="spotify-kpi-sub">Releases on Spotify</span>
+                </div>
+
+                <div class="spotify-kpi-item">
+                    <span class="spotify-kpi-label">Avg Top Track Score</span>
+                    <span class="spotify-kpi-value">{spot_avg_pop_val}<span style="font-size: 0.85rem; font-weight: normal; color: rgba(225, 232, 240, 0.5);">/100</span></span>
+                    <span class="spotify-kpi-sub">Across top 10 songs</span>
+                </div>
+            </div>
+
+            {genres_row_html}
+            {latest_release_html}
+
+            <!-- Top Tracks Table -->
+            <div style="margin-top: 22px;">
+                <div style="font-size: 0.82rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; color: #6EE7B7; margin-bottom: 10px;">
+                    🔥 Top 10 Most Streamed Tracks on Spotify (With Audio Previews &amp; AI Analysis)
+                </div>
+                <div style="display: flex; flex-direction: column;">
+                    {"".join(spot_track_rows) if spot_track_rows else '<div style="color: rgba(225,232,240,0.6); padding: 12px; font-style: italic;">No top tracks recorded.</div>'}
+                </div>
+            </div>
+        </div>
+        '''
+
+        # Top 10 Bands Played With (Setlist.fm Tour History)
+        top_bands = setlist_data.get("most_played_with") or []
+        is_demo_setlist = setlist_data.get('is_demo', False)
+        demo_badge_setlist = '<span style="font-size: 0.76rem; background: rgba(245, 158, 11, 0.2); border: 1px solid rgba(245, 158, 11, 0.4); color: #FCD34D; padding: 2px 8px; border-radius: 6px; margin-left: 8px;">Preview Tour Roster</span>' if is_demo_setlist else ''
+
+        if top_bands:
+            band_cards = []
+            for b in top_bands[:10]:
+                rank = b.get("rank", 1)
+                b_name = b.get("band", "Unknown Band")
+                b_esc = html_escape(b_name)
+                b_url = urllib.parse.quote(b_name)
+                shows_cnt = b.get("shows_shared", 1)
+                shows_text = f"{shows_cnt} show" if shows_cnt == 1 else f"{shows_cnt} shows"
+                tours_cnt = b.get("tours_shared", 0)
+                tours_text = f"{tours_cnt} tour" if tours_cnt == 1 else f"{tours_cnt} tours"
+                role = html_escape(b.get("primary_role") or "Tour Mate")
+                years_act = html_escape(b.get("years_active") or "")
+                t_names = b.get("tours") or []
+                lat_show = b.get("latest_show") or {}
+
+                if rank == 1:
+                    rank_html = '<span class="top-band-rank-badge rank-badge-1">🥇 #1 Most Played With</span>'
+                    card_rank_class = "rank-1"
+                elif rank == 2:
+                    rank_html = '<span class="top-band-rank-badge rank-badge-2">🥈 #2 Most Played With</span>'
+                    card_rank_class = "rank-2"
+                elif rank == 3:
+                    rank_html = '<span class="top-band-rank-badge rank-badge-3">🥉 #3 Most Played With</span>'
+                    card_rank_class = "rank-3"
+                else:
+                    rank_html = f'<span class="top-band-rank-badge rank-badge-other">#{rank} Most Played With</span>'
+                    card_rank_class = ""
+
+                tour_chips = []
+                for tn in t_names[:3]:
+                    tour_chips.append(f'<span style="background: rgba(165, 200, 255, 0.1); border: 1px solid rgba(165, 200, 255, 0.2); color: #93C5FD; padding: 1px 7px; border-radius: 8px; font-size: 0.74rem;">{html_escape(tn)}</span>')
+                if len(t_names) > 3:
+                    tour_chips.append(f'<span style="color: rgba(225, 232, 240, 0.5); font-size: 0.74rem;">+{len(t_names) - 3} more</span>')
+                tours_html_block = f'<div style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px;">{" ".join(tour_chips)}</div>' if tour_chips else ''
+
+                latest_show_html = ''
+                if lat_show and (lat_show.get('venue_name') or lat_show.get('date_formatted')):
+                    l_date = html_escape(lat_show.get('date_formatted') or lat_show.get('date') or '')
+                    l_venue = html_escape(lat_show.get('venue_name') or '')
+                    l_loc = html_escape(lat_show.get('location') or '')
+                    l_tour = html_escape(lat_show.get('tour_name') or '')
+                    l_url = lat_show.get('url') or ''
+                    loc_part = f" ({l_loc})" if l_loc else ""
+                    tour_part = f" &bull; {l_tour}" if l_tour and l_tour != "Concert" else ""
+                    link_part = f' &bull; <a href="{html_escape(l_url)}" target="_blank" rel="noopener noreferrer" style="color: #A5C8FF; text-decoration: underline;">Setlist &rarr;</a>' if l_url else ''
+                    latest_show_html = f'''
+                    <div style="font-size: 0.78rem; color: rgba(225, 232, 240, 0.75); margin-top: 6px;">
+                        📍 Latest: <strong>{l_date}</strong> &bull; {l_venue}{loc_part}{tour_part}{link_part}
+                    </div>
+                    '''
+
+                band_cards.append(f'''
+                <div class="top-band-item {card_rank_class}">
+                    <div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px;">
+                            {rank_html}
+                            <span class="top-band-role-badge">{role}</span>
+                        </div>
+                        <a href="/artist?artist={b_url}" class="top-band-name-link" title="Explore {b_esc} profile">
+                            🎸 {b_esc}
+                        </a>
+                        <div style="display: flex; gap: 8px; align-items: center; margin-top: 6px; flex-wrap: wrap;">
+                            <span style="font-size: 0.82rem; font-weight: 700; color: #DDD6FE; background: rgba(139, 92, 246, 0.2); padding: 2px 8px; border-radius: 6px;">
+                                🏟️ {shows_text}
+                            </span>
+                            <span style="font-size: 0.82rem; color: #A5C8FF;">
+                                🚌 {tours_text}
+                            </span>
+                            {f'<span style="font-size: 0.78rem; color: rgba(225, 232, 240, 0.55);">&bull; {years_act}</span>' if years_act else ''}
+                        </div>
+                        {tours_html_block}
+                        {latest_show_html}
+                    </div>
+                    <div style="display: flex; justify-content: flex-end; margin-top: 8px;">
+                        <a href="/artist?artist={b_url}" class="pill-btn primary" style="font-size: 0.76rem; padding: 4px 12px; text-decoration: none;">
+                            Explore Band Profile &rarr;
+                        </a>
+                    </div>
+                </div>
+                ''')
+
+            top_bands_played_with_html = f'''
+            <div class="top-bands-card">
+                <div class="section-header-row" style="border-bottom-color: rgba(139, 92, 246, 0.25);">
+                    <div>
+                        <h2 class="section-title" style="color: #DDD6FE;">
+                            <span>🎸</span> Top 10 Bands Played With (Setlist.fm Tour History) {demo_badge_setlist}
+                        </h2>
+                        <div style="font-size: 0.84rem; color: #C5B8FF; margin-top: 4px;">
+                            The 10 bands and artists that have shared the bill and toured the most with {artist_esc}, ranked by shared concert appearances
+                        </div>
+                    </div>
+                    {f'<a href="{html_escape(setlist_data.get("url", ""))}" target="_blank" rel="noopener noreferrer" class="pill-btn secondary" style="font-size: 0.78rem; padding: 4px 10px;">Setlist.fm Concert Archive &rarr;</a>' if setlist_data.get('url') else ''}
+                </div>
+                <div class="top-bands-grid">
+                    {"".join(band_cards)}
+                </div>
+            </div>
+            '''
+        else:
+            top_bands_played_with_html = ''
 
         # North Carolina Spotlight Card (Setlist.fm)
         has_setlist_key = setlist_data.get('has_key', bool(SETLIST_FM_API_KEY))
@@ -7618,6 +8168,8 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         </div>
 
         {hero_html}
+        {spotify_analytics_html}
+        {top_bands_played_with_html}
         {nc_spotlight_html}
         {tours_html}
         {recent_setlists_html}
@@ -8995,6 +9547,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header('Content-Type', 'application/json; charset=utf-8')
             self.end_headers()
+            self.wfile.write(json.dumps(res).encode('utf-8'))
         except Exception as e:
             err_str = str(e)
             is_forbidden = '403' in err_str or 'Forbidden' in err_str or 'permission' in err_str.lower()

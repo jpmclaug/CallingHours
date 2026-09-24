@@ -1185,6 +1185,32 @@ class TestAppIntegration(unittest.TestCase):
                 self.assertTrue(exp_data.get("needs_reauth"))
                 self.assertEqual(exp_data.get("auth_url"), "/auth/spotify")
 
+        # 13. Verify /api/playlists/export-spotify success writes JSON response body
+        with patch('spotify.export_songs_to_spotify_playlist') as mock_export:
+            mock_export.return_value = {
+                "success": True,
+                "playlist_id": "sp_pl_123",
+                "playlist_name": "Rock Anthem",
+                "playlist_url": "https://open.spotify.com/playlist/sp_pl_123",
+                "tracks_requested": 1,
+                "tracks_matched": 1,
+                "tracks_added": 1,
+                "unmatched": []
+            }
+            exp_req = urllib.request.Request(
+                f"{self.base_url}/api/playlists/export-spotify",
+                data=json.dumps({"name": "Rock Anthem"}).encode('utf-8'),
+                headers=dict(self.auth_headers, **{"Content-Type": "application/json"})
+            )
+            with urllib.request.urlopen(exp_req) as resp:
+                self.assertEqual(resp.status, 200)
+                raw_body = resp.read().decode('utf-8')
+                self.assertTrue(len(raw_body) > 0)
+                succ_data = json.loads(raw_body)
+                self.assertTrue(succ_data.get("success"))
+                self.assertEqual(succ_data.get("playlist_id"), "sp_pl_123")
+                self.assertEqual(succ_data.get("tracks_added"), 1)
+
 
 if __name__ == "__main__":
     unittest.main()
