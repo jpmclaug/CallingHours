@@ -946,6 +946,58 @@ class TestAppIntegration(unittest.TestCase):
             data = json.loads(resp.read().decode('utf-8'))
             self.assertIn('playing', data)
 
+    @patch("spotify.exchange_code_for_token")
+    @patch("spotify.fetch_user_profile")
+    @patch("spotify.fetch_recently_played")
+    def test_spotify_callback_flow(self, mock_recent, mock_profile, mock_exchange):
+        mock_exchange.return_value = {
+            "access_token": "mock_access_tok_999",
+            "refresh_token": "mock_refresh_tok_888",
+            "expires_in": 3600,
+            "token_type": "Bearer",
+        }
+        mock_profile.return_value = {
+            "id": "spot_test_user",
+            "display_name": "JP Test User",
+            "email": "jp@example.com",
+            "image_url": "https://img.spotify.com/u.jpg",
+            "spotify_url": "https://open.spotify.com/user/spot_test_user",
+        }
+        mock_recent.return_value = []
+
+        class NoRedirect(urllib.request.HTTPRedirectHandler):
+            def redirect_request(self, req, fp, code, msg, headers, newurl):
+                return None
+
+        headers = {
+            'Cookie': f'session_id={self.session_id}; spotify_oauth_state=state_secret_123'
+        }
+        req = urllib.request.Request(
+            f"{self.base_url}/auth/spotify/callback?code=code_abc&state=state_secret_123",
+            headers=headers
+        )
+        opener = urllib.request.build_opener(NoRedirect)
+        try:
+            resp = opener.open(req)
+            self.assertEqual(resp.status, 302)
+            self.assertIn('/spotify?connected=1', resp.headers.get('Location', ''))
+        except urllib.error.HTTPError as e:
+            self.assertEqual(e.code, 302)
+            self.assertIn('/spotify?connected=1', e.headers.get('Location', ''))
+
+        # Verify token was saved in database
+        saved_tok = database.get_spotify_token("jpmclaug@gmail.com")
+        self.assertIsNotNone(saved_tok)
+        self.assertEqual(saved_tok["access_token"], "mock_access_tok_999")
+        self.assertEqual(saved_tok["spotify_display_name"], "JP Test User")
+
+        # Verify /spotify loads and displays connected user
+        with self.authed_get("/spotify") as resp:
+            self.assertEqual(resp.status, 200)
+            html = resp.read().decode('utf-8')
+            self.assertIn("JP Test User", html)
+            self.assertIn("🟢 Connected", html)
+
 
 if __name__ == "__main__":
     unittest.main()
