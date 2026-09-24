@@ -1331,6 +1331,63 @@ class TestAppIntegration(unittest.TestCase):
                 self.assertEqual(data["top_tracks"][0]["name"], "The Middle")
                 mock_fetch.assert_called_once()
 
+    def test_47_universal_action_loading_overlay_and_feedback_prevention(self):
+        """Verify universal action loading screen is present on all app pages and prevents feedback until done."""
+        pages_to_check = [
+            "/",
+            "/artist",
+            "/spotify",
+            "/playlists",
+            "/history",
+            "/prompts",
+            "/admin",
+        ]
+
+        for path in pages_to_check:
+            with self.subTest(page=path):
+                with self.authed_get(path) as resp:
+                    self.assertEqual(resp.status, 200, f"Expected 200 for {path}")
+                    html = resp.read().decode('utf-8')
+
+                    # 1. Overlay markup elements (shared and non-dismissible)
+                    self.assertIn('id="analysis-loading-overlay"', html, f"Missing overlay on {path}")
+                    self.assertIn('class="analysis-loading-backdrop"', html, f"Missing backdrop on {path}")
+                    self.assertIn('class="analysis-loading-modal"', html, f"Missing modal on {path}")
+                    self.assertIn('class="analysis-cosmic-spinner"', html, f"Missing spinner on {path}")
+                    self.assertIn('id="analysis-loading-title"', html, f"Missing title element on {path}")
+                    self.assertIn('id="analysis-loading-song"', html, f"Missing context element on {path}")
+                    self.assertIn('id="analysis-loading-status"', html, f"Missing status element on {path}")
+                    self.assertIn('id="analysis-loading-dismiss-btn"', html, f"Missing dismiss button on {path}")
+                    self.assertIn('Please keep this page open', html, f"Missing lock notice on {path}")
+
+                    # 2. Universal JavaScript API and anti-interruption handlers
+                    self.assertIn('showActionLoadingOverlay', html, f"Missing showActionLoadingOverlay on {path}")
+                    self.assertIn('hideActionLoadingOverlay', html, f"Missing hideActionLoadingOverlay on {path}")
+                    self.assertIn('showAnalysisLoadingOverlay', html, f"Missing showAnalysisLoadingOverlay on {path}")
+                    self.assertIn('handleActionLoadingPopState', html, f"Missing popstate handler on {path}")
+                    self.assertIn('GLOBAL_ANALYSIS_STATUS_STEPS', html, f"Missing analysis steps on {path}")
+                    self.assertIn('GLOBAL_DEFAULT_STATUS_STEPS', html, f"Missing default steps on {path}")
+
+                    # 3. Anti-interruption feedback locking styles
+                    self.assertIn('pointer-events: all;', html, f"Missing pointer-events all on {path}")
+                    self.assertIn('backdrop-filter: blur(20px);', html, f"Missing backdrop-filter blur on {path}")
+
+        # 4. Check specific page action hooks
+        with self.authed_get("/") as resp:
+            song_html = resp.read().decode('utf-8')
+            self.assertIn('Finding Song Lyrics...', song_html)
+            self.assertIn('Re-fetching Fresh Lyrics...', song_html)
+            self.assertIn('Loading Saved Analysis...', song_html)
+
+        with self.authed_get("/history") as resp:
+            hist_html = resp.read().decode('utf-8')
+            self.assertIn('Finding Song Lyrics...', hist_html)
+
+        with self.authed_get("/playlists") as resp:
+            pl_html = resp.read().decode('utf-8')
+            self.assertIn('Saving Playlist...', pl_html)
+            self.assertIn('Exporting to Spotify...', pl_html)
+
 
 if __name__ == "__main__":
     unittest.main()

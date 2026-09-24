@@ -5924,6 +5924,21 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
                 btn.disabled = true;
                 btn.textContent = 'Saving...';
             }
+            const nameInput = document.getElementById('input-playlist-name');
+            const plName = (nameInput && nameInput.value) || CURRENT_PLAYLIST.name || 'Playlist';
+            if (typeof showActionLoadingOverlay === 'function') {
+                showActionLoadingOverlay({
+                    title: 'Saving Playlist...',
+                    subtitle: plName,
+                    icon: '💾',
+                    statusSteps: [
+                        'Packaging tracklist and criteria...',
+                        'Storing playlist in Calling Hours database...',
+                        'Updating saved collections...'
+                    ],
+                    notice: 'Please wait while playlist is saved.'
+                });
+            }
             try {
                 const payload = {
                     name: document.getElementById('input-playlist-name').value || CURRENT_PLAYLIST.name,
@@ -5938,6 +5953,7 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
                     body: JSON.stringify(payload)
                 });
                 const res = await resp.json();
+                if (typeof hideActionLoadingOverlay === 'function') hideActionLoadingOverlay();
                 if (res.success) {
                     showToast("Playlist saved to Calling Hours library!");
                     if (btn) btn.textContent = '✓ Saved';
@@ -5946,6 +5962,7 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
                     if (btn) { btn.disabled = false; btn.textContent = '💾 Save'; }
                 }
             } catch (err) {
+                if (typeof hideActionLoadingOverlay === 'function') hideActionLoadingOverlay();
                 showToast("Save request failed.");
                 if (btn) { btn.disabled = false; btn.textContent = '💾 Save'; }
             }
@@ -5954,9 +5971,9 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
         function triggerSpotifyExport() {
             const backdrop = document.getElementById('spotify-modal-backdrop');
             const content = document.getElementById('spotify-modal-content');
-            backdrop.style.display = 'flex';
 
             if (!IS_SPOTIFY_CONNECTED) {
+                backdrop.style.display = 'flex';
                 content.innerHTML = `
                     <p style="color: rgba(225, 232, 240, 0.85); font-size: 0.92rem; line-height: 1.5; margin-bottom: 20px;">
                         Connect your personal Spotify account to export Calling Hours playlists directly into your Spotify library with 1 click!
@@ -5969,14 +5986,21 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
                 return;
             }
 
-            content.innerHTML = `
-                <div style="text-align: center; padding: 20px 10px;">
-                    <div style="font-size: 2rem; animation: spin 1s linear infinite; display: inline-block;">⏳</div>
-                    <div style="font-weight: 700; color: #E1E8F0; margin-top: 14px; font-size: 1.05rem;">Exporting to Spotify...</div>
-                    <div style="color: rgba(225, 232, 240, 0.6); font-size: 0.84rem; margin-top: 6px;">Matching track catalog and creating your Spotify playlist.</div>
-                </div>
-                <style>@keyframes spin { 100% { transform: rotate(360deg); } }</style>
-            `;
+            const plName = document.getElementById('input-playlist-name')?.value || CURRENT_PLAYLIST.name || 'Playlist';
+            if (typeof showActionLoadingOverlay === 'function') {
+                showActionLoadingOverlay({
+                    title: 'Exporting to Spotify...',
+                    subtitle: plName,
+                    icon: '🎧',
+                    statusSteps: [
+                        'Connecting to Spotify Web API...',
+                        'Matching tracks with Spotify catalog...',
+                        'Creating new playlist in your library...',
+                        'Adding curated tracks...'
+                    ],
+                    notice: 'Please keep this page open while tracks are exported to Spotify.'
+                });
+            }
 
             const payload = {
                 name: document.getElementById('input-playlist-name').value || CURRENT_PLAYLIST.name,
@@ -5998,6 +6022,8 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
                 }
             })
             .then(data => {
+                if (typeof hideActionLoadingOverlay === 'function') hideActionLoadingOverlay();
+                backdrop.style.display = 'flex';
                 if (data.success) {
                     content.innerHTML = `
                         <div style="padding: 10px 0;">
@@ -6050,6 +6076,8 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
                 }
             })
             .catch(err => {
+                if (typeof hideActionLoadingOverlay === 'function') hideActionLoadingOverlay();
+                backdrop.style.display = 'flex';
                 content.innerHTML = `
                     <div style="padding: 10px 0;">
                         <div style="color: #f08c5a; font-size: 2rem; text-align: center; margin-bottom: 10px;">⚠️</div>
