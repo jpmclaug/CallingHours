@@ -3838,6 +3838,24 @@ PAGE_HTML = r'''<!DOCTYPE html>
                     btn.style.opacity = '0.7';
                 }, 50);
             }
+            const artistInput = document.getElementById('artist');
+            const songInput = document.getElementById('song');
+            const artist = artistInput ? artistInput.value.trim() : '';
+            const song = songInput ? songInput.value.trim() : '';
+            if (typeof showActionLoadingOverlay === 'function') {
+                showActionLoadingOverlay({
+                    title: 'Finding Song Lyrics...',
+                    subtitle: artist && song ? `${artist} — ${song}` : (artist || song || 'Music Databases'),
+                    icon: '🎵',
+                    statusSteps: [
+                        'Searching Genius for song lyrics & annotations...',
+                        'Checking LRCLIB for synchronized tracks...',
+                        'Retrieving Last.fm tags & audio metadata...',
+                        'Preparing lyrics reader & workspace...'
+                    ],
+                    notice: 'Please keep this page open. Searching online music databases.'
+                });
+            }
             return true;
         }
 
@@ -3862,25 +3880,18 @@ PAGE_HTML = r'''<!DOCTYPE html>
         }
 
         function showAnalysisLoadingOverlay() {
-            const overlay = document.getElementById('analysis-loading-overlay');
-            const songEl = document.getElementById('analysis-loading-song');
-            const statusEl = document.getElementById('analysis-loading-status');
-            const btnSubmit = document.getElementById('btn-perform-analysis');
             const artistInput = document.getElementById('artist');
             const songInput = document.getElementById('song');
-
             const artist = artistInput ? artistInput.value.trim() : '';
             const song = songInput ? songInput.value.trim() : '';
-            if (songEl) {
-                if (artist && song) {
-                    songEl.textContent = `${artist} — ${song}`;
-                } else if (song) {
-                    songEl.textContent = song;
-                } else {
-                    songEl.textContent = 'Song Lyric Analysis';
-                }
+            let subtitle = 'Song Lyric Analysis';
+            if (artist && song) {
+                subtitle = `${artist} — ${song}`;
+            } else if (song) {
+                subtitle = song;
             }
 
+            const btnSubmit = document.getElementById('btn-perform-analysis');
             if (btnSubmit) {
                 btnSubmit.disabled = true;
                 btnSubmit.style.opacity = '0.7';
@@ -3888,42 +3899,20 @@ PAGE_HTML = r'''<!DOCTYPE html>
                 btnSubmit.textContent = '⏳ Analyzing Lyrics...';
             }
 
-            if (overlay) {
-                overlay.style.display = 'flex';
-                overlay.setAttribute('aria-hidden', 'false');
+            if (typeof showActionLoadingOverlay === 'function') {
+                showActionLoadingOverlay({
+                    title: 'Analyzing with Gemini...',
+                    subtitle: subtitle,
+                    icon: '✦',
+                    statusSteps: (typeof ANALYSIS_STATUS_STEPS !== 'undefined') ? ANALYSIS_STATUS_STEPS : GLOBAL_ANALYSIS_STATUS_STEPS,
+                    notice: 'Please keep this page open. Leaving or navigating away will cancel the analysis.'
+                });
             }
-
-            // Lock document scrolling so user cannot interact with page below
-            document.body.style.overflow = 'hidden';
-
-            let stepIndex = 0;
-            if (statusEl) {
-                statusEl.textContent = ANALYSIS_STATUS_STEPS[0];
-                if (analysisStatusTimer) clearInterval(analysisStatusTimer);
-                analysisStatusTimer = setInterval(() => {
-                    stepIndex++;
-                    if (stepIndex < ANALYSIS_STATUS_STEPS.length) {
-                        statusEl.style.opacity = '0';
-                        setTimeout(() => {
-                            statusEl.textContent = ANALYSIS_STATUS_STEPS[stepIndex];
-                            statusEl.style.opacity = '1';
-                        }, 200);
-                    }
-                }, 2800);
-            }
-
-            try {
-                history.pushState({ isAnalyzing: true }, '');
-            } catch (e) {}
-
-            window.addEventListener('popstate', handleAnalysisPopState);
         }
 
         function handleAnalysisPopState(e) {
-            const overlay = document.getElementById('analysis-loading-overlay');
-            if (overlay && overlay.style.display !== 'none') {
-                history.pushState({ isAnalyzing: true }, '');
-                alert('Gemini analysis is currently running. Please stay on this page until it completes.');
+            if (typeof handleActionLoadingPopState === 'function') {
+                handleActionLoadingPopState(e);
             }
         }
 
