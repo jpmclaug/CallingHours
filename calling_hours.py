@@ -4135,6 +4135,19 @@ HISTORY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
         }
 
         function quickLoadTrack(artist, track) {
+            if (typeof showActionLoadingOverlay === 'function') {
+                showActionLoadingOverlay({
+                    title: 'Finding Song Lyrics...',
+                    subtitle: `${artist} — ${track}`,
+                    icon: '🎵',
+                    statusSteps: [
+                        'Searching Genius for song lyrics...',
+                        'Querying Last.fm & AudioDB catalog...',
+                        'Preparing lyrics reader & analyzer...'
+                    ],
+                    notice: 'Please keep this page open while track data is loaded.'
+                });
+            }
             window.location.href = '/?artist=' + encodeURIComponent(artist) + '&song=' + encodeURIComponent(track);
         }
 
