@@ -1410,95 +1410,183 @@ def compute_artist_analytics(
 def get_demo_artist_spotify_data(artist: str) -> Dict[str, Any]:
     """Generate realistic fallback demo Spotify artist analytics for preview mode."""
     clean_artist = artist.strip() or "Jimmy Eat World"
+    if clean_artist.lower() == "jimmy eat world":
+        return {
+            "is_configured": False,
+            "found": True,
+            "artist": clean_artist,
+            "artist_id": "demo_artist_id",
+            "spotify_url": "https://open.spotify.com",
+            "image_url": "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=400&h=400&fit=crop",
+            "popularity": 74,
+            "popularity_tier": "Mainstream Heavyweight",
+            "followers": 1420500,
+            "followers_formatted": "1.4M",
+            "genres": ["Alternative Rock", "Emo", "Pop Punk", "Post-Grunge"],
+            "avg_track_popularity": 68.4,
+            "discography": {
+                "albums_count": 10,
+                "singles_count": 16,
+                "total_releases": 26,
+                "years_active_span": "1994 - 2024 (30 yrs)",
+                "active_decades": ["1990s", "2000s", "2010s", "2020s"],
+                "latest_release": {
+                    "name": "Surviving",
+                    "release_date": "2019-10-18",
+                    "type": "Album",
+                    "image_url": "",
+                    "spotify_url": "https://open.spotify.com",
+                }
+            },
+            "top_tracks": [
+                {
+                    "id": "trk_1",
+                    "name": "The Middle",
+                    "duration_ms": 166000,
+                    "duration_formatted": "2:46",
+                    "popularity": 84,
+                    "preview_url": "",
+                    "spotify_url": "https://open.spotify.com",
+                    "album_name": "Bleed American",
+                    "album_image": "",
+                    "release_year": "2001",
+                },
+                {
+                    "id": "trk_2",
+                    "name": "Sweetness",
+                    "duration_ms": 220000,
+                    "duration_formatted": "3:40",
+                    "popularity": 73,
+                    "preview_url": "",
+                    "spotify_url": "https://open.spotify.com",
+                    "album_name": "Bleed American",
+                    "album_image": "",
+                    "release_year": "2001",
+                },
+                {
+                    "id": "trk_3",
+                    "name": "Bleed American",
+                    "duration_ms": 182000,
+                    "duration_formatted": "3:02",
+                    "popularity": 70,
+                    "preview_url": "",
+                    "spotify_url": "https://open.spotify.com",
+                    "album_name": "Bleed American",
+                    "album_image": "",
+                    "release_year": "2001",
+                },
+                {
+                    "id": "trk_4",
+                    "name": "Hear You Me",
+                    "duration_ms": 284000,
+                    "duration_formatted": "4:44",
+                    "popularity": 69,
+                    "preview_url": "",
+                    "spotify_url": "https://open.spotify.com",
+                    "album_name": "Bleed American",
+                    "album_image": "",
+                    "release_year": "2001",
+                },
+                {
+                    "id": "trk_5",
+                    "name": "Pain",
+                    "duration_ms": 181000,
+                    "duration_formatted": "3:01",
+                    "popularity": 64,
+                    "preview_url": "",
+                    "spotify_url": "https://open.spotify.com",
+                    "album_name": "Futures",
+                    "album_image": "",
+                    "release_year": "2004",
+                },
+            ],
+            "cached": False,
+            "is_demo": True,
+        }
+
+    # Dynamic generation for any other artist using DB/LastFM if available
+    track_names = []
+    genres = []
+    try:
+        import database
+        db_songs = database.get_songs_by_band(clean_artist) or []
+        for s in db_songs:
+            s_name = s.get("song")
+            if s_name and s_name not in track_names:
+                track_names.append(s_name)
+    except Exception:
+        pass
+
+    try:
+        import lastfm
+        if len(track_names) < 5:
+            lfm_tracks = lastfm.fetch_artist_top_tracks(clean_artist, limit=10) or []
+            for lt in lfm_tracks:
+                lt_name = lt.get("name")
+                if lt_name and lt_name not in track_names:
+                    track_names.append(lt_name)
+        lfm_tags = lastfm.fetch_artist_top_tags(clean_artist) or []
+        for tg in lfm_tags[:4]:
+            t_name = tg.get("name") if isinstance(tg, dict) else str(tg)
+            if t_name and t_name.title() not in genres:
+                genres.append(t_name.title())
+    except Exception:
+        pass
+
+    if not genres:
+        genres = ["Alternative Rock", "Hardcore", "Punk"]
+    if not track_names:
+        track_names = [f"Track {i+1}" for i in range(5)]
+
+    top_tracks = []
+    for i, t_name in enumerate(track_names[:10]):
+        pop_score = max(35, 78 - (i * 4))
+        dur_sec = 180 + (i * 15) % 90
+        dur_ms = dur_sec * 1000
+        mins = dur_sec // 60
+        secs = dur_sec % 60
+        top_tracks.append({
+            "id": f"demo_trk_{i+1}",
+            "name": t_name,
+            "duration_ms": dur_ms,
+            "duration_formatted": f"{mins}:{secs:02d}",
+            "popularity": pop_score,
+            "preview_url": "",
+            "spotify_url": "https://open.spotify.com",
+            "album_name": f"{clean_artist} Hits",
+            "album_image": "",
+            "release_year": "2020",
+        })
+
+    artist_pop = 65
     return {
         "is_configured": False,
         "found": True,
         "artist": clean_artist,
-        "artist_id": "demo_artist_id",
+        "artist_id": f"demo_{clean_artist.lower().replace(' ', '_')}",
         "spotify_url": "https://open.spotify.com",
         "image_url": "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=400&h=400&fit=crop",
-        "popularity": 74,
-        "popularity_tier": "Mainstream Heavyweight",
-        "followers": 1420500,
-        "followers_formatted": "1.4M",
-        "genres": ["Alternative Rock", "Emo", "Pop Punk", "Post-Grunge"],
-        "avg_track_popularity": 68.4,
+        "popularity": artist_pop,
+        "popularity_tier": compute_artist_popularity_tier(artist_pop),
+        "followers": 385000,
+        "followers_formatted": "385K",
+        "genres": genres,
+        "avg_track_popularity": round(sum(t["popularity"] for t in top_tracks) / len(top_tracks), 1) if top_tracks else 60.0,
         "discography": {
-            "albums_count": 10,
-            "singles_count": 16,
-            "total_releases": 26,
-            "years_active_span": "1994 - 2024 (30 yrs)",
-            "active_decades": ["1990s", "2000s", "2010s", "2020s"],
+            "albums_count": 6,
+            "singles_count": 8,
+            "total_releases": 14,
+            "years_active_span": "2002 - 2024 (22 yrs)",
+            "active_decades": ["2000s", "2010s", "2020s"],
             "latest_release": {
-                "name": "Surviving",
-                "release_date": "2019-10-18",
+                "name": f"{clean_artist} Latest",
+                "release_date": "2022-04-15",
                 "type": "Album",
                 "image_url": "",
                 "spotify_url": "https://open.spotify.com",
             }
         },
-        "top_tracks": [
-            {
-                "id": "trk_1",
-                "name": "The Middle",
-                "duration_ms": 166000,
-                "duration_formatted": "2:46",
-                "popularity": 84,
-                "preview_url": "",
-                "spotify_url": "https://open.spotify.com",
-                "album_name": "Bleed American",
-                "album_image": "",
-                "release_year": "2001",
-            },
-            {
-                "id": "trk_2",
-                "name": "Sweetness",
-                "duration_ms": 220000,
-                "duration_formatted": "3:40",
-                "popularity": 73,
-                "preview_url": "",
-                "spotify_url": "https://open.spotify.com",
-                "album_name": "Bleed American",
-                "album_image": "",
-                "release_year": "2001",
-            },
-            {
-                "id": "trk_3",
-                "name": "Bleed American",
-                "duration_ms": 182000,
-                "duration_formatted": "3:02",
-                "popularity": 70,
-                "preview_url": "",
-                "spotify_url": "https://open.spotify.com",
-                "album_name": "Bleed American",
-                "album_image": "",
-                "release_year": "2001",
-            },
-            {
-                "id": "trk_4",
-                "name": "Hear You Me",
-                "duration_ms": 284000,
-                "duration_formatted": "4:44",
-                "popularity": 69,
-                "preview_url": "",
-                "spotify_url": "https://open.spotify.com",
-                "album_name": "Bleed American",
-                "album_image": "",
-                "release_year": "2001",
-            },
-            {
-                "id": "trk_5",
-                "name": "Pain",
-                "duration_ms": 181000,
-                "duration_formatted": "3:01",
-                "popularity": 64,
-                "preview_url": "",
-                "spotify_url": "https://open.spotify.com",
-                "album_name": "Futures",
-                "album_image": "",
-                "release_year": "2004",
-            },
-        ],
+        "top_tracks": top_tracks,
         "cached": False,
         "is_demo": True,
     }
@@ -1545,6 +1633,14 @@ def get_or_fetch_artist_spotify_data(
     if not is_spotify_configured():
         fallback = get_demo_artist_spotify_data(clean_artist)
         fallback["is_configured"] = False
+        try:
+            database.save_artist_metadata(
+                clean_artist,
+                spotify_data=fallback,
+                db_path=db_path
+            )
+        except Exception as e:
+            print(f"Database save fallback spotify error for {clean_artist}: {e}")
         return fallback
 
     # 3. Obtain token
@@ -1552,6 +1648,14 @@ def get_or_fetch_artist_spotify_data(
     if not token:
         fallback = get_demo_artist_spotify_data(clean_artist)
         fallback["is_configured"] = False
+        try:
+            database.save_artist_metadata(
+                clean_artist,
+                spotify_data=fallback,
+                db_path=db_path
+            )
+        except Exception as e:
+            print(f"Database save fallback spotify error for {clean_artist}: {e}")
         return fallback
 
     # 4. Search artist

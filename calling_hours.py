@@ -443,6 +443,37 @@ def build_cookie_header(name: str, value: str, max_age: Optional[int] = 2592000,
         parts.append("Secure")
     return "; ".join(parts)
 
+def build_loading_overlay_html() -> str:
+    return '''
+    <!-- Action Loading & Anti-Interruption Overlay -->
+    <div id="analysis-loading-overlay" class="analysis-loading-overlay" style="display: none;" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="analysis-loading-title">
+        <div class="analysis-loading-backdrop"></div>
+        <div class="analysis-loading-modal">
+            <div class="analysis-cosmic-spinner" aria-hidden="true">
+                <div class="spinner-ring ring-1"></div>
+                <div class="spinner-ring ring-2"></div>
+                <div class="spinner-core" id="analysis-loading-icon">✦</div>
+            </div>
+            <h2 id="analysis-loading-title" class="analysis-loading-title">Analyzing with Gemini...</h2>
+            <div class="analysis-loading-song" id="analysis-loading-song"></div>
+            
+            <div class="analysis-loading-bar-wrapper">
+                <div class="analysis-loading-bar-inner"></div>
+            </div>
+            
+            <div class="analysis-loading-status" id="analysis-loading-status">Connecting to Gemini AI...</div>
+            
+            <div class="analysis-loading-notice">
+                <span class="notice-lock-icon">🔒</span>
+                <span id="analysis-loading-notice-text">Please keep this page open. Leaving or navigating away will cancel the analysis.</span>
+            </div>
+            <div id="analysis-loading-dismiss-wrap" style="display: none; margin-top: 14px;">
+                <button type="button" id="analysis-loading-dismiss-btn" onclick="hideActionLoadingOverlay()" style="background: transparent; border: 1px solid rgba(165, 200, 255, 0.3); color: #A5C8FF; padding: 6px 14px; border-radius: 6px; font-size: 0.78rem; cursor: pointer; font-family: inherit;">Dismiss Overlay</button>
+            </div>
+        </div>
+    </div>
+    '''
+
 def build_app_header(active_page: str = 'song', user: Optional[Dict[str, Any]] = None) -> str:
     song_active = ' active' if active_page == 'song' else ''
     artist_active = ' active' if active_page == 'artist' else ''
@@ -560,6 +591,7 @@ def build_app_header(active_page: str = 'song', user: Optional[Dict[str, Any]] =
         </a>
         {admin_bottom_nav_link}
     </nav>
+    {build_loading_overlay_html()}
     '''
 
 PAGE_HTML = r'''<!DOCTYPE html>
@@ -608,6 +640,413 @@ PAGE_HTML = r'''<!DOCTYPE html>
                 }
             }, false);
         }
+
+        // Global Action & Analysis Loading Overlay Management
+        let globalActionStatusTimer = null;
+        let globalActionDismissTimer = null;
+        let isActionLoadingActive = false;
+
+        const GLOBAL_DEFAULT_STATUS_STEPS = [
+            'Connecting to music intelligence services...',
+            'Retrieving and validating data...',
+            'Finalizing response...'
+        ];
+
+        const GLOBAL_ANALYSIS_STATUS_STEPS = [
+            'Connecting to Gemini AI...',
+            'Reading lyrics structure and verse flow...',
+            'Identifying poetic devices, metaphors & motifs...',
+            'Analyzing emotional themes, tone & subtext...',
+            'Synthesizing in-depth literary analysis...',
+            'Finalizing formatted interpretation & insights...'
+        ];
+
+        function showActionLoadingOverlay(options = {}) {
+            const overlay = document.getElementById('analysis-loading-overlay');
+            if (!overlay) return;
+
+            const titleEl = document.getElementById('analysis-loading-title');
+            const songEl = document.getElementById('analysis-loading-song');
+            const statusEl = document.getElementById('analysis-loading-status');
+            const iconEl = document.getElementById('analysis-loading-icon');
+            const noticeTextEl = document.getElementById('analysis-loading-notice-text');
+            const dismissWrap = document.getElementById('analysis-loading-dismiss-wrap');
+
+            const title = options.title || 'Processing Request...';
+            const subtitle = options.subtitle || options.song || '';
+            const icon = options.icon || '✦';
+            const notice = options.notice || 'Please keep this page open. Leaving or navigating away will cancel the operation.';
+            const steps = (options.statusSteps && options.statusSteps.length > 0)
+                ? options.statusSteps
+                : (options.status ? [options.status] : GLOBAL_DEFAULT_STATUS_STEPS);
+
+            if (titleEl) titleEl.textContent = title;
+            if (songEl) {
+                songEl.textContent = subtitle;
+                songEl.style.display = subtitle ? 'block' : 'none';
+            }
+            if (iconEl) iconEl.textContent = icon;
+            if (noticeTextEl) noticeTextEl.textContent = notice;
+            if (dismissWrap) dismissWrap.style.display = 'none';
+
+            overlay.style.display = 'flex';
+            overlay.setAttribute('aria-hidden', 'false');
+            document.body.style.overflow = 'hidden';
+            isActionLoadingActive = true;
+
+            // Clear any active timers
+            if (globalActionStatusTimer) {
+                clearInterval(globalActionStatusTimer);
+                globalActionStatusTimer = null;
+            }
+            if (globalActionDismissTimer) {
+                clearTimeout(globalActionDismissTimer);
+                globalActionDismissTimer = null;
+            }
+
+            if (statusEl && steps.length > 0) {
+                statusEl.textContent = steps[0];
+                statusEl.style.opacity = '1';
+                let stepIdx = 0;
+                globalActionStatusTimer = setInterval(() => {
+                    stepIdx++;
+                    if (stepIdx < steps.length) {
+                        statusEl.style.opacity = '0';
+                        setTimeout(() => {
+                            statusEl.textContent = steps[stepIdx];
+                            statusEl.style.opacity = '1';
+                        }, 200);
+                    }
+                }, 2600);
+            }
+
+            // Safety escape hatch: show dismiss button if action takes over 24 seconds
+            globalActionDismissTimer = setTimeout(() => {
+                if (isActionLoadingActive && dismissWrap) {
+                    dismissWrap.style.display = 'block';
+                }
+            }, 24000);
+
+            try {
+                history.pushState({ isActionLoading: true }, '');
+            } catch (e) {}
+
+            window.addEventListener('popstate', handleActionLoadingPopState);
+        }
+
+        function hideActionLoadingOverlay() {
+            const overlay = document.getElementById('analysis-loading-overlay');
+            if (overlay) {
+                overlay.style.display = 'none';
+                overlay.setAttribute('aria-hidden', 'true');
+            }
+            document.body.style.overflow = '';
+            isActionLoadingActive = false;
+
+            if (globalActionStatusTimer) {
+                clearInterval(globalActionStatusTimer);
+                globalActionStatusTimer = null;
+            }
+            if (globalActionDismissTimer) {
+                clearTimeout(globalActionDismissTimer);
+                globalActionDismissTimer = null;
+            }
+
+            const dismissWrap = document.getElementById('analysis-loading-dismiss-wrap');
+            if (dismissWrap) dismissWrap.style.display = 'none';
+
+            window.removeEventListener('popstate', handleActionLoadingPopState);
+        }
+
+        function handleActionLoadingPopState(e) {
+            if (isActionLoadingActive) {
+                const overlay = document.getElementById('analysis-loading-overlay');
+                if (overlay && overlay.style.display !== 'none') {
+                    history.pushState({ isActionLoading: true }, '');
+                    alert('Action is currently in progress. Please stay on this page until it completes.');
+                }
+            }
+        }
+
+        function showAnalysisLoadingOverlay() {
+            const artistInput = document.getElementById('artist');
+            const songInput = document.getElementById('song');
+            const artist = artistInput ? artistInput.value.trim() : '';
+            const song = songInput ? songInput.value.trim() : '';
+            let subtitle = 'Song Lyric Analysis';
+            if (artist && song) {
+                subtitle = `${artist} — ${song}`;
+            } else if (song) {
+                subtitle = song;
+            }
+
+            const btnSubmit = document.getElementById('btn-perform-analysis');
+            if (btnSubmit) {
+                btnSubmit.disabled = true;
+                btnSubmit.style.opacity = '0.7';
+                btnSubmit.style.cursor = 'not-allowed';
+                btnSubmit.textContent = '⏳ Analyzing Lyrics...';
+            }
+
+            showActionLoadingOverlay({
+                title: 'Analyzing with Gemini...',
+                subtitle: subtitle,
+                icon: '✦',
+                statusSteps: (typeof ANALYSIS_STATUS_STEPS !== 'undefined') ? ANALYSIS_STATUS_STEPS : GLOBAL_ANALYSIS_STATUS_STEPS,
+                notice: 'Please keep this page open. Leaving or navigating away will cancel the analysis.'
+            });
+        }
+
+        function handleAnalysisPopState(e) {
+            handleActionLoadingPopState(e);
+        }
+
+        // Expose globally on window
+        window.showActionLoadingOverlay = showActionLoadingOverlay;
+        window.hideActionLoadingOverlay = hideActionLoadingOverlay;
+        window.showAnalysisLoadingOverlay = showAnalysisLoadingOverlay;
+
+        // Prevent keyboard interruption (e.g. Esc or Enter repeats) while overlay is active
+        document.addEventListener('keydown', function(e) {
+            if (isActionLoadingActive) {
+                if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }
+            }
+        }, true);
+
+        // Global form submission listeners
+        document.addEventListener('submit', function(e) {
+            if (e.defaultPrevented) return;
+            const form = e.target;
+            if (form && form.checkValidity && !form.checkValidity()) return;
+
+            // 1. Explicit data-loading attribute on form
+            const dataTitle = form.getAttribute('data-loading-title');
+            if (dataTitle) {
+                showActionLoadingOverlay({
+                    title: dataTitle,
+                    subtitle: form.getAttribute('data-loading-subtitle') || '',
+                    icon: form.getAttribute('data-loading-icon') || '✦',
+                    statusSteps: form.getAttribute('data-loading-steps') ? JSON.parse(form.getAttribute('data-loading-steps')) : null,
+                    status: form.getAttribute('data-loading-status') || '',
+                    notice: form.getAttribute('data-loading-notice') || ''
+                });
+                return;
+            }
+
+            // 2. Main song form (#search-form)
+            if (form.id === 'search-form') {
+                const artistInput = form.querySelector('#artist');
+                const songInput = form.querySelector('#song');
+                const artist = artistInput ? artistInput.value.trim() : '';
+                const song = songInput ? songInput.value.trim() : '';
+                showActionLoadingOverlay({
+                    title: 'Finding Song Lyrics...',
+                    subtitle: artist && song ? `${artist} — ${song}` : (artist || song || 'Music Databases'),
+                    icon: '🎵',
+                    statusSteps: [
+                        'Searching Genius for song lyrics & annotations...',
+                        'Checking LRCLIB for synchronized tracks...',
+                        'Retrieving Last.fm tags & audio metadata...',
+                        'Preparing lyrics reader & workspace...'
+                    ],
+                    notice: 'Please keep this page open. Searching online music databases.'
+                });
+                return;
+            }
+
+            // 3. Artist search form (.artist-search-form)
+            if (form.classList && form.classList.contains('artist-search-form')) {
+                const artistInput = form.querySelector('input[name="artist"]');
+                const artistName = artistInput ? artistInput.value.trim() : '';
+                showActionLoadingOverlay({
+                    title: 'Exploring Artist Intelligence...',
+                    subtitle: artistName,
+                    icon: '👤',
+                    statusSteps: [
+                        'Querying Setlist.fm concert databases...',
+                        'Scanning North Carolina tour history...',
+                        'Retrieving Last.fm tags & top tracks...',
+                        'Fetching TheAudioDB biography & discography...',
+                        'Assembling unified artist profile...'
+                    ],
+                    notice: 'Please keep this page open. Gathering live tours and catalog intelligence.'
+                });
+                return;
+            }
+
+            // 4. Playlist generator form (#generator-form)
+            if (form.id === 'generator-form') {
+                const nameInput = form.querySelector('#input-playlist-name');
+                const modeInput = form.querySelector('input[name="mode"]');
+                const mode = modeInput ? modeInput.value : '';
+                const plTitle = nameInput ? nameInput.value.trim() : '';
+                showActionLoadingOverlay({
+                    title: 'Generating Playlist...',
+                    subtitle: plTitle || (mode ? `Mode: ${mode}` : 'Curating Tracklist'),
+                    icon: '🎶',
+                    statusSteps: [
+                        'Analyzing generator criteria & filters...',
+                        'Scanning concert setlists & popularity metrics...',
+                        'Ranking and ordering tracks...',
+                        'Compiling playlist overview...'
+                    ],
+                    notice: 'Please keep this page open while your playlist is generated.'
+                });
+                return;
+            }
+
+            // 5. Prompts save form (action contains /prompts/save)
+            const action = form.getAttribute('action') || '';
+            if (action.includes('/prompts/save')) {
+                showActionLoadingOverlay({
+                    title: 'Saving Gemini Prompt...',
+                    subtitle: 'Updating instructions',
+                    icon: '⚙️',
+                    statusSteps: [
+                        'Validating prompt structure...',
+                        'Saving prompt to Calling Hours database...',
+                        'Finalizing configuration...'
+                    ],
+                    notice: 'Please wait while prompt configuration is saved.'
+                });
+                return;
+            }
+
+            // 6. Admin forms (action contains /admin/user)
+            if (action.includes('/admin/user')) {
+                let op = 'Updating User Permissions...';
+                if (action.includes('add')) op = 'Granting User Access...';
+                else if (action.includes('toggle-role')) op = 'Updating User Role...';
+                else if (action.includes('toggle-status')) op = 'Updating User Status...';
+                else if (action.includes('delete')) op = 'Deleting User Account...';
+                showActionLoadingOverlay({
+                    title: op,
+                    subtitle: 'Admin Operation',
+                    icon: '🛡️',
+                    statusSteps: [
+                        'Submitting user change to database...',
+                        'Refreshing authorizations...',
+                        'Reloading user management...'
+                    ],
+                    notice: 'Please wait while user authorizations are updated.'
+                });
+                return;
+            }
+        }, false);
+
+        // Global link & button click listeners
+        document.addEventListener('click', function(e) {
+            if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+
+            const link = e.target.closest('a');
+            const btn = e.target.closest('button');
+
+            // 1. Explicit data-loading attribute on link or button
+            const targetEl = link || btn;
+            if (targetEl && targetEl.getAttribute('data-loading-title')) {
+                showActionLoadingOverlay({
+                    title: targetEl.getAttribute('data-loading-title'),
+                    subtitle: targetEl.getAttribute('data-loading-subtitle') || targetEl.textContent.trim(),
+                    icon: targetEl.getAttribute('data-loading-icon') || '✦',
+                    statusSteps: targetEl.getAttribute('data-loading-steps') ? JSON.parse(targetEl.getAttribute('data-loading-steps')) : null,
+                    status: targetEl.getAttribute('data-loading-status') || '',
+                    notice: targetEl.getAttribute('data-loading-notice') || ''
+                });
+                return;
+            }
+
+            if (link) {
+                if (link.target === '_blank') return;
+                const href = link.getAttribute('href');
+                if (!href || href === '#' || href.startsWith('javascript:')) return;
+
+                try {
+                    const url = new URL(link.href, window.location.origin);
+                    if (url.origin !== window.location.origin) return;
+
+                    // Skip file export downloads
+                    if (url.searchParams.has('export') || url.pathname.includes('/export')) {
+                        return;
+                    }
+
+                    // a) Auto-analyze links (?auto_analyze=1 or ?analyze=1)
+                    if (url.searchParams.get('auto_analyze') === '1' || url.searchParams.get('analyze') === '1') {
+                        const artist = url.searchParams.get('artist') || '';
+                        const song = url.searchParams.get('song') || '';
+                        showActionLoadingOverlay({
+                            title: 'Launching Gemini Analysis...',
+                            subtitle: artist && song ? `${artist} — ${song}` : (song || artist || 'Song Lyrics'),
+                            icon: '✦',
+                            statusSteps: GLOBAL_ANALYSIS_STATUS_STEPS,
+                            notice: 'Please keep this page open. Lyrics are being retrieved and analyzed with Gemini.'
+                        });
+                        return;
+                    }
+
+                    // b) Explore artist profile (/artist?artist=...)
+                    if (url.pathname === '/artist' && url.searchParams.has('artist')) {
+                        const artist = url.searchParams.get('artist');
+                        if (artist) {
+                            showActionLoadingOverlay({
+                                title: 'Exploring Artist Intelligence...',
+                                subtitle: artist,
+                                icon: '👤',
+                                statusSteps: [
+                                    'Querying Setlist.fm concert databases...',
+                                    'Scanning North Carolina tour history...',
+                                    'Retrieving Last.fm tags & top tracks...',
+                                    'Fetching TheAudioDB biography & discography...',
+                                    'Assembling unified artist profile...'
+                                ],
+                                notice: 'Please keep this page open. Assembling live tours and catalog intelligence.'
+                            });
+                            return;
+                        }
+                    }
+
+                    // c) Load song by ID (/?id=...)
+                    if (url.pathname === '/' && url.searchParams.has('id')) {
+                        let label = link.textContent.trim();
+                        if (label === 'Load Song' || label.startsWith('✦ View Analysis') || label.startsWith('Lyrics')) {
+                            label = '';
+                        }
+                        showActionLoadingOverlay({
+                            title: 'Loading Saved Song...',
+                            subtitle: label,
+                            icon: '📜',
+                            statusSteps: [
+                                'Retrieving cached lyrics and annotations...',
+                                'Loading Gemini analysis results...',
+                                'Opening workspace...'
+                            ],
+                            notice: 'Please wait while saved song analysis is loaded.'
+                        });
+                        return;
+                    }
+
+                    // d) Load song by artist & song (/?artist=...&song=...)
+                    if (url.pathname === '/' && url.searchParams.has('artist') && url.searchParams.has('song')) {
+                        const artist = url.searchParams.get('artist') || '';
+                        const song = url.searchParams.get('song') || '';
+                        showActionLoadingOverlay({
+                            title: 'Fetching Song Lyrics...',
+                            subtitle: `${artist} — ${song}`,
+                            icon: '🎵',
+                            statusSteps: [
+                                'Searching Genius for song lyrics...',
+                                'Retrieving Last.fm & AudioDB metadata...',
+                                'Preparing lyrics reader...'
+                            ],
+                            notice: 'Please keep this page open while song lyrics are loaded.'
+                        });
+                        return;
+                    }
+                } catch (err) {}
+            }
+        }, false);
     </script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@700;800;900&family=Roboto+Condensed:wght@300;400;700&display=swap');
@@ -1003,6 +1442,11 @@ PAGE_HTML = r'''<!DOCTYPE html>
         .notice-lock-icon {
             font-size: 1.1rem;
             flex-shrink: 0;
+        }
+
+        #analysis-loading-dismiss-btn:hover {
+            background: rgba(165, 200, 255, 0.18) !important;
+            border-color: #A5C8FF !important;
         }
 
         /* Login Card & Auth Styles */
@@ -2613,30 +3057,6 @@ PAGE_HTML = r'''<!DOCTYPE html>
 <body>
     <div class="stars"></div>
     <div class="horizon"></div>
-    <!-- Analysis Loading & Anti-Interruption Overlay -->
-    <div id="analysis-loading-overlay" class="analysis-loading-overlay" style="display: none;" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="analysis-loading-title">
-        <div class="analysis-loading-backdrop"></div>
-        <div class="analysis-loading-modal">
-            <div class="analysis-cosmic-spinner" aria-hidden="true">
-                <div class="spinner-ring ring-1"></div>
-                <div class="spinner-ring ring-2"></div>
-                <div class="spinner-core">✦</div>
-            </div>
-            <h2 id="analysis-loading-title" class="analysis-loading-title">Analyzing with Gemini...</h2>
-            <div class="analysis-loading-song" id="analysis-loading-song"></div>
-            
-            <div class="analysis-loading-bar-wrapper">
-                <div class="analysis-loading-bar-inner"></div>
-            </div>
-            
-            <div class="analysis-loading-status" id="analysis-loading-status">Connecting to Gemini AI...</div>
-            
-            <div class="analysis-loading-notice">
-                <span class="notice-lock-icon">🔒</span>
-                <span>Please keep this page open. Leaving or navigating away will cancel the analysis.</span>
-            </div>
-        </div>
-    </div>
     <!-- Artist Info Modal -->
     <div id="artist-modal-overlay" class="artist-modal-overlay" style="display: none;" onclick="closeArtistModalOnBackdrop(event)">
         <div class="artist-modal" role="dialog" aria-modal="true" aria-labelledby="artist-modal-title">
@@ -3078,6 +3498,19 @@ PAGE_HTML = r'''<!DOCTYPE html>
 
         function quickLoadTrack(artist, track) {
             closeArtistModal();
+            if (typeof showActionLoadingOverlay === 'function') {
+                showActionLoadingOverlay({
+                    title: 'Finding Song Lyrics...',
+                    subtitle: `${artist} — ${track}`,
+                    icon: '🎵',
+                    statusSteps: [
+                        'Searching Genius for song lyrics...',
+                        'Querying Last.fm & AudioDB catalog...',
+                        'Preparing lyrics reader & analyzer...'
+                    ],
+                    notice: 'Please keep this page open while track data is loaded.'
+                });
+            }
             const artistInput = document.getElementById('artist');
             const songInput = document.getElementById('song');
             if (artistInput && songInput) {
