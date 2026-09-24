@@ -230,6 +230,100 @@ class TestSetlistFm(unittest.TestCase):
         mock_nc.assert_called_once_with("paramore-mbid", api_key="test_key")
         mock_tours.assert_called_once_with("paramore-mbid", "Paramore", api_key="test_key", max_tours=3)
         mock_save_meta.assert_called_once()
+        self.assertIn("most_played_with", refreshed)
+        self.assertIsInstance(refreshed["most_played_with"], list)
+
+    def test_extract_coperformers_from_tour_name(self):
+        # 1. Ampersand / co-headliner
+        c1 = setlistfm._extract_coperformers_from_tour_name(
+            "Jimmy Eat World & Manchester Orchestra: The Amplified Echoes Tour",
+            "Jimmy Eat World"
+        )
+        self.assertIn("Manchester Orchestra", c1)
+
+        # 2. Slash split
+        c2 = setlistfm._extract_coperformers_from_tour_name(
+            "Blink-182 / Green Day: Pop Disaster Tour",
+            "Blink-182"
+        )
+        self.assertIn("Green Day", c2)
+
+        # 3. 'with' keyword
+        c3 = setlistfm._extract_coperformers_from_tour_name(
+            "Brand New with Modern Baseball Tour 2016",
+            "Brand New"
+        )
+        self.assertIn("Modern Baseball", c3)
+
+        # 4. Solitary artist or unrelated
+        c4 = setlistfm._extract_coperformers_from_tour_name(
+            "Bleed American 20th Anniversary Tour",
+            "Jimmy Eat World"
+        )
+        self.assertEqual(c4, [])
+
+    def test_get_demo_top_coperformers(self):
+        jew_bands = setlistfm.get_demo_top_coperformers("Jimmy Eat World")
+        self.assertEqual(len(jew_bands), 10)
+        self.assertEqual(jew_bands[0]["rank"], 1)
+        self.assertEqual(jew_bands[0]["band"], "Manchester Orchestra")
+        self.assertGreater(jew_bands[0]["shows_shared"], 0)
+        self.assertIsNotNone(jew_bands[0]["latest_show"])
+        self.assertIn("date_formatted", jew_bands[0]["latest_show"])
+
+        # Generic artist fallback
+        generic_bands = setlistfm.get_demo_top_coperformers("The Foo Fighters")
+        self.assertEqual(len(generic_bands), 10)
+        self.assertEqual(generic_bands[0]["rank"], 1)
+
+    @patch("setlistfm.fetch_co_performers_for_show")
+    @patch("setlistfm.requests.get")
+    def test_fetch_top_coperformers(self, mock_get, mock_venue_bands):
+        mock_venue_bands.return_value = []
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "setlist": [
+                {
+                    "eventDate": "12-08-2023",
+                    "venue": {"id": "v1", "name": "Ascend Amphitheater", "city": {"name": "Nashville", "stateCode": "TN"}},
+                    "tour": {"name": "The Amplified Echoes Tour"},
+                    "info": "Co-headlining with Manchester Orchestra. Middle Kids opened.",
+                    "url": "https://setlist.fm/show1",
+                    "sets": {
+                        "set": [
+                            {"song": [{"name": "Sweetness", "with": {"name": "Andy Hull"}}]}
+                        ]
+                    }
+                },
+                {
+                    "eventDate": "14-08-2023",
+                    "venue": {"id": "v2", "name": "Red Hat Amphitheater", "city": {"name": "Raleigh", "stateCode": "NC"}},
+                    "tour": {"name": "The Amplified Echoes Tour"},
+                    "info": "With Manchester Orchestra and Middle Kids",
+                    "url": "https://setlist.fm/show2",
+                    "sets": {"set": []}
+                }
+            ]
+        }
+        mock_get.return_value = mock_resp
+
+        top_bands = setlistfm.fetch_top_coperformers(
+            "mbid_123",
+            "Jimmy Eat World",
+            api_key="test_key",
+            max_pages=1
+        )
+        self.assertGreater(len(top_bands), 0)
+        band_names = [b["band"] for b in top_bands]
+        self.assertIn("Manchester Orchestra", band_names)
+        self.assertIn("Middle Kids", band_names)
+        self.assertIn("Andy Hull", band_names)
+
+        # Manchester Orchestra was in both shows -> rank 1
+        mo = next(b for b in top_bands if b["band"] == "Manchester Orchestra")
+        self.assertEqual(mo["shows_shared"], 2)
+        self.assertEqual(mo["rank"], 1)
 
 
 if __name__ == "__main__":

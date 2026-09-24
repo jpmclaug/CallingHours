@@ -357,6 +357,247 @@ class TestSpotify(unittest.TestCase):
         self.assertEqual(res["tracks_matched"], 2)
         self.assertEqual(res["tracks_added"], 2)
 
+    @patch("spotify.get_spotify_credentials")
+    @patch("spotify.requests.post")
+    def test_get_spotify_app_token(self, mock_post, mock_creds):
+        # 1. Unconfigured credentials
+        mock_creds.return_value = (None, None, None)
+        spotify._app_token_cache["token"] = None
+        spotify._app_token_cache["expires_at"] = 0
+        token = spotify.get_spotify_app_token()
+        self.assertIsNone(token)
+
+        # 2. Configured credentials
+        mock_creds.return_value = ("test_cid", "test_secret", None)
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "access_token": "app_token_999",
+            "expires_in": 3600,
+            "token_type": "Bearer"
+        }
+        mock_post.return_value = mock_resp
+
+        token = spotify.get_spotify_app_token(force_refresh=True)
+        self.assertEqual(token, "app_token_999")
+        self.assertTrue(mock_post.called)
+
+        # 3. Cached token reuse
+        mock_post.reset_mock()
+        token2 = spotify.get_spotify_app_token(force_refresh=False)
+        self.assertEqual(token2, "app_token_999")
+        mock_post.assert_not_called()
+
+    @patch("spotify.requests.get")
+    def test_search_artist_profile(self, mock_get):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "artists": {
+                "items": [
+                    {
+                        "id": "other_id",
+                        "name": "Jimmy Eat World Tribute Band",
+                        "genres": ["cover"],
+                        "popularity": 20,
+                        "followers": {"total": 500},
+                        "images": [],
+                        "external_urls": {"spotify": "https://open.spotify.com/artist/other_id"}
+                    },
+                    {
+                        "id": "jew_id",
+                        "name": "Jimmy Eat World",
+                        "genres": ["emo", "pop punk", "alternative rock"],
+                        "popularity": 74,
+                        "followers": {"total": 1400000},
+                        "images": [{"url": "https://img.spotify.com/jew.jpg"}],
+                        "external_urls": {"spotify": "https://open.spotify.com/artist/jew_id"}
+                    }
+                ]
+            }
+        }
+        mock_get.return_value = mock_resp
+
+        profile = spotify.search_artist_profile("app_token", "Jimmy Eat World")
+        self.assertIsNotNone(profile)
+        self.assertEqual(profile["id"], "jew_id")
+        self.assertEqual(profile["name"], "Jimmy Eat World")
+        self.assertEqual(profile["popularity"], 74)
+        self.assertEqual(profile["followers"], 1400000)
+        self.assertEqual(profile["image_url"], "https://img.spotify.com/jew.jpg")
+        self.assertEqual(profile["spotify_url"], "https://open.spotify.com/artist/jew_id")
+
+    @patch("spotify.requests.get")
+    def test_fetch_artist_top_tracks(self, mock_get):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "tracks": [
+                {
+                    "id": "t1",
+                    "name": "The Middle",
+                    "duration_ms": 166000,
+                    "popularity": 85,
+                    "preview_url": "https://preview.mp3",
+                    "external_urls": {"spotify": "https://open.spotify.com/track/t1"},
+                    "album": {
+                        "name": "Bleed American",
+                        "release_date": "2001-07-24",
+                        "images": [{"url": "https://img.spotify.com/bleed.jpg"}]
+                    }
+                }
+            ]
+        }
+        mock_get.return_value = mock_resp
+
+        tracks = spotify.fetch_artist_top_tracks("app_token", "jew_id")
+        self.assertEqual(len(tracks), 1)
+        self.assertEqual(tracks[0]["name"], "The Middle")
+        self.assertEqual(tracks[0]["duration_formatted"], "2:46")
+        self.assertEqual(tracks[0]["popularity"], 85)
+        self.assertEqual(tracks[0]["preview_url"], "https://preview.mp3")
+        self.assertEqual(tracks[0]["album_name"], "Bleed American")
+        self.assertEqual(tracks[0]["release_year"], "2001")
+
+    @patch("spotify.requests.get")
+    def test_fetch_artist_discography_stats(self, mock_get):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "items": [
+                {
+                    "name": "Surviving",
+                    "album_group": "album",
+                    "release_date": "2019-10-18",
+                    "images": [{"url": "https://img.spotify.com/surv.jpg"}],
+                    "external_urls": {"spotify": "https://open.spotify.com/album/surv"}
+                },
+                {
+                    "name": "Bleed American",
+                    "album_group": "album",
+                    "release_date": "2001-07-24",
+                    "images": [{"url": "https://img.spotify.com/bleed.jpg"}],
+                    "external_urls": {"spotify": "https://open.spotify.com/album/bleed"}
+                },
+                {
+                    "name": "Static Prevails",
+                    "album_group": "album",
+                    "release_date": "1996-07-23",
+                    "images": [{"url": "https://img.spotify.com/static.jpg"}],
+                    "external_urls": {"spotify": "https://open.spotify.com/album/static"}
+                },
+                {
+                    "name": "Something Loud",
+                    "album_group": "single",
+                    "release_date": "2022-06-10",
+                    "images": [],
+                    "external_urls": {"spotify": "https://open.spotify.com/album/loud"}
+                }
+            ]
+        }
+        mock_get.return_value = mock_resp
+
+        disco = spotify.fetch_artist_discography_stats("app_token", "jew_id")
+        self.assertEqual(disco["albums_count"], 3)
+        self.assertEqual(disco["singles_count"], 1)
+        self.assertEqual(disco["total_releases"], 4)
+        self.assertIn("1996 - 2022 (26 yrs)", disco["years_active_span"])
+        self.assertEqual(disco["active_decades"], ["1990s", "2000s", "2010s", "2020s"])
+        self.assertEqual(disco["latest_release"]["name"], "Surviving")
+        self.assertEqual(disco["latest_release"]["type"], "Album")
+
+    def test_format_followers_and_popularity_tier(self):
+        # format_followers
+        self.assertEqual(spotify.format_followers(1_400_000), "1.4M")
+        self.assertEqual(spotify.format_followers(2_000_000), "2M")
+        self.assertEqual(spotify.format_followers(450_000), "450K")
+        self.assertEqual(spotify.format_followers(1_000), "1K")
+        self.assertEqual(spotify.format_followers(850), "850")
+
+        # compute_artist_popularity_tier
+        self.assertEqual(spotify.compute_artist_popularity_tier(92), "Global Superstar / Chart Topper")
+        self.assertEqual(spotify.compute_artist_popularity_tier(75), "Mainstream Heavyweight")
+        self.assertEqual(spotify.compute_artist_popularity_tier(55), "Established Act / Wide Audience")
+        self.assertEqual(spotify.compute_artist_popularity_tier(42), "Cult Favorite / Strong Base")
+        self.assertEqual(spotify.compute_artist_popularity_tier(20), "Indie / Underground Gem")
+
+    def test_compute_artist_analytics(self):
+        profile = {
+            "popularity": 74,
+            "followers": 1400000,
+            "genres": ["emo", "pop punk", "alternative rock"]
+        }
+        top_tracks = [
+            {"popularity": 85},
+            {"popularity": 75},
+            {"popularity": 65},
+        ]
+        disco = {"albums_count": 10, "singles_count": 5}
+
+        res = spotify.compute_artist_analytics(profile, top_tracks, disco)
+        self.assertEqual(res["popularity"], 74)
+        self.assertEqual(res["popularity_tier"], "Mainstream Heavyweight")
+        self.assertEqual(res["followers"], 1400000)
+        self.assertEqual(res["followers_formatted"], "1.4M")
+        self.assertEqual(res["genres"], ["Emo", "Pop Punk", "Alternative Rock"])
+        self.assertEqual(res["avg_track_popularity"], 75.0)
+        self.assertEqual(res["discography"], disco)
+        self.assertEqual(len(res["top_tracks"]), 3)
+
+    def test_get_demo_artist_spotify_data(self):
+        demo = spotify.get_demo_artist_spotify_data("Jimmy Eat World")
+        self.assertTrue(demo["found"])
+        self.assertTrue(demo["is_demo"])
+        self.assertEqual(demo["artist"], "Jimmy Eat World")
+        self.assertGreater(demo["popularity"], 50)
+        self.assertGreater(len(demo["top_tracks"]), 0)
+        self.assertGreater(demo["discography"]["albums_count"], 0)
+
+    @patch("spotify.is_spotify_configured")
+    @patch("spotify.get_artist_api_token")
+    @patch("spotify.search_artist_profile")
+    @patch("spotify.fetch_artist_top_tracks")
+    @patch("spotify.fetch_artist_discography_stats")
+    def test_get_or_fetch_artist_spotify_data_flow(
+        self, mock_disco, mock_tracks, mock_search, mock_token, mock_configured
+    ):
+        # 1. Unconfigured -> returns demo
+        mock_configured.return_value = False
+        res_unconf = spotify.get_or_fetch_artist_spotify_data("Jimmy Eat World", db_path=self.db_path)
+        self.assertTrue(res_unconf.get("found"))
+        self.assertTrue(res_unconf.get("is_demo"))
+
+        # 2. Configured and fresh fetch
+        mock_configured.return_value = True
+        mock_token.return_value = "token_xyz"
+        mock_search.return_value = {
+            "id": "jew_123",
+            "name": "Jimmy Eat World",
+            "genres": ["emo", "rock"],
+            "popularity": 74,
+            "followers": 1400000,
+            "image_url": "https://img.jpg",
+            "spotify_url": "https://open.spotify.com/artist/jew_123"
+        }
+        mock_tracks.return_value = [{"id": "t1", "name": "The Middle", "popularity": 85}]
+        mock_disco.return_value = {"albums_count": 10, "singles_count": 5, "total_releases": 15}
+
+        res_fresh = spotify.get_or_fetch_artist_spotify_data("Jimmy Eat World", force_refresh=True, db_path=self.db_path)
+        self.assertTrue(res_fresh.get("found"))
+        self.assertFalse(res_fresh.get("cached"))
+        self.assertEqual(res_fresh["artist_id"], "jew_123")
+        self.assertEqual(res_fresh["followers_formatted"], "1.4M")
+        self.assertEqual(res_fresh["popularity_tier"], "Mainstream Heavyweight")
+
+        # 3. Cached retrieval from database
+        mock_search.reset_mock()
+        res_cached = spotify.get_or_fetch_artist_spotify_data("Jimmy Eat World", force_refresh=False, db_path=self.db_path)
+        self.assertTrue(res_cached.get("found"))
+        self.assertTrue(res_cached.get("cached"))
+        self.assertEqual(res_cached["artist_id"], "jew_123")
+        mock_search.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()
+

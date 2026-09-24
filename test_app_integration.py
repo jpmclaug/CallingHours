@@ -616,6 +616,24 @@ class TestAppIntegration(unittest.TestCase):
                     "song_count": 18,
                     "sample_songs": ["Bleed American", "Sweetness", "The Middle"]
                 }
+            ],
+            "most_played_with": [
+                {
+                    "rank": 1,
+                    "band": "Manchester Orchestra",
+                    "shows_shared": 28,
+                    "tours_shared": 3,
+                    "tours": ["Amplify The Noise Tour"],
+                    "primary_role": "Co-Headliner",
+                    "years_active": "2013 - 2023",
+                    "latest_show": {
+                        "date_formatted": "August 20, 2023",
+                        "venue_name": "Red Hat Amphitheater",
+                        "location": "Raleigh, NC",
+                        "tour_name": "Amplify The Noise Tour",
+                        "url": "https://setlist.fm/show-nc-jew"
+                    }
+                }
             ]
         }
 
@@ -627,8 +645,48 @@ class TestAppIntegration(unittest.TestCase):
             "biography": "Jimmy Eat World is an American rock band formed in 1993.",
         }
 
+        mock_spotify_data = {
+            "is_configured": True,
+            "found": True,
+            "artist": "Jimmy Eat World",
+            "artist_id": "jew_spotify_123",
+            "popularity": 74,
+            "popularity_tier": "Mainstream Heavyweight",
+            "followers": 1400000,
+            "followers_formatted": "1.4M",
+            "genres": ["Emo", "Alternative Rock"],
+            "avg_track_popularity": 71.5,
+            "discography": {
+                "albums_count": 10,
+                "singles_count": 16,
+                "total_releases": 26,
+                "years_active_span": "1994 - 2024 (30 yrs)",
+                "active_decades": ["1990s", "2000s", "2010s", "2020s"],
+                "latest_release": {
+                    "name": "Surviving",
+                    "release_date": "2019-10-18",
+                    "type": "Album",
+                    "image_url": "https://example.com/surv.jpg",
+                    "spotify_url": "https://open.spotify.com/album/surv"
+                }
+            },
+            "top_tracks": [
+                {
+                    "id": "t_mid",
+                    "name": "The Middle",
+                    "duration_formatted": "2:46",
+                    "popularity": 85,
+                    "preview_url": "",
+                    "spotify_url": "https://open.spotify.com/track/t_mid",
+                    "album_name": "Bleed American",
+                    "release_year": "2001"
+                }
+            ]
+        }
+
         with patch("setlistfm.get_or_fetch_artist_setlist_data", return_value=mock_setlist_data), \
-             patch("theaudiodb.get_or_fetch_artist_details", return_value=mock_adb_data):
+             patch("theaudiodb.get_or_fetch_artist_details", return_value=mock_adb_data), \
+             patch("spotify.get_or_fetch_artist_spotify_data", return_value=mock_spotify_data):
             url = "/artist?artist=" + urllib.parse.quote("Jimmy Eat World")
             with self.authed_get(url) as resp:
                 self.assertEqual(resp.status, 200)
@@ -653,6 +711,17 @@ class TestAppIntegration(unittest.TestCase):
                 self.assertIn("Recent Concert Setlists", html)
                 self.assertIn("Bleed American", html)
                 self.assertIn("Sweetness", html)
+                # Verify Spotify Analytics Card
+                self.assertIn("spotify-analytics-card", html)
+                self.assertIn("Mainstream Heavyweight", html)
+                self.assertIn("1.4M", html)
+                self.assertIn("The Middle", html)
+                self.assertIn("1994 - 2024 (30 yrs)", html)
+                # Verify Top 10 Bands Played With Card
+                self.assertIn("top-bands-card", html)
+                self.assertIn("Top 10 Bands Played With", html)
+                self.assertIn("Manchester Orchestra", html)
+                self.assertIn("28 shows", html)
 
     def test_24_unified_artist_api_and_auto_analyze_flow(self):
         # 1. Save a test song in database
@@ -670,10 +739,18 @@ class TestAppIntegration(unittest.TestCase):
             "name": "Blink-182",
             "last_nc_show": {"venue_name": "PNC Music Pavilion", "city": "Charlotte"},
             "tours": [{"tour_name": "One More Time Tour", "played_with": ["Pierce The Veil"]}],
-            "recent_setlists": []
+            "recent_setlists": [],
+            "most_played_with": [{"rank": 1, "band": "Green Day", "shows_shared": 45}]
+        }
+        mock_sp_data = {
+            "found": True,
+            "artist": "Blink-182",
+            "popularity": 79,
+            "followers_formatted": "4.2M"
         }
 
-        with patch("setlistfm.get_or_fetch_artist_setlist_data", return_value=mock_setlist_data):
+        with patch("setlistfm.get_or_fetch_artist_setlist_data", return_value=mock_setlist_data), \
+             patch("spotify.get_or_fetch_artist_spotify_data", return_value=mock_sp_data):
             url = "/api/artist?artist=" + urllib.parse.quote("Blink-182")
             with self.authed_get(url) as resp:
                 self.assertEqual(resp.status, 200)
@@ -681,6 +758,9 @@ class TestAppIntegration(unittest.TestCase):
                 self.assertEqual(data["artist"], "Blink-182")
                 self.assertIn("setlistfm", data)
                 self.assertEqual(data["setlistfm"]["last_nc_show"]["city"], "Charlotte")
+                self.assertIn("most_played_with", data["setlistfm"])
+                self.assertIn("spotify", data)
+                self.assertEqual(data["spotify"]["popularity"], 79)
                 self.assertIn("songs", data)
                 self.assertTrue(any(s["song"] == "All The Small Things" for s in data["songs"]))
 
@@ -1211,9 +1291,50 @@ class TestAppIntegration(unittest.TestCase):
                 self.assertEqual(succ_data.get("playlist_id"), "sp_pl_123")
                 self.assertEqual(succ_data.get("tracks_added"), 1)
 
+    def test_35_spotify_artist_api_endpoint(self):
+        mock_spot_data = {
+            "is_configured": True,
+            "found": True,
+            "artist": "Jimmy Eat World",
+            "artist_id": "jew_spot_id",
+            "popularity": 74,
+            "popularity_tier": "Mainstream Heavyweight",
+            "followers": 1400000,
+            "followers_formatted": "1.4M",
+            "genres": ["Emo", "Alternative Rock"],
+            "avg_track_popularity": 71.5,
+            "discography": {
+                "albums_count": 10,
+                "singles_count": 16,
+                "total_releases": 26,
+            },
+            "top_tracks": [
+                {
+                    "id": "t1",
+                    "name": "The Middle",
+                    "popularity": 85,
+                }
+            ],
+            "cached": False,
+        }
+
+        with patch("spotify.get_or_fetch_artist_spotify_data", return_value=mock_spot_data) as mock_fetch:
+            url = "/api/spotify/artist?artist=" + urllib.parse.quote("Jimmy Eat World")
+            with self.authed_get(url) as resp:
+                self.assertEqual(resp.status, 200)
+                data = json.loads(resp.read().decode('utf-8'))
+                self.assertEqual(data["artist"], "Jimmy Eat World")
+                self.assertEqual(data["popularity"], 74)
+                self.assertEqual(data["popularity_tier"], "Mainstream Heavyweight")
+                self.assertEqual(data["followers_formatted"], "1.4M")
+                self.assertEqual(data["discography"]["albums_count"], 10)
+                self.assertEqual(data["top_tracks"][0]["name"], "The Middle")
+                mock_fetch.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()
+
 
 
 
