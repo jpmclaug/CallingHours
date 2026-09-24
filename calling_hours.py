@@ -3722,10 +3722,42 @@ PAGE_HTML = r'''<!DOCTYPE html>
         function loadSelectedSavedSong() {
             const songSelect = document.getElementById('band_song_select');
             if (!songSelect || !songSelect.value) return;
+            const selectedText = songSelect.options[songSelect.selectedIndex]?.text || 'Saved Song';
+            if (typeof showActionLoadingOverlay === 'function') {
+                showActionLoadingOverlay({
+                    title: 'Loading Saved Analysis...',
+                    subtitle: selectedText,
+                    icon: '📜',
+                    statusSteps: [
+                        'Retrieving cached lyrics from database...',
+                        'Loading Gemini poetic analysis...',
+                        'Preparing workspace...'
+                    ],
+                    notice: 'Please wait while saved song analysis is loaded.'
+                });
+            }
             window.location.href = '/?id=' + encodeURIComponent(songSelect.value);
         }
 
         function forceRefreshSearch() {
+            const artistInput = document.getElementById('artist');
+            const songInput = document.getElementById('song');
+            const artist = artistInput ? artistInput.value.trim() : '';
+            const song = songInput ? songInput.value.trim() : '';
+            if (typeof showActionLoadingOverlay === 'function') {
+                showActionLoadingOverlay({
+                    title: 'Re-fetching Fresh Lyrics...',
+                    subtitle: artist && song ? `${artist} — ${song}` : (artist || song),
+                    icon: '🔄',
+                    statusSteps: [
+                        'Bypassing local database cache...',
+                        'Re-fetching lyrics from Genius & LRCLIB...',
+                        'Refreshing Last.fm & AudioDB metadata...',
+                        'Updating library record...'
+                    ],
+                    notice: 'Please keep this page open while fresh lyrics are fetched.'
+                });
+            }
             const refreshInput = document.getElementById('force_refresh');
             const form = document.getElementById('search-form');
             if (refreshInput && form) {
