@@ -865,3 +865,409 @@ def get_or_fetch_artist_setlist_data(
         print(f"Database save_artist_metadata setlist error for {clean_artist}: {e}")
 
     return result
+
+
+def get_demo_average_setlist(artist_name: str, year: Union[str, int]) -> Dict[str, Any]:
+    """Return realistic demo average setlist when API key is unavailable, offline, or testing."""
+    clean_artist = artist_name.strip() or "Jimmy Eat World"
+    clean_year = str(year).strip() or "2023"
+
+    if "jimmy" in clean_artist.lower():
+        songs = [
+            ("Pain", 47, 47, 7.9),
+            ("Sweetness", 47, 47, 3.0),
+            ("Something Loud", 46, 47, 4.1),
+            ("Just Tonight...", 45, 47, 4.7),
+            ("For Me This Is Heaven", 44, 47, 5.2),
+            ("Kill", 42, 47, 6.4),
+            ("555", 38, 47, 8.0),
+            ("Bleed American", 47, 47, 8.5),
+            ("Lucky Denver Mint", 46, 47, 9.3),
+            ("Big Casino", 35, 47, 9.3),
+            ("A Praise Chorus", 47, 47, 10.9),
+            ("Hear You Me", 47, 47, 12.2),
+            ("Work", 47, 47, 12.6),
+            ("Blister", 44, 47, 13.0),
+            ("23", 47, 47, 14.8),
+            ("The Middle", 47, 47, 16.6),
+        ]
+    elif "manchester" in clean_artist.lower():
+        songs = [
+            ("The Pride", 42, 45, 1.2),
+            ("KeelRow", 40, 45, 2.4),
+            ("Bed Head", 45, 45, 3.1),
+            ("I Can Barely Breathe", 38, 45, 4.5),
+            ("April Fool", 36, 45, 5.8),
+            ("Pale Black Eye", 35, 45, 7.0),
+            ("The Maze", 44, 45, 8.2),
+            ("The Gold", 45, 45, 9.5),
+            ("The Alien", 44, 45, 10.8),
+            ("The Sunshine", 44, 45, 11.9),
+            ("The Grocery", 43, 45, 13.2),
+            ("Simple Math", 42, 45, 14.5),
+            ("Shake It Out", 45, 45, 15.8),
+            ("The Silence", 45, 45, 17.0),
+        ]
+    elif "blink" in clean_artist.lower():
+        songs = [
+            ("Anthem Part Two", 48, 50, 1.1),
+            ("The Rock Show", 49, 50, 2.3),
+            ("Family Reunion", 40, 50, 3.0),
+            ("Man Overboard", 46, 50, 4.2),
+            ("Feeling This", 50, 50, 5.4),
+            ("Reckless Abandon", 42, 50, 6.7),
+            ("Dumpweed", 44, 50, 8.0),
+            ("MORE THAN YOU KNOW", 45, 50, 9.2),
+            ("EDGING", 48, 50, 10.5),
+            ("Dance With Me", 46, 50, 11.8),
+            ("Stay Together for the Kids", 48, 50, 13.0),
+            ("Down", 47, 50, 14.2),
+            ("I Miss You", 50, 50, 15.5),
+            ("What's My Age Again?", 50, 50, 16.7),
+            ("First Date", 49, 50, 18.0),
+            ("All the Small Things", 50, 50, 19.2),
+            ("Dammit", 50, 50, 20.4),
+            ("ONE MORE TIME", 48, 50, 21.6),
+        ]
+    else:
+        titles = [
+            "Intro Anthem", "Speed of Sound", "Broken Neon", "Static Waves",
+            "Midnight Echo", "Electric Pulse", "Fading Pictures", "Hollow Bones",
+            "Silver Lining", "Last Horizon", "Encore: Starlight", "Final Bow"
+        ]
+        songs = [(t, 24, 25, float(i + 1)) for i, t in enumerate(titles)]
+
+    tracks = []
+    for idx, (s_name, count, total, pos) in enumerate(songs, 1):
+        tracks.append({
+            "position": idx,
+            "song": s_name,
+            "artist": clean_artist,
+            "play_count": count,
+            "total_concerts": total,
+            "play_ratio": round(count / total, 2) if total else 1.0,
+            "avg_position": pos,
+        })
+
+    return {
+        "artist": clean_artist,
+        "year": clean_year,
+        "mbid": None,
+        "url": f"https://www.setlist.fm/stats/average-setlist/{urllib.parse.quote(clean_artist.lower())}.html?year={clean_year}",
+        "total_concerts": tracks[0]["total_concerts"] if tracks else 0,
+        "considered_concerts": tracks[0]["total_concerts"] if tracks else 0,
+        "average_set_length": len(tracks),
+        "tracks": tracks,
+        "method": "demo",
+        "is_demo": True,
+    }
+
+
+def fetch_average_setlist_by_year(
+    artist_name: str,
+    year: Union[str, int],
+    mbid: Optional[str] = None,
+    api_key: Optional[str] = None,
+    force_refresh: bool = False,
+    db_path: Optional[str] = None,
+    timeout: int = 8
+) -> Dict[str, Any]:
+    """
+    Fetch the authentic average tour setlist for an artist in a given year.
+    Tries Setlist.fm web statistics page first, falling back to authenticated REST API
+    setlist aggregation (frequency ranking and stage position order).
+    Caches results in database to respect API rate limits.
+    """
+    if not artist_name or not str(year).strip():
+        return {
+            "artist": "",
+            "year": str(year).strip(),
+            "total_concerts": 0,
+            "considered_concerts": 0,
+            "average_set_length": 0,
+            "tracks": [],
+            "error": "Artist and year are required",
+        }
+
+    import database
+
+    clean_artist = artist_name.strip()
+    clean_year = str(year).strip()
+    key = api_key or get_setlistfm_api_key()
+
+    # 1. Check database cache unless refresh forced
+    if not force_refresh:
+        cached = database.get_cached_average_setlist(clean_artist, clean_year, db_path=db_path)
+        if cached and isinstance(cached, dict) and cached.get("tracks"):
+            cached["cached"] = True
+            return cached
+
+    # 2. Check if no API key is available
+    if not key:
+        demo = get_demo_average_setlist(clean_artist, clean_year)
+        demo["cached"] = False
+        return demo
+
+    # 3. Resolve artist MBID and Setlist.fm URL
+    official_name = clean_artist
+    setlist_url = None
+    target_mbid = mbid
+
+    # Check cached artist metadata first to save an API search call
+    cached_meta = database.get_artist_metadata(clean_artist, db_path=db_path)
+    if cached_meta and cached_meta.get("setlistfm_data"):
+        s_meta = cached_meta["setlistfm_data"]
+        if isinstance(s_meta, dict) and s_meta.get("mbid"):
+            target_mbid = s_meta.get("mbid")
+            official_name = s_meta.get("artist") or clean_artist
+            setlist_url = s_meta.get("url")
+
+    if not target_mbid or not setlist_url:
+        art_info = search_artist(clean_artist, api_key=key, timeout=timeout)
+        if art_info:
+            target_mbid = art_info.get("mbid")
+            official_name = art_info.get("name") or clean_artist
+            setlist_url = art_info.get("url")
+
+    if not target_mbid:
+        return get_demo_average_setlist(clean_artist, clean_year)
+
+    # 4. Method 1: Web Scraping Setlist.fm stats/average-setlist
+    if setlist_url:
+        try:
+            stats_url = setlist_url.replace("/setlists/", "/stats/average-setlist/") + f"?year={clean_year}"
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            }
+            resp = requests.get(stats_url, headers=headers, timeout=timeout)
+            if resp.status_code == 200 and resp.text:
+                from bs4 import BeautifulSoup
+                soup = BeautifulSoup(resp.text, "html.parser")
+                song_links = soup.select(".setlistList li a.songLabel")
+                if song_links:
+                    considered_count = 0
+                    total_count = 0
+                    for p in soup.select("p, div.statsDescription, span"):
+                        p_text = p.get_text()
+                        m = re.search(r"only considered\s+(\d+)\s+of\s+(\d+)\s+setlists", p_text, flags=re.IGNORECASE)
+                        if m:
+                            considered_count = int(m.group(1))
+                            total_count = int(m.group(2))
+                            break
+
+                    tracks = []
+                    for idx, a in enumerate(song_links, 1):
+                        s_name = a.get_text(strip=True)
+                        if s_name:
+                            tracks.append({
+                                "position": idx,
+                                "song": s_name,
+                                "artist": official_name,
+                                "play_count": considered_count or total_count or len(song_links),
+                                "total_concerts": total_count or considered_count or len(song_links),
+                                "play_ratio": 1.0,
+                                "avg_position": float(idx),
+                            })
+
+                    if tracks:
+                        result = {
+                            "artist": official_name,
+                            "year": clean_year,
+                            "mbid": target_mbid,
+                            "url": stats_url,
+                            "total_concerts": total_count or len(tracks),
+                            "considered_concerts": considered_count or len(tracks),
+                            "average_set_length": len(tracks),
+                            "tracks": tracks,
+                            "method": "web",
+                            "cached": False,
+                        }
+                        database.save_cached_average_setlist(clean_artist, clean_year, result, db_path=db_path)
+                        return result
+        except Exception as we:
+            print(f"Setlist.fm web stats retrieval error for {clean_artist} ({clean_year}): {we}")
+
+    # 5. Method 2: Fallback to authenticated REST API aggregation
+    try:
+        api_headers = _get_headers(key)
+        all_setlists = []
+        url = f"{SETLIST_FM_API_BASE_URL}/search/setlists"
+        params = {"artistMbid": target_mbid, "year": clean_year, "p": 1}
+
+        r = requests.get(url, headers=api_headers, params=params, timeout=timeout)
+        if r.status_code == 200:
+            data = r.json()
+            total_shows_year = data.get("total", 0)
+            page_setlists = data.get("setlist", [])
+            all_setlists.extend(page_setlists)
+
+            # If more shows exist, optionally fetch page 2
+            if total_shows_year > 20 and len(all_setlists) < 40:
+                try:
+                    import time
+                    time.sleep(0.5)  # Pace requests to respect Setlist.fm rate limit
+                    r2 = requests.get(url, headers=api_headers, params={"artistMbid": target_mbid, "year": clean_year, "p": 2}, timeout=timeout)
+                    if r2.status_code == 200:
+                        all_setlists.extend(r2.json().get("setlist", []))
+                except Exception:
+                    pass
+
+        if not all_setlists:
+            empty_result = {
+                "artist": official_name,
+                "year": clean_year,
+                "mbid": target_mbid,
+                "url": f"{setlist_url or 'https://www.setlist.fm'}",
+                "total_concerts": 0,
+                "considered_concerts": 0,
+                "average_set_length": 0,
+                "tracks": [],
+                "method": "api",
+                "cached": False,
+                "notice": f"No concerts recorded for {official_name} in {clean_year} on Setlist.fm.",
+            }
+            return empty_result
+
+        # Process setlists into song counts and stage positions
+        from collections import defaultdict
+        song_counts = defaultdict(int)
+        song_positions = defaultdict(list)
+        set_lengths = []
+        valid_setlists_count = 0
+
+        for s in all_setlists:
+            sets = s.get("sets", {}).get("set", [])
+            cur_set = []
+            for st in sets:
+                for sng in st.get("song", []):
+                    name = sng.get("name")
+                    if name and name.strip():
+                        cur_set.append(name.strip())
+            # Exclude empty or strikingly short snippet sets (< 5 songs)
+            if len(cur_set) >= 5:
+                valid_setlists_count += 1
+                set_lengths.append(len(cur_set))
+                for pos, name in enumerate(cur_set, 1):
+                    song_counts[name] += 1
+                    song_positions[name].append(pos)
+
+        # Fallback for short sets (e.g. festivals)
+        if not set_lengths and all_setlists:
+            for s in all_setlists:
+                sets = s.get("sets", {}).get("set", [])
+                cur_set = []
+                for st in sets:
+                    for sng in st.get("song", []):
+                        name = sng.get("name")
+                        if name and name.strip():
+                            cur_set.append(name.strip())
+                if cur_set:
+                    valid_setlists_count += 1
+                    set_lengths.append(len(cur_set))
+                    for pos, name in enumerate(cur_set, 1):
+                        song_counts[name] += 1
+                        song_positions[name].append(pos)
+
+        if not song_counts:
+            return {
+                "artist": official_name,
+                "year": clean_year,
+                "mbid": target_mbid,
+                "url": setlist_url,
+                "total_concerts": len(all_setlists),
+                "considered_concerts": 0,
+                "average_set_length": 0,
+                "tracks": [],
+                "method": "api",
+                "cached": False,
+                "notice": f"Setlist details were not recorded for {official_name} in {clean_year}.",
+            }
+
+        avg_length = round(sum(set_lengths) / len(set_lengths)) if set_lengths else len(song_counts)
+        target_track_count = max(8, min(avg_length, 30))
+
+        # Sort songs by frequency (most played first)
+        top_by_freq = sorted(
+            song_counts.items(),
+            key=lambda x: (x[1], -sum(song_positions[x[0]]) / len(song_positions[x[0]])),
+            reverse=True
+        )[:target_track_count]
+
+        # Order selected songs by average stage position
+        ordered_by_pos = sorted(top_by_freq, key=lambda x: sum(song_positions[x[0]]) / len(song_positions[x[0]]))
+
+        tracks = []
+        for idx, (s_name, count) in enumerate(ordered_by_pos, 1):
+            avg_p = sum(song_positions[s_name]) / len(song_positions[s_name])
+            ratio = round(count / valid_setlists_count, 2) if valid_setlists_count else 1.0
+            tracks.append({
+                "position": idx,
+                "song": s_name,
+                "artist": official_name,
+                "play_count": count,
+                "total_concerts": valid_setlists_count,
+                "play_ratio": ratio,
+                "avg_position": round(avg_p, 1),
+            })
+
+        result = {
+            "artist": official_name,
+            "year": clean_year,
+            "mbid": target_mbid,
+            "url": f"{setlist_url or 'https://www.setlist.fm'}",
+            "total_concerts": len(all_setlists),
+            "considered_concerts": valid_setlists_count,
+            "average_set_length": len(tracks),
+            "tracks": tracks,
+            "method": "api",
+            "cached": False,
+        }
+
+        database.save_cached_average_setlist(clean_artist, clean_year, result, db_path=db_path)
+        return result
+
+    except Exception as ae:
+        print(f"Setlist.fm API aggregation error for {clean_artist} ({clean_year}): {ae}")
+        return get_demo_average_setlist(clean_artist, clean_year)
+
+
+def get_artist_touring_years(
+    artist_name: str,
+    mbid: Optional[str] = None,
+    api_key: Optional[str] = None,
+    max_years: int = 12
+) -> List[str]:
+    """
+    Return distinct touring years for an artist.
+    Discovers years from recent Setlist.fm concerts, or provides a smart default list of recent years.
+    """
+    clean_artist = artist_name.strip()
+    key = api_key or get_setlistfm_api_key()
+    discovered_years: set = set()
+
+    if key and clean_artist:
+        try:
+            target_mbid = mbid
+            if not target_mbid:
+                art_info = search_artist(clean_artist, api_key=key, timeout=5)
+                if art_info:
+                    target_mbid = art_info.get("mbid")
+
+            if target_mbid:
+                url = f"{SETLIST_FM_API_BASE_URL}/artist/{target_mbid}/setlists"
+                resp = requests.get(url, headers=_get_headers(key), timeout=5)
+                if resp.status_code == 200:
+                    setlists = resp.json().get("setlist", [])
+                    for s in setlists:
+                        dt = s.get("eventDate")
+                        if dt and len(dt) >= 4 and dt[-4:].isdigit():
+                            discovered_years.add(dt[-4:])
+        except Exception:
+            pass
+
+    current_year = datetime.now().year
+    default_years = [str(y) for y in range(current_year, current_year - 15, -1)]
+
+    all_years = sorted(list(discovered_years.union(default_years)), reverse=True)
+    return all_years[:max_years]

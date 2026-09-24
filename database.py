@@ -6,7 +6,7 @@ import secrets
 import json
 from contextlib import contextmanager
 from datetime import datetime, date, timedelta, timezone
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Union
 
 PRIMARY_ADMIN_EMAIL = "jpmclaug@gmail.com"
 
@@ -1117,6 +1117,38 @@ def get_artist_metadata(artist: str, db_path: Optional[str] = None) -> Optional[
         cursor.execute(f"SELECT * FROM artist_metadata WHERE artist_normalized = {ph}", (artist_norm,))
         row = cursor.fetchone()
         return _format_artist_record(row) if row else None
+
+
+def get_cached_average_setlist(artist: str, year: Union[str, int], db_path: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """Retrieve cached Setlist.fm average setlist for an artist and year."""
+    if not artist or not str(year).strip():
+        return None
+    artist_meta = get_artist_metadata(artist, db_path=db_path)
+    if not artist_meta or not artist_meta.get('setlistfm_data'):
+        return None
+    s_data = artist_meta['setlistfm_data']
+    if isinstance(s_data, dict):
+        avg_dict = s_data.get('average_setlists', {})
+        if isinstance(avg_dict, dict):
+            return avg_dict.get(str(year).strip())
+    return None
+
+
+def save_cached_average_setlist(artist: str, year: Union[str, int], setlist_data: Dict[str, Any], db_path: Optional[str] = None) -> bool:
+    """Cache Setlist.fm average setlist data for an artist and year."""
+    if not artist or not str(year).strip() or not setlist_data:
+        return False
+    clean_artist = artist.strip()
+    str_year = str(year).strip()
+    artist_meta = get_artist_metadata(clean_artist, db_path=db_path)
+    s_data = {}
+    if artist_meta and isinstance(artist_meta.get('setlistfm_data'), dict):
+        s_data = dict(artist_meta['setlistfm_data'])
+    if 'average_setlists' not in s_data or not isinstance(s_data['average_setlists'], dict):
+        s_data['average_setlists'] = {}
+    s_data['average_setlists'][str_year] = setlist_data
+    save_artist_metadata(clean_artist, setlistfm_data=s_data, db_path=db_path)
+    return True
 
 
 def touch_search(artist: str, song: str, db_path: Optional[str] = None) -> None:

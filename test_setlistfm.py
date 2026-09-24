@@ -325,6 +325,141 @@ class TestSetlistFm(unittest.TestCase):
         self.assertEqual(mo["shows_shared"], 2)
         self.assertEqual(mo["rank"], 1)
 
+    def test_get_demo_average_setlist(self):
+        demo = setlistfm.get_demo_average_setlist("Jimmy Eat World", "2023")
+        self.assertEqual(demo["artist"], "Jimmy Eat World")
+        self.assertEqual(demo["year"], "2023")
+        self.assertTrue(demo["is_demo"])
+        self.assertGreater(len(demo["tracks"]), 0)
+        self.assertEqual(demo["tracks"][0]["song"], "Pain")
+        self.assertEqual(demo["tracks"][0]["position"], 1)
+
+    def test_get_artist_touring_years_defaults(self):
+        years = setlistfm.get_artist_touring_years("Unknown Band", api_key=None)
+        self.assertIsInstance(years, list)
+        self.assertGreaterEqual(len(years), 5)
+        # Should be sorted descending
+        self.assertEqual(years, sorted(years, reverse=True))
+
+    @patch("database.save_cached_average_setlist")
+    @patch("database.get_cached_average_setlist", return_value=None)
+    @patch("database.get_artist_metadata", return_value=None)
+    @patch("setlistfm.search_artist")
+    @patch("setlistfm.requests.get")
+    def test_fetch_average_setlist_web_parsing(self, mock_get, mock_search, mock_meta, mock_cached, mock_save):
+        mock_search.return_value = {
+            "mbid": "test-mbid-123",
+            "name": "Jimmy Eat World",
+            "url": "https://www.setlist.fm/setlists/jimmy-eat-world-5bd69b28.html"
+        }
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.text = """
+        <html>
+            <p>Note: only considered 20 of 22 setlists</p>
+            <ul class="setlistList">
+                <li><a class="songLabel">Sweetness</a></li>
+                <li><a class="songLabel">Bleed American</a></li>
+                <li><a class="songLabel">The Middle</a></li>
+            </ul>
+        </html>
+        """
+        mock_get.return_value = mock_resp
+
+        res = setlistfm.fetch_average_setlist_by_year(
+            artist_name="Jimmy Eat World",
+            year="2023",
+            api_key="test_key",
+            force_refresh=True
+        )
+        self.assertEqual(res["artist"], "Jimmy Eat World")
+        self.assertEqual(res["year"], "2023")
+        self.assertEqual(res["method"], "web")
+        self.assertEqual(res["considered_concerts"], 20)
+        self.assertEqual(res["total_concerts"], 22)
+        self.assertEqual(len(res["tracks"]), 3)
+        self.assertEqual(res["tracks"][0]["song"], "Sweetness")
+        self.assertEqual(res["tracks"][2]["song"], "The Middle")
+
+    @patch("database.save_cached_average_setlist")
+    @patch("database.get_cached_average_setlist", return_value=None)
+    @patch("database.get_artist_metadata", return_value=None)
+    @patch("setlistfm.search_artist")
+    @patch("setlistfm.requests.get")
+    def test_fetch_average_setlist_api_fallback(self, mock_get, mock_search, mock_meta, mock_cached, mock_save):
+        mock_search.return_value = {
+            "mbid": "test-mbid-456",
+            "name": "Turnstile",
+            "url": "https://www.setlist.fm/setlists/turnstile-123.html"
+        }
+
+        web_resp = MagicMock()
+        web_resp.status_code = 202
+        web_resp.text = ""
+
+        api_resp = MagicMock()
+        api_resp.status_code = 200
+        api_resp.json.return_value = {
+            "total": 3,
+            "setlist": [
+                {
+                    "eventDate": "10-05-2023",
+                    "sets": {
+                        "set": [
+                            {"song": [{"name": "MYSTERY"}, {"name": "BLACKOUT"}, {"name": "HOLIDAY"}, {"name": "FLY AGAIN"}, {"name": "T.L.C."}]}
+                        ]
+                    }
+                },
+                {
+                    "eventDate": "12-05-2023",
+                    "sets": {
+                        "set": [
+                            {"song": [{"name": "MYSTERY"}, {"name": "BLACKOUT"}, {"name": "HOLIDAY"}, {"name": "FLY AGAIN"}, {"name": "T.L.C."}]}
+                        ]
+                    }
+                },
+                {
+                    "eventDate": "15-05-2023",
+                    "sets": {
+                        "set": [
+                            {"song": [{"name": "MYSTERY"}, {"name": "BLACKOUT"}, {"name": "HOLIDAY"}, {"name": "FLY AGAIN"}, {"name": "T.L.C."}]}
+                        ]
+                    }
+                }
+            ]
+        }
+
+        mock_get.side_effect = [web_resp, api_resp]
+
+        res = setlistfm.fetch_average_setlist_by_year(
+            artist_name="Turnstile",
+            year="2023",
+            api_key="test_key",
+            force_refresh=True
+        )
+        self.assertEqual(res["artist"], "Turnstile")
+        self.assertEqual(res["year"], "2023")
+        self.assertEqual(res["method"], "api")
+        self.assertEqual(len(res["tracks"]), 5)
+        self.assertEqual(res["tracks"][0]["song"], "MYSTERY")
+        self.assertEqual(res["tracks"][0]["position"], 1)
+        self.assertEqual(res["tracks"][4]["song"], "T.L.C.")
+
+    @patch("database.get_cached_average_setlist")
+    def test_fetch_average_setlist_from_cache(self, mock_get_cached):
+        mock_get_cached.return_value = {
+            "artist": "Jimmy Eat World",
+            "year": "2023",
+            "tracks": [{"song": "Pain", "position": 1}],
+            "total_concerts": 47,
+        }
+        res = setlistfm.fetch_average_setlist_by_year("Jimmy Eat World", "2023", force_refresh=False)
+        self.assertTrue(res.get("cached"))
+        self.assertEqual(len(res["tracks"]), 1)
+        self.assertEqual(res["tracks"][0]["song"], "Pain")
+
+
 
 if __name__ == "__main__":
     unittest.main()
+

@@ -811,6 +811,8 @@ class TestAppIntegration(unittest.TestCase):
             self.assertIn("z-index: 2;", html)
             self.assertIn(".btn-analyze-song", html)
             self.assertIn("touch-action: manipulation;", html)
+            self.assertIn("Average Setlist Playlists by Year", html)
+            self.assertIn("/playlists?mode=setlist_fm", html)
 
         # 3. Verify Last.fm widget handles apostrophes in band and track names safely with dataset attributes
         mock_lastfm = {
@@ -1105,6 +1107,9 @@ class TestAppIntegration(unittest.TestCase):
             self.assertIn('Option 3 • Last.fm', html)
             self.assertIn('Option 4 • Audio', html)
             self.assertIn('Option 5 • Streaming', html)
+            self.assertIn('Option 6 • Setlist.fm', html)
+            self.assertIn('Average Setlist by Year', html)
+            self.assertIn('id="option-card-setlist"', html)
             # Export buttons
             self.assertIn('id="btn-export-spotify"', html)
             self.assertIn('href="/playlists/export/m3u', html)
@@ -1169,6 +1174,15 @@ class TestAppIntegration(unittest.TestCase):
             self.assertIn("Sweetness", html)
             self.assertNotIn("When the Sun Hits", html)
 
+        # By Setlist.fm (Average Setlist by Year)
+        with self.authed_get("/playlists?mode=setlist_fm&artist=Jimmy+Eat+World&year=2023") as resp:
+            self.assertEqual(resp.status, 200)
+            html = resp.read().decode('utf-8')
+            self.assertIn("Jimmy Eat World: 2023 Average Setlist", html)
+            self.assertIn("Option 6 • Setlist.fm", html)
+            self.assertIn("Pain", html)
+            self.assertIn("Sweetness", html)
+
         # 6. Verify Export Endpoints
         # M3U Export
         with self.authed_get("/playlists/export/m3u?mode=all_analyzed") as resp:
@@ -1179,6 +1193,13 @@ class TestAppIntegration(unittest.TestCase):
             self.assertIn("Jimmy Eat World - Sweetness", body)
             self.assertIn("Slowdive - When the Sun Hits", body)
 
+        # Setlist.fm M3U Export
+        with self.authed_get("/playlists/export/m3u?mode=setlist_fm&artist=Jimmy+Eat+World&year=2023") as resp:
+            self.assertEqual(resp.status, 200)
+            body = resp.read().decode('utf-8')
+            self.assertIn("#EXTM3U", body)
+            self.assertIn("Jimmy Eat World", body)
+
         # CSV Export
         with self.authed_get("/playlists/export/csv?mode=all_analyzed") as resp:
             self.assertEqual(resp.status, 200)
@@ -1187,6 +1208,12 @@ class TestAppIntegration(unittest.TestCase):
             self.assertIn("Artist,Song,Gemini Model", body)
             self.assertIn("Jimmy Eat World,Sweetness", body)
             self.assertIn("Slowdive,When the Sun Hits", body)
+
+        # Setlist.fm CSV Export
+        with self.authed_get("/playlists/export/csv?mode=setlist_fm&artist=Jimmy+Eat+World&year=2023") as resp:
+            self.assertEqual(resp.status, 200)
+            body = resp.read().decode('utf-8')
+            self.assertIn("Jimmy Eat World", body)
 
         # 7. Verify API Analyzed Songs
         with self.authed_get("/api/playlists/analyzed-songs") as resp:

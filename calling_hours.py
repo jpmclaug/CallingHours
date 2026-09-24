@@ -5703,6 +5703,19 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
                         </div>
                         <div class="playlist-mode-count">Listening Sync</div>
                     </a>
+
+                    <!-- Option 6: Setlist.fm Average Setlist by Year -->
+                    <a href="/playlists?mode=setlist_fm" class="playlist-mode-card{mode_setlist_fm_active}" id="option-card-setlist">
+                        <div class="playlist-mode-badge" style="background: rgba(245, 158, 11, 0.2); color: #FCD34D; border: 1px solid rgba(245, 158, 11, 0.4);">Option 6 • Setlist.fm</div>
+                        <div>
+                            <div class="playlist-mode-icon">🎫</div>
+                            <div class="playlist-mode-title">Average Setlist by Year</div>
+                        </div>
+                        <div class="playlist-mode-desc">
+                            Recreate an artist's tour setlist for any given year based on Setlist.fm concert frequency and stage order.
+                        </div>
+                        <div class="playlist-mode-count">Tour Setlist Intelligence</div>
+                    </a>
                 </div>
             </div>
 
@@ -6763,6 +6776,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             tag = params.get('tag', [''])[0].strip()
             order = params.get('order', ['updated_at DESC'])[0].strip()
             mood = params.get('mood', [''])[0].strip()
+            year = params.get('year', [''])[0].strip()
             limit_str = params.get('limit', [''])[0].strip()
             limit = int(limit_str) if limit_str.isdigit() else None
             playlist_name = params.get('name', [''])[0].strip()
@@ -6775,6 +6789,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 selected_artist=artist,
                 selected_tag=tag,
                 selected_mood=mood,
+                selected_year=year,
                 order_by=order,
                 limit=limit,
                 custom_name=playlist_name,
@@ -8531,6 +8546,36 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         else:
             recent_setlists_html = ''
 
+        # Average Setlists by Year Card (Setlist.fm)
+        touring_years = setlistfm.get_artist_touring_years(clean_artist, mbid=setlist_data.get('mbid'), api_key=SETLIST_FM_API_KEY)
+        year_buttons = []
+        for y in touring_years[:8]:
+            year_buttons.append(
+                f'<a href="/playlists?mode=setlist_fm&artist={artist_url_param}&year={y}" class="pill-btn secondary" style="font-size: 0.8rem; padding: 6px 14px; text-decoration: none;" title="Create {y} average tour setlist playlist">'
+                f'🎫 {y} Setlist</a>'
+            )
+        years_buttons_html = " ".join(year_buttons) if year_buttons else ''
+
+        average_setlist_section_html = f'''
+        <div class="tour-history-card">
+            <div class="section-header-row">
+                <div>
+                    <h2 class="section-title"><span>🎫</span> Average Setlist Playlists by Year</h2>
+                    <div style="font-size: 0.84rem; color: #A5C8FF; margin-top: 4px;">
+                        Recreate authentic tour setlists for {artist_esc} by year based on Setlist.fm concert frequency and stage order
+                    </div>
+                </div>
+                <a href="/playlists?mode=setlist_fm&artist={artist_url_param}" class="pill-btn primary" style="font-size: 0.82rem; padding: 6px 14px; text-decoration: none;">
+                    Open Setlist Studio &rarr;
+                </a>
+            </div>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding-top: 8px;">
+                <span style="font-size: 0.8rem; color: #E1E8F0; font-weight: 700;">Select Tour Year:</span>
+                {years_buttons_html}
+            </div>
+        </div>
+        '''
+
         # Catalog & Songs with One-Click Thematic Analysis
         # Merge top tracks from Last.fm and database songs
         seen_songs = set()
@@ -8668,6 +8713,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         {nc_spotlight_html}
         {tours_html}
         {recent_setlists_html}
+        {average_setlist_section_html}
         {songs_html}
         {bio_card_html}
         '''
@@ -9420,6 +9466,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         selected_artist: str = '',
         selected_tag: str = '',
         selected_mood: str = '',
+        selected_year: str = '',
         order_by: str = 'updated_at DESC',
         limit: Optional[int] = None,
         custom_name: str = '',
@@ -9453,7 +9500,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         else:
             spotify_status_badge = '<span style="background: rgba(225, 232, 240, 0.1); color: rgba(225, 232, 240, 0.5); padding: 2px 8px; border-radius: 12px; font-size: 0.74rem;">M3U/CSV Available</span>'
 
-        active_mode = mode if mode in ('all_analyzed', 'artist', 'tag', 'mood', 'spotify') else 'all_analyzed'
+        active_mode = mode if mode in ('all_analyzed', 'artist', 'tag', 'mood', 'spotify', 'setlist_fm') else 'all_analyzed'
         songs: List[Dict[str, Any]] = []
         active_playlist_title = custom_name.strip()
         active_playlist_desc = ""
@@ -9554,6 +9601,68 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 if not active_playlist_title:
                     active_playlist_title = "Calling Hours: Spotify Rotation"
                 active_playlist_desc = "Analyzed songs matched from your recent Spotify listening history."
+            elif active_mode == 'setlist_fm':
+                if not selected_artist:
+                    if analyzed_artists:
+                        selected_artist = analyzed_artists[0]['artist']
+                    else:
+                        selected_artist = 'Jimmy Eat World'
+                if not selected_year:
+                    selected_year = '2024'
+
+                setlist_data = setlistfm.fetch_average_setlist_by_year(
+                    artist_name=selected_artist,
+                    year=selected_year,
+                    api_key=SETLIST_FM_API_KEY
+                )
+
+                raw_tracks = setlist_data.get('tracks', [])
+                total_shows = setlist_data.get('total_concerts', 0)
+                considered_shows = setlist_data.get('considered_concerts', 0)
+
+                analyzed_db_songs = database.get_analyzed_songs(artist=selected_artist)
+                db_song_map = {}
+                for dbs in analyzed_db_songs:
+                    norm_k = (dbs.get('song_normalized') or dbs.get('song', '')).strip().lower()
+                    db_song_map[norm_k] = dbs
+
+                enriched_tracks = []
+                for t in raw_tracks:
+                    s_name = t.get('song', '').strip()
+                    norm_s = s_name.lower()
+                    db_match = db_song_map.get(norm_s)
+
+                    item = {
+                        'id': db_match.get('id') if db_match else None,
+                        'search_id': db_match.get('id') if db_match else None,
+                        'artist': t.get('artist') or selected_artist,
+                        'song': s_name,
+                        'model_name': db_match.get('model_name') if db_match else None,
+                        'track_tags': db_match.get('track_tags') if db_match else [],
+                        'theaudiodb_data': db_match.get('theaudiodb_data') if db_match else None,
+                        'spotify_id': db_match.get('spotify_id') if db_match else None,
+                        'play_count': t.get('play_count', 0),
+                        'total_concerts': t.get('total_concerts', total_shows),
+                        'play_ratio': t.get('play_ratio', 1.0),
+                        'avg_position': t.get('avg_position', t.get('position', 1)),
+                        'is_analyzed': bool(db_match),
+                    }
+                    enriched_tracks.append(item)
+
+                if order_by == 'song ASC':
+                    enriched_tracks.sort(key=lambda x: x['song'].lower())
+                elif order_by == 'artist ASC':
+                    enriched_tracks.sort(key=lambda x: x['artist'].lower())
+                elif order_by == 'play_count DESC':
+                    enriched_tracks.sort(key=lambda x: x.get('play_count', 0), reverse=True)
+
+                if limit and limit > 0:
+                    enriched_tracks = enriched_tracks[:limit]
+
+                songs = enriched_tracks
+                if not active_playlist_title:
+                    active_playlist_title = f"{selected_artist}: {selected_year} Average Setlist"
+                active_playlist_desc = f"Average tour setlist based on {total_shows} concerts in {selected_year} from Setlist.fm."
             else:
                 active_mode = 'all_analyzed'
                 songs = database.get_analyzed_songs(order_by=order_by, limit=limit)
@@ -9562,20 +9671,30 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 active_playlist_desc = "Master collection of all tracks analyzed for poetic and thematic lyrics in Calling Hours."
 
         # Build Sort Options
-        sort_choices = [
-            ('updated_at DESC', 'Recently Analyzed (Newest First)'),
-            ('updated_at ASC', 'Earliest Analyzed (Oldest First)'),
-            ('artist ASC', 'Artist (A-Z)'),
-            ('song ASC', 'Song Title (A-Z)'),
-        ]
+        if active_mode == 'setlist_fm':
+            sort_choices = [
+                ('stage_order', 'Setlist Stage Order (Concert Flow)'),
+                ('play_count DESC', 'Concert Frequency (Most Played)'),
+                ('song ASC', 'Song Title (A-Z)'),
+                ('artist ASC', 'Artist (A-Z)'),
+            ]
+        else:
+            sort_choices = [
+                ('updated_at DESC', 'Recently Analyzed (Newest First)'),
+                ('updated_at ASC', 'Earliest Analyzed (Oldest First)'),
+                ('artist ASC', 'Artist (A-Z)'),
+                ('song ASC', 'Song Title (A-Z)'),
+            ]
         sort_options_html = "".join(f'<option value="{k}"{" selected" if k == order_by else ""}>{html_escape(v)}</option>' for k, v in sort_choices)
 
         # Build Limit Options
         limit_choices = [
-            ('', f'All Songs ({total_analyzed_count})'),
+            ('', f'All Songs ({len(songs) if active_mode == "setlist_fm" else total_analyzed_count})'),
+            ('10', 'Top 10 Songs'),
+            ('15', 'Top 15 Songs'),
+            ('20', 'Top 20 Songs'),
             ('25', 'Top 25 Songs'),
             ('50', 'Top 50 Songs'),
-            ('100', 'Top 100 Songs'),
         ]
         cur_limit_str = str(limit) if limit else ''
         limit_options_html = "".join(f'<option value="{k}"{" selected" if k == cur_limit_str else ""}>{html_escape(v)}</option>' for k, v in limit_choices)
@@ -9645,6 +9764,42 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                     <input type="text" value="Recent Listening Stream" readonly style="opacity: 0.8; cursor: default;">
                 </div>
             '''
+        elif active_mode == 'setlist_fm':
+            if not selected_artist:
+                selected_artist = analyzed_artists[0]['artist'] if analyzed_artists else 'Jimmy Eat World'
+            if not selected_year:
+                selected_year = '2024'
+
+            cur_yr = datetime.now().year
+            years_list = [str(y) for y in range(cur_yr, 2009, -1)]
+            if str(selected_year) not in years_list and str(selected_year).isdigit():
+                years_list.insert(0, str(selected_year))
+
+            year_opts = "".join(
+                f'<option value="{y}"{" selected" if str(y) == str(selected_year) else ""}>{y}</option>'
+                for y in years_list
+            )
+
+            artist_datalist_options = "".join(
+                f'<option value="{html_escape(a["artist"])}">'
+                for a in analyzed_artists
+            )
+
+            mode_specific_inputs = f'''
+                <div class="playlist-input-group">
+                    <label for="input-setlist-artist">Artist / Band</label>
+                    <input type="text" name="artist" id="input-setlist-artist" list="setlist-artist-list" value="{html_escape(selected_artist)}" placeholder="Band Name (e.g. Jimmy Eat World)" required>
+                    <datalist id="setlist-artist-list">
+                        {artist_datalist_options}
+                    </datalist>
+                </div>
+                <div class="playlist-input-group">
+                    <label for="select-year">Tour / Setlist Year</label>
+                    <select name="year" id="select-year" onchange="document.getElementById('generator-form').submit()">
+                        {year_opts}
+                    </select>
+                </div>
+            '''
         else:
             mode_specific_inputs = f'''
                 <div class="playlist-input-group">
@@ -9705,11 +9860,27 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                         pills.append(f'<span style="font-size:0.7rem; color:#F59E0B; background:rgba(245,158,11,0.1); padding:1px 6px; border-radius:4px;">⚡ {int(audiodb_data["energy"])}%</span>')
                 audiodb_pills_html = "".join(pills)
 
+                # Setlist.fm concert frequency pill
+                setlist_pill = ""
+                if active_mode == 'setlist_fm' and s.get('play_count'):
+                    p_cnt = s.get('play_count', 0)
+                    t_cnt = s.get('total_concerts', p_cnt)
+                    p_pct = int(s.get('play_ratio', 1.0) * 100)
+                    avg_p = s.get('avg_position', idx)
+                    setlist_pill = f'<span style="font-size:0.7rem; color:#FCD34D; background:rgba(245,158,11,0.15); border:1px solid rgba(245,158,11,0.3); padding:1px 7px; border-radius:4px; font-weight:700;" title="Played in {p_cnt} of {t_cnt} shows">🏟️ {p_cnt}/{t_cnt} shows ({p_pct}%) • Avg #{avg_p}</span>'
+
                 listen_spotify_link = ""
                 if spotify_id:
                     listen_spotify_link = f'<a href="https://open.spotify.com/track/{html_escape(spotify_id)}" target="_blank" rel="noopener noreferrer" style="color: #1DB954; font-size: 1.1rem; text-decoration: none;" title="Listen on Spotify">🎧</a>'
 
-                analysis_link_html = f'<a href="/?id={s_id}" style="color: #C5B8FF; font-size: 0.76rem; text-decoration: none; border-bottom: 1px dotted rgba(197, 184, 255, 0.5);" title="View Gemini lyric analysis">✦ View Analysis</a>' if s_id else ''
+                if s_id:
+                    analysis_link_html = f'<a href="/?id={s_id}" style="color: #C5B8FF; font-size: 0.76rem; text-decoration: none; border-bottom: 1px dotted rgba(197, 184, 255, 0.5);" title="View Gemini lyric analysis">✦ View Analysis</a>'
+                    model_badge_html = f'<span class="playlist-badge-model">✨ {model_esc}</span>'
+                    action_btn_html = f'<a href="/?id={s_id}" class="btn-playlist-action btn-playlist-outline" style="font-size: 0.74rem; padding: 3px 8px; text-decoration: none;">Lyrics ↗</a>'
+                else:
+                    analysis_link_html = f'<a href="/?artist={urllib.parse.quote(artist_val)}&song={urllib.parse.quote(song_val)}" style="color: #FCD34D; font-size: 0.74rem; text-decoration: none; border: 1px solid rgba(245, 158, 11, 0.35); border-radius: 4px; padding: 1px 6px;" title="Analyze lyrics with Gemini">✦ Analyze</a>'
+                    model_badge_html = f'<span class="playlist-badge-model" style="background: rgba(245,158,11,0.15); color: #FCD34D; border: 1px solid rgba(245,158,11,0.3);">Setlist.fm</span>'
+                    action_btn_html = f'<a href="/?artist={urllib.parse.quote(artist_val)}&song={urllib.parse.quote(song_val)}" class="btn-playlist-action btn-playlist-outline" style="font-size: 0.74rem; padding: 3px 8px; text-decoration: none;">Search ↗</a>'
 
                 track_rows.append(f'''
                     <tr class="playlist-tracklist-row" data-search="{artist_esc} {song_esc}">
@@ -9722,12 +9893,13 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                         </td>
                         <td>
                             <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-                                <span class="playlist-badge-model">✨ {model_esc}</span>
+                                {model_badge_html}
                                 {analysis_link_html}
                             </div>
                         </td>
                         <td>
                             <div style="display: flex; gap: 4px; align-items: center; flex-wrap: wrap;">
+                                {setlist_pill}
                                 {tags_chips_html}
                                 {audiodb_pills_html}
                             </div>
@@ -9735,17 +9907,17 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                         <td style="text-align: right;">
                             <div style="display: flex; gap: 8px; justify-content: flex-end; align-items: center;">
                                 {listen_spotify_link}
-                                <a href="/?id={s_id}" class="btn-playlist-action btn-playlist-outline" style="font-size: 0.74rem; padding: 3px 8px; text-decoration: none;">Lyrics ↗</a>
+                                {action_btn_html}
                             </div>
                         </td>
                     </tr>
                 ''')
 
                 clean_tracks_for_json.append({
-                    'id': s_id,
+                    'id': s_id or None,
                     'artist': artist_val,
                     'song': song_val,
-                    'model_name': model_name,
+                    'model_name': model_name if s_id else 'Setlist.fm',
                     'spotify_id': spotify_id or '',
                 })
 
@@ -9799,6 +9971,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 'artist': selected_artist,
                 'tag': selected_tag,
                 'mood': selected_mood,
+                'year': selected_year,
                 'order': order_by,
                 'limit': str(limit) if limit else '',
                 'name': active_playlist_title,
@@ -9814,6 +9987,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 'artist': selected_artist,
                 'tag': selected_tag,
                 'mood': selected_mood,
+                'year': selected_year,
                 'order': order_by,
                 'limit': limit,
             },
@@ -9831,6 +10005,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         mode_tag_active = ' active' if active_mode == 'tag' else ''
         mode_mood_active = ' active' if active_mode == 'mood' else ''
         mode_spotify_active = ' active' if active_mode == 'spotify' else ''
+        mode_setlist_fm_active = ' active' if active_mode == 'setlist_fm' else ''
 
         message_banner_html = f'<div class="message" style="margin-bottom: 20px;">{html_escape(message)}</div>' if message else ''
 
@@ -9845,6 +10020,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                                      .replace('{mode_tag_active}', mode_tag_active)\
                                      .replace('{mode_mood_active}', mode_mood_active)\
                                      .replace('{mode_spotify_active}', mode_spotify_active)\
+                                     .replace('{mode_setlist_fm_active}', mode_setlist_fm_active)\
                                      .replace('{current_mode}', html_escape(active_mode))\
                                      .replace('{mode_specific_inputs}', mode_specific_inputs)\
                                      .replace('{sort_options_html}', sort_options_html)\
@@ -9896,7 +10072,17 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             limit_str = params.get('limit', [''])[0].strip()
             limit = int(limit_str) if limit_str.isdigit() else None
             title = params.get('name', [''])[0].strip() or 'Calling Hours All Analyzed Songs'
-            tracks = database.get_analyzed_songs(artist=artist, tag=tag, order_by=order, limit=limit)
+
+            if mode == 'setlist_fm':
+                year = params.get('year', ['2024'])[0].strip() or '2024'
+                artist_name = artist or 'Jimmy Eat World'
+                title = params.get('name', [''])[0].strip() or f'{artist_name}: {year} Average Setlist'
+                setlist_res = setlistfm.fetch_average_setlist_by_year(artist_name, year, api_key=SETLIST_FM_API_KEY)
+                tracks = setlist_res.get('tracks', [])
+                if limit and limit > 0:
+                    tracks = tracks[:limit]
+            else:
+                tracks = database.get_analyzed_songs(artist=artist, tag=tag, order_by=order, limit=limit)
 
         lines = ['#EXTM3U', f'#PLAYLIST:{title}']
         for t in tracks:
@@ -9943,7 +10129,17 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             limit_str = params.get('limit', [''])[0].strip()
             limit = int(limit_str) if limit_str.isdigit() else None
             title = params.get('name', [''])[0].strip() or 'Calling Hours All Analyzed Songs'
-            tracks = database.get_analyzed_songs(artist=artist, tag=tag, order_by=order, limit=limit)
+
+            if mode == 'setlist_fm':
+                year = params.get('year', ['2024'])[0].strip() or '2024'
+                artist_name = artist or 'Jimmy Eat World'
+                title = params.get('name', [''])[0].strip() or f'{artist_name}: {year} Average Setlist'
+                setlist_res = setlistfm.fetch_average_setlist_by_year(artist_name, year, api_key=SETLIST_FM_API_KEY)
+                tracks = setlist_res.get('tracks', [])
+                if limit and limit > 0:
+                    tracks = tracks[:limit]
+            else:
+                tracks = database.get_analyzed_songs(artist=artist, tag=tag, order_by=order, limit=limit)
 
         output = io.StringIO()
         writer = csv.writer(output)
