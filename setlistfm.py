@@ -225,26 +225,61 @@ def fetch_co_performers_for_show(
 
 
 def _extract_coperformers_from_info(info_text: Optional[str], target_artist: str) -> List[str]:
-    """Extract co-performing artists from show notes (e.g. 'Opening Act for My Chemical Romance')."""
+    """Extract co-performing artists from show notes."""
     if not info_text:
         return []
     coperformers = []
-    # Match patterns like 'Opening Act for X', 'Opened for X', 'With special guests X, Y', 'Support from X'
+    target_norm = target_artist.strip().lower()
     patterns = [
+        r"(?:co-headlin\w*\s+with|co-headlin\w*\s+tour\s+with|co-bill\w*\s+with)\s+([^.,;\n]+)",
         r"(?:opening\s+act\s+for|opened\s+for|support\s+for|direct\s+support\s+for|supporting)\s+([^.,;\n]+)",
         r"(?:with\s+special\s+guests?|special\s+guests?|with\s+support\s+from|joined\s+by|supported\s+by|support:\s*|with)\s+([^.,;\n]+)",
+        r"(?:alongside|sharing\s+the\s+stage\s+with|lineup:\s*|bill:\s*)\s+([^.,;\n]+)",
     ]
     for pat in patterns:
         m = re.search(pat, info_text, flags=re.IGNORECASE)
         if m:
             raw_match = m.group(1).strip()
             # Split by 'and', '&', or comma
-            parts = re.split(r",|\s+and\s+|\s+&\s+", raw_match)
+            parts = re.split(r",|\s+and\s+|\s+&\s+|\s*\+\s*", raw_match)
             for p in parts:
-                cleaned = p.strip()
-                if cleaned and cleaned.lower() != target_artist.lower() and len(cleaned) < 50:
+                cleaned = re.sub(r'[\(\)\[\]]', '', p).strip()
+                if cleaned and cleaned.lower() != target_norm and target_norm not in cleaned.lower() and len(cleaned) < 50:
+                    if cleaned.lower() not in {"more", "others", "tba", "tbd", "various artists", "special guests", "special guest"}:
+                        if cleaned not in coperformers:
+                            coperformers.append(cleaned)
+    return coperformers
+
+
+def _extract_coperformers_from_tour_name(tour_name: Optional[str], target_artist: str) -> List[str]:
+    """Extract co-headliner bands from multi-band tour names."""
+    if not tour_name or not tour_name.strip():
+        return []
+    clean_tour = tour_name.strip()
+    target_clean = target_artist.strip().lower()
+    coperformers = []
+
+    # Check for 'with X'
+    with_match = re.search(r'\bwith\s+([^:/\n]+)', clean_tour, flags=re.IGNORECASE)
+    if with_match:
+        cand = with_match.group(1).strip()
+        cand = re.sub(r'\s+(?:tour|live|anniversary|summer|spring|fall|winter|\d{4}).*$', '', cand, flags=re.IGNORECASE).strip()
+        if cand and cand.lower() != target_clean and len(cand) > 1 and len(cand) < 50:
+            if cand not in coperformers:
+                coperformers.append(cand)
+
+    # Check for co-headline split: 'A & B', 'A / B', 'A and B', 'A + B'
+    base_title = re.split(r'[:–—]', clean_tour)[0].strip()
+    parts = re.split(r'\s*(?:/|&|\band\b|\+)\s*', base_title, flags=re.IGNORECASE)
+    if len(parts) >= 2:
+        has_target = any(target_clean in p.lower() or p.lower() in target_clean for p in parts)
+        if has_target:
+            for p in parts:
+                cleaned = re.sub(r'\s+(?:tour|live|co-headlin\w*|\d{4}).*$', '', p, flags=re.IGNORECASE).strip()
+                if cleaned and cleaned.lower() != target_clean and target_clean not in cleaned.lower() and len(cleaned) > 1 and len(cleaned) < 50:
                     if cleaned not in coperformers:
                         coperformers.append(cleaned)
+
     return coperformers
 
 
