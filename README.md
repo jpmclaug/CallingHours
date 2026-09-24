@@ -12,6 +12,7 @@ Calling Hours is a web application that fetches song lyrics via the Genius API a
 - **Multi-API Artist Intelligence Page (`/artist`)**: A comprehensive dedicated artist profile unifying data across Setlist.fm, Last.fm, TheAudioDB, Genius, and local database history. Explore band origins, formation year, artwork, biography, similar artists, and launch one-click Gemini thematic analysis on any song in their catalog.
 - **TheAudioDB Track & Artist Insights**: Track tempos (BPM), musical keys, moods, audio feature radars (danceability, valence, energy), music videos, and artist backgrounds.
 - **Last.fm Music Intelligence**: Community-driven track genre tags and comprehensive artist profiles (top tags, listeners, scrobbles, and top songs) via the Last.fm 2.0 API. Persisted in both Neon PostgreSQL and SQLite.
+- **Spotify Listening History & Habit Analytics (`/spotify`)**: Connect your personal Spotify account via OAuth 2.0 to access a dedicated listening intelligence dashboard. Sync your recently played tracks, view live playback with an animated "Now Playing" card, explore habit analytics (time-of-day distribution, day-of-week listening, top artists in recent streams, release era/decades breakdown, and listening archetype personas like "The Night Owl" or "The Crate Digger"), and launch 1-click Gemini thematic lyrics analysis on any song in your listening history.
 - **Search History Dashboard**: Dedicated `/history` view to browse, filter, quick-load, and manage previously searched songs and analyses, complete with Last.fm tag chips and artist intelligence links.
 - **Editable & Custom Lyrics**: An editable lyrics workspace allowing users to review, edit, or paste lyrics manually if needed.
 - **Gemini-Powered Analysis**: Deep lyric analysis analyzing themes, narrative, emotional tone, and poetic devices.
@@ -38,7 +39,7 @@ Calling Hours is a web application that fetches song lyrics via the Genius API a
    ```bash
    cp calling_hours_secrets.example.py calling_hours_secrets.py
    ```
-   Add your Genius client ID & secret (from [Genius API Clients](https://genius.com/api-clients)), your Gemini API key (from [Google AI Studio](https://aistudio.google.com/)), and optionally your Last.fm API key (from [Last.fm API Account Creation](https://www.last.fm/api/account/create)).
+    Add your Genius client ID & secret (from [Genius API Clients](https://genius.com/api-clients)), your Gemini API key (from [Google AI Studio](https://aistudio.google.com/)), optionally your Spotify credentials (from [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)), and optionally your Last.fm API key (from [Last.fm API Account Creation](https://www.last.fm/api/account/create)).
 
 4. **Run the application**:
    ```bash
@@ -91,6 +92,9 @@ Or via Google Cloud Console:
 | `GOOGLE_REDIRECT_URI` | Explicit Google OAuth callback URL (e.g. `https://your-service.run.app/auth/google/callback`) | Dynamically resolved |
 | `GENIUS_ACCESS_TOKEN` | Genius Client Access Token (from Genius dashboard) | **Yes** (avoids OAuth flow) |
 | `GEMINI_API_KEY` | Google Gemini API Key (from AI Studio) | **Yes** |
+| `SPOTIFY_CLIENT_ID` | Spotify Client ID for listening history, recently played tracks, and habit analytics ([Get Credentials](https://developer.spotify.com/dashboard)) | Optional |
+| `SPOTIFY_CLIENT_SECRET` | Spotify Client Secret ([Get Credentials](https://developer.spotify.com/dashboard)) | Optional |
+| `SPOTIFY_REDIRECT_URI` | Explicit Spotify OAuth callback URL (e.g. `https://your-service.run.app/auth/spotify/callback`) | Dynamically resolved |
 | `SETLIST_FM_API_KEY` | Setlist.fm API Key for concert tour rosters, co-performers, and NC show history ([Get API Key](https://www.setlist.fm/settings/api)) | Optional (Free) |
 | `LASTFM_API_KEY` | Last.fm API Key for song tags, artist catalog intelligence, and scrobble stats ([Get API Key](https://www.last.fm/api/account/create)) | Optional (Free) |
 | `THEAUDIODB_API_KEY` | TheAudioDB API Key for artist banners, photos, and discography data (defaults to test key `123`) | Optional |

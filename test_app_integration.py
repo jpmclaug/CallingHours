@@ -892,6 +892,60 @@ class TestAppIntegration(unittest.TestCase):
             self.assertIn('class="app-bottom-nav"', html)
             self.assertIn('class="app-bottom-nav-link active" id="mobile-nav-link-artist"', html)
 
+    def test_spotify_integration_and_navigation(self):
+        # 1. Verify nav links on home page
+        with self.authed_get("/") as resp:
+            self.assertEqual(resp.status, 200)
+            html = resp.read().decode('utf-8')
+            self.assertIn('href="/spotify"', html)
+            self.assertIn('id="nav-link-spotify"', html)
+            self.assertIn('id="mobile-nav-link-spotify"', html)
+
+        # 2. Verify /spotify page loads and highlights active nav link
+        with self.authed_get("/spotify") as resp:
+            self.assertEqual(resp.status, 200)
+            html = resp.read().decode('utf-8')
+            self.assertIn('Spotify Listening Intelligence', html)
+            self.assertIn('id="nav-link-spotify"', html)
+            self.assertIn('class="app-nav-link active" id="nav-link-spotify"', html)
+            self.assertIn('class="app-bottom-nav-link active" id="mobile-nav-link-spotify"', html)
+
+        # 3. Verify /spotify?demo=1 interactive demo preview
+        with self.authed_get("/spotify?demo=1") as resp:
+            self.assertEqual(resp.status, 200)
+            html = resp.read().decode('utf-8')
+            self.assertIn('Interactive Demo Preview Mode', html)
+            self.assertIn('Jimmy Eat World', html)
+            self.assertIn('Slowdive', html)
+            self.assertIn('Listening by Time of Day', html)
+            self.assertIn('Activity by Day of Week', html)
+            self.assertIn('Release Era Breakdown', html)
+            self.assertIn('Listening History Stream', html)
+            self.assertIn('✨ Analyze Lyrics', html)
+
+        # 4. Verify API status endpoint
+        with self.authed_get("/api/spotify/status") as resp:
+            self.assertEqual(resp.status, 200)
+            data = json.loads(resp.read().decode('utf-8'))
+            self.assertIn('configured', data)
+            self.assertIn('connected', data)
+
+        # 5. Verify API history endpoint in demo mode
+        with self.authed_get("/api/spotify/history?demo=1") as resp:
+            self.assertEqual(resp.status, 200)
+            data = json.loads(resp.read().decode('utf-8'))
+            self.assertTrue(data.get('demo'))
+            self.assertIn('tracks', data)
+            self.assertIn('analytics', data)
+            self.assertGreater(len(data['tracks']), 0)
+            self.assertIn('persona', data['analytics'])
+
+        # 6. Verify API now-playing endpoint
+        with self.authed_get("/api/spotify/now-playing") as resp:
+            self.assertEqual(resp.status, 200)
+            data = json.loads(resp.read().decode('utf-8'))
+            self.assertIn('playing', data)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -151,6 +151,39 @@ def _format_user_record(rec: Any) -> Optional[Dict[str, Any]]:
         d['is_active'] = bool(d['is_active'])
     return d
 
+def _format_spotify_token_record(rec: Any) -> Optional[Dict[str, Any]]:
+    if not rec:
+        return None
+    d = dict(rec)
+    if 'created_at' in d and d['created_at'] is not None:
+        d['created_at'] = _format_datetime(d['created_at'])
+    if 'updated_at' in d and d['updated_at'] is not None:
+        d['updated_at'] = _format_datetime(d['updated_at'])
+    if 'expires_at' in d and d['expires_at'] is not None:
+        d['expires_at'] = _format_datetime(d['expires_at'])
+    return d
+
+def _format_spotify_history_record(rec: Any) -> Optional[Dict[str, Any]]:
+    if not rec:
+        return None
+    d = dict(rec)
+    if 'created_at' in d and d['created_at'] is not None:
+        d['created_at'] = _format_datetime(d['created_at'])
+    if 'played_at' in d and d['played_at'] is not None:
+        d['played_at'] = _format_datetime(d['played_at'])
+    if 'duration_ms' in d and d['duration_ms'] is not None:
+        try:
+            d['duration_ms'] = int(d['duration_ms'])
+        except (ValueError, TypeError):
+            d['duration_ms'] = 0
+    if 'popularity' in d and d['popularity'] is not None:
+        try:
+            d['popularity'] = int(d['popularity'])
+        except (ValueError, TypeError):
+            d['popularity'] = 0
+    return d
+
+
 @contextmanager
 def get_connection(db_path: Optional[str] = None):
     """Context manager for database connections (Neon PostgreSQL or SQLite)."""
@@ -309,6 +342,52 @@ def init_db(db_path: Optional[str] = None) -> None:
                 ALTER TABLE artist_metadata ADD COLUMN IF NOT EXISTS country TEXT;
             """)
             cursor.execute("""
+                CREATE TABLE IF NOT EXISTS spotify_tokens (
+                    id SERIAL PRIMARY KEY,
+                    user_email TEXT NOT NULL UNIQUE,
+                    access_token TEXT NOT NULL,
+                    refresh_token TEXT,
+                    expires_at TIMESTAMP NOT NULL,
+                    spotify_user_id TEXT,
+                    spotify_display_name TEXT,
+                    spotify_profile_url TEXT,
+                    spotify_image_url TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_spotify_tokens_email 
+                ON spotify_tokens(user_email);
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS spotify_history (
+                    id SERIAL PRIMARY KEY,
+                    user_email TEXT NOT NULL,
+                    spotify_track_id TEXT NOT NULL,
+                    played_at TIMESTAMP NOT NULL,
+                    track_name TEXT NOT NULL,
+                    artist_name TEXT NOT NULL,
+                    album_name TEXT,
+                    album_image_url TEXT,
+                    duration_ms INTEGER,
+                    popularity INTEGER,
+                    preview_url TEXT,
+                    spotify_url TEXT,
+                    release_date TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(user_email, spotify_track_id, played_at)
+                );
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_spotify_hist_user 
+                ON spotify_history(user_email);
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_spotify_hist_played 
+                ON spotify_history(played_at DESC);
+            """)
+            cursor.execute("""
                 INSERT INTO users (email, is_admin, is_active, created_at)
                 VALUES (%s, TRUE, TRUE, CURRENT_TIMESTAMP)
                 ON CONFLICT (email) DO UPDATE SET is_admin = TRUE, is_active = TRUE;
@@ -417,6 +496,52 @@ def init_db(db_path: Optional[str] = None) -> None:
             cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_sessions_expires_at 
                 ON sessions(expires_at);
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS spotify_tokens (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_email TEXT NOT NULL UNIQUE,
+                    access_token TEXT NOT NULL,
+                    refresh_token TEXT,
+                    expires_at TIMESTAMP NOT NULL,
+                    spotify_user_id TEXT,
+                    spotify_display_name TEXT,
+                    spotify_profile_url TEXT,
+                    spotify_image_url TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_spotify_tokens_email 
+                ON spotify_tokens(user_email);
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS spotify_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_email TEXT NOT NULL,
+                    spotify_track_id TEXT NOT NULL,
+                    played_at TIMESTAMP NOT NULL,
+                    track_name TEXT NOT NULL,
+                    artist_name TEXT NOT NULL,
+                    album_name TEXT,
+                    album_image_url TEXT,
+                    duration_ms INTEGER,
+                    popularity INTEGER,
+                    preview_url TEXT,
+                    spotify_url TEXT,
+                    release_date TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(user_email, spotify_track_id, played_at)
+                );
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_spotify_hist_user 
+                ON spotify_history(user_email);
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_spotify_hist_played 
+                ON spotify_history(played_at DESC);
             """)
             cursor.execute("""
                 INSERT INTO users (email, is_admin, is_active, created_at)
@@ -1287,5 +1412,239 @@ def delete_user_sessions(email: str, db_path: Optional[str] = None) -> None:
         cursor = conn.cursor()
         ph = "%s" if is_postgres(target) else "?"
         cursor.execute(f"DELETE FROM sessions WHERE LOWER(email) = {ph}", (clean_email,))
+
+
+# ---------------------------------------------------------
+# Spotify Integration Persistence
+# ---------------------------------------------------------
+
+def save_spotify_token(
+    user_email: str,
+    access_token: str,
+    refresh_token: Optional[str] = None,
+    expires_at: Optional[Union[str, datetime]] = None,
+    spotify_user_id: Optional[str] = None,
+    spotify_display_name: Optional[str] = None,
+    spotify_profile_url: Optional[str] = None,
+    spotify_image_url: Optional[str] = None,
+    db_path: Optional[str] = None
+) -> None:
+    """Save or update Spotify OAuth tokens for a user, retaining refresh_token if omitted."""
+    clean_email = user_email.lower().strip()
+    if not clean_email or not access_token:
+        return
+
+    exp_val = expires_at
+    if isinstance(exp_val, (datetime, date)):
+        exp_val = exp_val.strftime('%Y-%m-%d %H:%M:%S')
+
+    target = get_db_target(db_path)
+    with get_connection(target) as conn:
+        cursor = conn.cursor()
+        if is_postgres(target):
+            cursor.execute("""
+                INSERT INTO spotify_tokens (
+                    user_email, access_token, refresh_token, expires_at,
+                    spotify_user_id, spotify_display_name, spotify_profile_url, spotify_image_url,
+                    created_at, updated_at
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                ON CONFLICT (user_email) DO UPDATE SET
+                    access_token = EXCLUDED.access_token,
+                    refresh_token = COALESCE(EXCLUDED.refresh_token, spotify_tokens.refresh_token),
+                    expires_at = EXCLUDED.expires_at,
+                    spotify_user_id = COALESCE(EXCLUDED.spotify_user_id, spotify_tokens.spotify_user_id),
+                    spotify_display_name = COALESCE(EXCLUDED.spotify_display_name, spotify_tokens.spotify_display_name),
+                    spotify_profile_url = COALESCE(EXCLUDED.spotify_profile_url, spotify_tokens.spotify_profile_url),
+                    spotify_image_url = COALESCE(EXCLUDED.spotify_image_url, spotify_tokens.spotify_image_url),
+                    updated_at = CURRENT_TIMESTAMP;
+            """, (
+                clean_email, access_token, refresh_token, exp_val,
+                spotify_user_id, spotify_display_name, spotify_profile_url, spotify_image_url
+            ))
+        else:
+            cursor.execute("""
+                INSERT INTO spotify_tokens (
+                    user_email, access_token, refresh_token, expires_at,
+                    spotify_user_id, spotify_display_name, spotify_profile_url, spotify_image_url,
+                    created_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                ON CONFLICT (user_email) DO UPDATE SET
+                    access_token = excluded.access_token,
+                    refresh_token = COALESCE(excluded.refresh_token, spotify_tokens.refresh_token),
+                    expires_at = excluded.expires_at,
+                    spotify_user_id = COALESCE(excluded.spotify_user_id, spotify_tokens.spotify_user_id),
+                    spotify_display_name = COALESCE(excluded.spotify_display_name, spotify_tokens.spotify_display_name),
+                    spotify_profile_url = COALESCE(excluded.spotify_profile_url, spotify_tokens.spotify_profile_url),
+                    spotify_image_url = COALESCE(excluded.spotify_image_url, spotify_tokens.spotify_image_url),
+                    updated_at = CURRENT_TIMESTAMP;
+            """, (
+                clean_email, access_token, refresh_token, exp_val,
+                spotify_user_id, spotify_display_name, spotify_profile_url, spotify_image_url
+            ))
+
+
+def get_spotify_token(user_email: str, db_path: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """Retrieve Spotify tokens and profile metadata for a user email."""
+    clean_email = user_email.lower().strip()
+    if not clean_email:
+        return None
+
+    target = get_db_target(db_path)
+    with get_connection(target) as conn:
+        if is_postgres(target):
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cursor.execute("""
+                SELECT * FROM spotify_tokens 
+                WHERE LOWER(user_email) = %s 
+                LIMIT 1
+            """, (clean_email,))
+        else:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT * FROM spotify_tokens 
+                WHERE LOWER(user_email) = ? 
+                LIMIT 1
+            """, (clean_email,))
+        row = cursor.fetchone()
+        return _format_spotify_token_record(row) if row else None
+
+
+def delete_spotify_token(user_email: str, db_path: Optional[str] = None) -> None:
+    """Delete Spotify token for user (disconnect Spotify)."""
+    clean_email = user_email.lower().strip()
+    if not clean_email:
+        return
+
+    target = get_db_target(db_path)
+    with get_connection(target) as conn:
+        cursor = conn.cursor()
+        ph = "%s" if is_postgres(target) else "?"
+        cursor.execute(f"DELETE FROM spotify_tokens WHERE LOWER(user_email) = {ph}", (clean_email,))
+
+
+def save_spotify_history_items(
+    user_email: str,
+    items: List[Dict[str, Any]],
+    db_path: Optional[str] = None
+) -> int:
+    """Batch save recently played tracks to spotify_history (ignoring duplicates)."""
+    clean_email = user_email.lower().strip()
+    if not clean_email or not items:
+        return 0
+
+    target = get_db_target(db_path)
+    inserted = 0
+    with get_connection(target) as conn:
+        cursor = conn.cursor()
+        for item in items:
+            track_id = item.get("track_id") or ""
+            played_at = item.get("played_at") or ""
+            track_name = item.get("name") or "Unknown Track"
+            artist_name = item.get("artist") or "Unknown Artist"
+            album_name = item.get("album") or ""
+            album_image = item.get("album_image") or ""
+            duration_ms = item.get("duration_ms") or 0
+            popularity = item.get("popularity") or 0
+            preview_url = item.get("preview_url") or ""
+            spotify_url = item.get("spotify_url") or ""
+            release_date = item.get("release_date") or ""
+
+            if not track_id or not played_at:
+                continue
+
+            if is_postgres(target):
+                cursor.execute("""
+                    INSERT INTO spotify_history (
+                        user_email, spotify_track_id, played_at, track_name, artist_name,
+                        album_name, album_image_url, duration_ms, popularity,
+                        preview_url, spotify_url, release_date, created_at
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+                    ON CONFLICT (user_email, spotify_track_id, played_at) DO NOTHING;
+                """, (
+                    clean_email, track_id, played_at, track_name, artist_name,
+                    album_name, album_image, duration_ms, popularity,
+                    preview_url, spotify_url, release_date
+                ))
+            else:
+                cursor.execute("""
+                    INSERT OR IGNORE INTO spotify_history (
+                        user_email, spotify_track_id, played_at, track_name, artist_name,
+                        album_name, album_image_url, duration_ms, popularity,
+                        preview_url, spotify_url, release_date, created_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP);
+                """, (
+                    clean_email, track_id, played_at, track_name, artist_name,
+                    album_name, album_image, duration_ms, popularity,
+                    preview_url, spotify_url, release_date
+                ))
+            inserted += 1
+
+    return inserted
+
+
+def get_spotify_history(
+    user_email: str,
+    limit: int = 50,
+    db_path: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    """Retrieve saved recently played tracks for user, ordered by played_at DESC."""
+    clean_email = user_email.lower().strip()
+    if not clean_email:
+        return []
+
+    target = get_db_target(db_path)
+    limit = max(1, min(limit, 500))
+    with get_connection(target) as conn:
+        if is_postgres(target):
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cursor.execute("""
+                SELECT * FROM spotify_history
+                WHERE LOWER(user_email) = %s
+                ORDER BY played_at DESC
+                LIMIT %s
+            """, (clean_email, limit))
+        else:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT * FROM spotify_history
+                WHERE LOWER(user_email) = ?
+                ORDER BY played_at DESC
+                LIMIT ?
+            """, (clean_email, limit))
+        rows = cursor.fetchall()
+        return [_format_spotify_history_record(r) for r in rows if r]
+
+
+def get_spotify_history_count(user_email: str, db_path: Optional[str] = None) -> int:
+    """Return total count of historical tracks saved for a user."""
+    clean_email = user_email.lower().strip()
+    if not clean_email:
+        return 0
+
+    target = get_db_target(db_path)
+    with get_connection(target) as conn:
+        cursor = conn.cursor()
+        ph = "%s" if is_postgres(target) else "?"
+        cursor.execute(f"SELECT COUNT(*) FROM spotify_history WHERE LOWER(user_email) = {ph}", (clean_email,))
+        row = cursor.fetchone()
+        return row[0] if row else 0
+
+
+def clear_spotify_history(user_email: str, db_path: Optional[str] = None) -> None:
+    """Clear saved listening history for user."""
+    clean_email = user_email.lower().strip()
+    if not clean_email:
+        return
+
+    target = get_db_target(db_path)
+    with get_connection(target) as conn:
+        cursor = conn.cursor()
+        ph = "%s" if is_postgres(target) else "?"
+        cursor.execute(f"DELETE FROM spotify_history WHERE LOWER(user_email) = {ph}", (clean_email,))
+
 
 

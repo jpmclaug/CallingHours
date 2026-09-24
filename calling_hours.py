@@ -35,6 +35,7 @@ import database
 import lastfm
 import theaudiodb
 import setlistfm
+import spotify
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPT_DIR)
@@ -93,7 +94,7 @@ DEFAULT_GEMINI_MODEL = "gemini-3.8-flash"
 _local_secrets = {}
 try:
     import calling_hours_secrets
-    for attr in ('GENIUS_CLIENT_ID', 'GENIUS_CLIENT_SECRET', 'GENIUS_ACCESS_TOKEN', 'GEMINI_API_KEY', 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_REDIRECT_URI', 'LASTFM_API_KEY', 'THEAUDIODB_API_KEY', 'SETLIST_FM_API_KEY'):
+    for attr in ('GENIUS_CLIENT_ID', 'GENIUS_CLIENT_SECRET', 'GENIUS_ACCESS_TOKEN', 'GEMINI_API_KEY', 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_REDIRECT_URI', 'LASTFM_API_KEY', 'THEAUDIODB_API_KEY', 'SETLIST_FM_API_KEY', 'SPOTIFY_CLIENT_ID', 'SPOTIFY_CLIENT_SECRET', 'SPOTIFY_REDIRECT_URI'):
         if hasattr(calling_hours_secrets, attr):
             _local_secrets[attr] = getattr(calling_hours_secrets, attr)
 except ImportError:
@@ -110,6 +111,9 @@ GOOGLE_REDIRECT_URI = os.environ.get('GOOGLE_REDIRECT_URI') or _local_secrets.ge
 LASTFM_API_KEY = os.environ.get('LASTFM_API_KEY') or _local_secrets.get('LASTFM_API_KEY', '')
 THEAUDIODB_API_KEY = os.environ.get('THEAUDIODB_API_KEY') or _local_secrets.get('THEAUDIODB_API_KEY', '123')
 SETLIST_FM_API_KEY = os.environ.get('SETLIST_FM_API_KEY') or _local_secrets.get('SETLIST_FM_API_KEY', '')
+SPOTIFY_CLIENT_ID = os.environ.get('SPOTIFY_CLIENT_ID') or _local_secrets.get('SPOTIFY_CLIENT_ID', '')
+SPOTIFY_CLIENT_SECRET = os.environ.get('SPOTIFY_CLIENT_SECRET') or _local_secrets.get('SPOTIFY_CLIENT_SECRET', '')
+SPOTIFY_REDIRECT_URI = os.environ.get('SPOTIFY_REDIRECT_URI') or _local_secrets.get('SPOTIFY_REDIRECT_URI', '')
 
 def build_theaudiodb_widget(
     artist: str,
@@ -440,6 +444,7 @@ def build_cookie_header(name: str, value: str, max_age: Optional[int] = 2592000,
 def build_app_header(active_page: str = 'song', user: Optional[Dict[str, Any]] = None) -> str:
     song_active = ' active' if active_page == 'song' else ''
     artist_active = ' active' if active_page == 'artist' else ''
+    spotify_active = ' active' if active_page == 'spotify' else ''
     history_active = ' active' if active_page == 'history' else ''
     prompts_active = ' active' if active_page == 'prompts' else ''
     admin_active = ' active' if active_page == 'admin' else ''
@@ -505,6 +510,10 @@ def build_app_header(active_page: str = 'song', user: Optional[Dict[str, Any]] =
                     <span class="nav-icon">👤</span>
                     <span class="nav-text">Artists</span>
                 </a>
+                <a href="/spotify" class="app-nav-link{spotify_active}" id="nav-link-spotify">
+                    <span class="nav-icon">🎧</span>
+                    <span class="nav-text">Spotify</span>
+                </a>
                 <a href="/history" class="app-nav-link{history_active}" id="nav-link-history">
                     <span class="nav-icon">📜</span>
                     <span class="nav-text"><span class="desktop-only-text">Search </span>History</span>
@@ -525,6 +534,10 @@ def build_app_header(active_page: str = 'song', user: Optional[Dict[str, Any]] =
         <a href="/artist" class="app-bottom-nav-link{artist_active}" id="mobile-nav-link-artist">
             <span class="nav-icon">👤</span>
             <span class="nav-text">Artists</span>
+        </a>
+        <a href="/spotify" class="app-bottom-nav-link{spotify_active}" id="mobile-nav-link-spotify">
+            <span class="nav-icon">🎧</span>
+            <span class="nav-text">Spotify</span>
         </a>
         <a href="/history" class="app-bottom-nav-link{history_active}" id="mobile-nav-link-history">
             <span class="nav-icon">📜</span>
@@ -4162,6 +4175,353 @@ ARTIST_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
 </body>
 </html>'''
 
+SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
+    <div class="stars"></div>
+    <div class="horizon"></div>
+    {app_header}
+    <style>
+        .spotify-page-container {
+            position: relative;
+            z-index: 2;
+            width: min(1180px, 94vw);
+            margin: 0 auto 60px auto;
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+        }
+        .spotify-top-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+        .spotify-card {
+            background: linear-gradient(135deg, rgba(14, 34, 72, 0.85) 0%, rgba(6, 14, 30, 0.95) 100%);
+            border: 1px solid rgba(165, 200, 255, 0.22);
+            border-radius: 16px;
+            padding: 24px 28px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+        }
+        .spotify-now-playing-card {
+            background: linear-gradient(135deg, rgba(10, 36, 25, 0.92) 0%, rgba(6, 20, 15, 0.98) 100%);
+            border: 1px solid rgba(29, 185, 84, 0.45);
+            border-radius: 16px;
+            padding: 22px 26px;
+            box-shadow: 0 0 25px rgba(29, 185, 84, 0.16), 0 12px 32px rgba(0, 0, 0, 0.5);
+            position: relative;
+            overflow: hidden;
+        }
+        .spotify-equalizer {
+            display: inline-flex;
+            align-items: flex-end;
+            gap: 3px;
+            height: 15px;
+        }
+        .eq-bar {
+            width: 3px;
+            background: #1DB954;
+            border-radius: 2px;
+            animation: eq-bounce 1.1s ease-in-out infinite alternate;
+        }
+        .eq-bar:nth-child(1) { height: 60%; animation-delay: 0.1s; }
+        .eq-bar:nth-child(2) { height: 100%; animation-delay: 0.3s; }
+        .eq-bar:nth-child(3) { height: 40%; animation-delay: 0.2s; }
+        .eq-bar:nth-child(4) { height: 85%; animation-delay: 0.4s; }
+        @keyframes eq-bounce {
+            0% { transform: scaleY(0.25); }
+            100% { transform: scaleY(1); }
+        }
+        .spotify-kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 16px;
+        }
+        .spotify-kpi-card {
+            background: rgba(14, 38, 80, 0.6);
+            border: 1px solid rgba(165, 200, 255, 0.2);
+            border-radius: 12px;
+            padding: 18px 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            transition: transform 0.2s ease, border-color 0.2s ease;
+        }
+        .spotify-kpi-card:hover {
+            transform: translateY(-2px);
+            border-color: rgba(29, 185, 84, 0.5);
+        }
+        .kpi-label {
+            font-size: 0.78rem;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: #A5C8FF;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .kpi-value {
+            font-size: 1.65rem;
+            font-weight: 900;
+            color: #FFFFFF;
+            font-family: 'Montserrat', sans-serif;
+            line-height: 1.2;
+        }
+        .kpi-subtext {
+            font-size: 0.78rem;
+            color: rgba(225, 232, 240, 0.7);
+        }
+        .spotify-analytics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+            gap: 20px;
+        }
+        .analytics-block {
+            background: rgba(11, 30, 63, 0.6);
+            border: 1px solid rgba(165, 200, 255, 0.18);
+            border-radius: 14px;
+            padding: 22px;
+        }
+        .analytics-block-title {
+            font-family: 'Montserrat', sans-serif;
+            font-size: 1.05rem;
+            font-weight: 800;
+            color: #E1E8F0;
+            margin-bottom: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .time-bar-row {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            margin-bottom: 12px;
+        }
+        .time-bar-header {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.82rem;
+            color: #E1E8F0;
+        }
+        .time-bar-bg {
+            width: 100%;
+            height: 8px;
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .time-bar-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .dow-bars-container {
+            display: flex;
+            align-items: flex-end;
+            justify-content: space-between;
+            gap: 8px;
+            height: 120px;
+            padding-top: 15px;
+        }
+        .dow-col {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+            height: 100%;
+            justify-content: flex-end;
+        }
+        .dow-bar-fill {
+            width: 100%;
+            max-width: 24px;
+            border-radius: 4px 4px 0 0;
+            background: linear-gradient(180deg, #1DB954 0%, #0d7031 100%);
+            min-height: 4px;
+            transition: height 0.5s ease;
+        }
+        .dow-label {
+            font-size: 0.72rem;
+            color: #A5C8FF;
+            font-weight: 700;
+        }
+        .dow-count {
+            font-size: 0.68rem;
+            color: rgba(225, 232, 240, 0.7);
+        }
+        .artist-rank-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 12px;
+            background: rgba(14, 38, 80, 0.45);
+            border-radius: 8px;
+            margin-bottom: 8px;
+            transition: background 0.2s ease;
+        }
+        .artist-rank-item:hover {
+            background: rgba(14, 38, 80, 0.8);
+        }
+        .genre-chip {
+            display: inline-block;
+            background: rgba(29, 185, 84, 0.15);
+            border: 1px solid rgba(29, 185, 84, 0.35);
+            color: #A7F3D0;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.78rem;
+            font-weight: 600;
+            margin: 3px;
+        }
+        .history-track-card {
+            background: rgba(11, 30, 63, 0.65);
+            border: 1px solid rgba(165, 200, 255, 0.16);
+            border-radius: 12px;
+            padding: 14px 18px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+        }
+        .history-track-card:hover {
+            border-color: rgba(29, 185, 84, 0.4);
+            background: rgba(14, 38, 80, 0.7);
+        }
+        .spotify-green-btn {
+            background: #1DB954;
+            color: #FFFFFF;
+            font-weight: 700;
+            border: none;
+            border-radius: 24px;
+            padding: 10px 20px;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            text-decoration: none;
+            font-size: 0.88rem;
+            cursor: pointer;
+            transition: background 0.2s ease, transform 0.15s ease, box-shadow 0.2s ease;
+        }
+        .spotify-green-btn:hover {
+            background: #1ed760;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 14px rgba(29, 185, 84, 0.4);
+        }
+        .preview-audio-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #FFFFFF;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 0.78rem;
+            flex-shrink: 0;
+            transition: background 0.2s ease;
+        }
+        .preview-audio-btn:hover {
+            background: #1DB954;
+            border-color: #1DB954;
+        }
+        .spotify-search-input {
+            width: 100%;
+            padding: 10px 16px;
+            background: rgba(11, 30, 63, 0.75);
+            border: 1px solid rgba(165, 200, 255, 0.3);
+            border-radius: 8px;
+            color: #E1E8F0;
+            font-size: 0.95rem;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .spotify-search-input:focus {
+            border-color: #1DB954;
+            box-shadow: 0 0 10px rgba(29, 185, 84, 0.35);
+        }
+        @media (max-width: 768px) {
+            .history-track-card {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 12px;
+            }
+            .history-track-card > div:last-child {
+                width: 100%;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                border-top: 1px solid rgba(165, 200, 255, 0.1);
+                padding-top: 10px;
+            }
+        }
+    </style>
+
+    <div class="spotify-page-container">
+        {spotify_page_content}
+    </div>
+
+    <script>
+        let currentAudio = null;
+        let currentAudioBtn = null;
+
+        function toggleAudioPreview(btn, url) {
+            if (!url) return;
+            if (currentAudio && !currentAudio.paused) {
+                currentAudio.pause();
+                if (currentAudioBtn) {
+                    currentAudioBtn.innerHTML = '▶';
+                    currentAudioBtn.title = 'Play 30s preview';
+                }
+                if (currentAudioBtn === btn) {
+                    currentAudio = null;
+                    currentAudioBtn = null;
+                    return;
+                }
+            }
+            currentAudio = new Audio(url);
+            currentAudioBtn = btn;
+            btn.innerHTML = '⏸';
+            btn.title = 'Pause preview';
+            currentAudio.play().catch(e => {
+                console.log('Audio preview playback error:', e);
+                btn.innerHTML = '▶';
+            });
+            currentAudio.onended = () => {
+                btn.innerHTML = '▶';
+                currentAudio = null;
+                currentAudioBtn = null;
+            };
+        }
+
+        function filterSpotifyHistory() {
+            const input = document.getElementById('spotify-filter-input');
+            if (!input) return;
+            const query = input.value.trim().toLowerCase();
+            const cards = document.querySelectorAll('.history-track-card');
+            let visibleCount = 0;
+            cards.forEach(card => {
+                const searchData = (card.getAttribute('data-search') || '').toLowerCase();
+                if (!query || searchData.includes(query)) {
+                    card.style.display = 'flex';
+                    visibleCount++;
+                } else {
+                    card.style.display = 'none';
+                }
+            });
+            const noMatch = document.getElementById('history-no-match');
+            if (noMatch) {
+                noMatch.style.display = (visibleCount === 0 && cards.length > 0) ? 'block' : 'none';
+            }
+        }
+    </script>
+</body>
+</html>'''
+
 LOGIN_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
     <div class="stars"></div>
     <div class="horizon"></div>
@@ -4773,6 +5133,49 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             self.render_prompts_page()
             return
 
+        if parsed.path == '/spotify':
+            params = urllib.parse.parse_qs(parsed.query)
+            demo_mode = params.get('demo', ['0'])[0] == '1'
+            msg = params.get('msg', [''])[0]
+            err = params.get('error', [''])[0]
+            if params.get('connected', ['0'])[0] == '1':
+                msg = 'Successfully connected your Spotify account!'
+            elif params.get('disconnected', ['0'])[0] == '1':
+                msg = 'Disconnected Spotify account.'
+            elif err:
+                msg = f'Spotify error: {err}'
+            refresh = params.get('refresh', ['0'])[0] == '1'
+            self.render_spotify_page(demo=demo_mode, message=msg, refresh=refresh)
+            return
+
+        if parsed.path == '/auth/spotify':
+            self.handle_spotify_auth()
+            return
+
+        if parsed.path == '/auth/spotify/callback':
+            self.handle_spotify_callback(parsed.query)
+            return
+
+        if parsed.path == '/auth/spotify/disconnect':
+            self.handle_spotify_disconnect()
+            return
+
+        if parsed.path == '/api/spotify/history':
+            self.handle_api_spotify_history(parsed.query)
+            return
+
+        if parsed.path == '/api/spotify/now-playing':
+            self.handle_api_spotify_now_playing()
+            return
+
+        if parsed.path == '/api/spotify/status':
+            self.handle_api_spotify_status()
+            return
+
+        if parsed.path == '/api/spotify/sync':
+            self.handle_api_spotify_sync()
+            return
+
         if parsed.path == '/history':
             params = urllib.parse.parse_qs(parsed.query)
             selected_artist = params.get('artist', [''])[0].strip()
@@ -5247,6 +5650,10 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
 
             self.send_error(404, 'Not Found')
             return
+        if self.path == '/auth/spotify/disconnect':
+            self.handle_spotify_disconnect()
+            return
+
         if self.path not in ('/submit', '/analyze', '/prompts/save'):
             self.send_error(404, 'Not Found')
             return
@@ -6292,6 +6699,740 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
 
         content = ARTIST_PAGE_HTML.replace('{app_header}', build_app_header('artist', user=current_user))\
                                   .replace('{artist_page_content}', page_content)
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/html; charset=utf-8')
+        self.send_header('Content-Length', str(len(content.encode('utf-8'))))
+        self.end_headers()
+        self.wfile.write(content.encode('utf-8'))
+
+    def handle_spotify_auth(self):
+        if not spotify.is_spotify_configured():
+            self.send_response(302)
+            self.send_header('Location', '/spotify?error=unconfigured')
+            self.end_headers()
+            return
+
+        state = secrets.token_urlsafe(16)
+        redirect_uri = spotify.resolve_spotify_redirect_uri(self.headers.get('Host'), is_secure=self.is_request_secure())
+        auth_url = spotify.get_auth_url(redirect_uri, state=state)
+        state_cookie = build_cookie_header('spotify_oauth_state', state, max_age=300, secure=self.is_request_secure())
+        self.send_response(302)
+        self.send_header('Set-Cookie', state_cookie)
+        self.send_header('Location', auth_url)
+        self.end_headers()
+
+    def handle_spotify_callback(self, query_string: str):
+        params = urllib.parse.parse_qs(query_string)
+        code = params.get('code', [''])[0]
+        state = params.get('state', [''])[0]
+        error = params.get('error', [''])[0]
+
+        expired_state_cookie = build_cookie_header('spotify_oauth_state', '', max_age=0, secure=self.is_request_secure())
+
+        if error:
+            self.send_response(302)
+            self.send_header('Set-Cookie', expired_state_cookie)
+            self.send_header('Location', f'/spotify?error={urllib.parse.quote(error)}')
+            self.end_headers()
+            return
+
+        cookies = parse_cookies(self.headers)
+        expected_state = cookies.get('spotify_oauth_state')
+
+        if not expected_state or state != expected_state:
+            self.send_response(302)
+            self.send_header('Set-Cookie', expired_state_cookie)
+            self.send_header('Location', '/spotify?error=state_mismatch')
+            self.end_headers()
+            return
+
+        if not code:
+            self.send_response(302)
+            self.send_header('Set-Cookie', expired_state_cookie)
+            self.send_header('Location', '/spotify?error=missing_code')
+            self.end_headers()
+            return
+
+        current_user = self.get_current_user()
+        if not current_user:
+            self.send_response(302)
+            self.send_header('Set-Cookie', expired_state_cookie)
+            self.send_header('Location', '/login')
+            self.end_headers()
+            return
+
+        try:
+            redirect_uri = spotify.resolve_spotify_redirect_uri(self.headers.get('Host'), is_secure=self.is_request_secure())
+            tokens = spotify.exchange_code_for_token(code, redirect_uri)
+            access_token = tokens['access_token']
+            refresh_token = tokens.get('refresh_token')
+            expires_in = tokens.get('expires_in', 3600)
+            exp_iso = datetime.fromtimestamp(datetime.now(timezone.utc).timestamp() + expires_in, tz=timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
+
+            profile = spotify.fetch_user_profile(access_token)
+
+            database.save_spotify_token(
+                user_email=current_user['email'],
+                access_token=access_token,
+                refresh_token=refresh_token,
+                expires_at=exp_iso,
+                spotify_user_id=profile.get('id'),
+                spotify_display_name=profile.get('display_name'),
+                spotify_profile_url=profile.get('spotify_url'),
+                spotify_image_url=profile.get('image_url')
+            )
+
+            # Pre-sync initial recent tracks into history table
+            try:
+                initial_tracks = spotify.fetch_recently_played(access_token, limit=50)
+                if initial_tracks:
+                    database.save_spotify_history_items(current_user['email'], initial_tracks)
+            except Exception as fe:
+                print(f"Initial Spotify recent tracks sync error: {fe}")
+
+            self.send_response(302)
+            self.send_header('Set-Cookie', expired_state_cookie)
+            self.send_header('Location', '/spotify?connected=1')
+            self.end_headers()
+        except Exception as e:
+            print(f"Spotify callback error: {e}")
+            self.send_response(302)
+            self.send_header('Set-Cookie', expired_state_cookie)
+            self.send_header('Location', f'/spotify?error={urllib.parse.quote(str(e))}')
+            self.end_headers()
+
+    def handle_spotify_disconnect(self):
+        current_user = self.get_current_user()
+        if current_user:
+            database.delete_spotify_token(current_user['email'])
+        self.send_response(302)
+        self.send_header('Location', '/spotify?disconnected=1')
+        self.end_headers()
+
+    def handle_api_spotify_status(self):
+        current_user = self.get_current_user()
+        configured = spotify.is_spotify_configured()
+        token_rec = database.get_spotify_token(current_user['email']) if current_user else None
+        connected = bool(token_rec and token_rec.get('access_token'))
+        payload = {
+            "configured": configured,
+            "connected": connected,
+            "spotify_user": {
+                "display_name": token_rec.get('spotify_display_name') if token_rec else None,
+                "user_id": token_rec.get('spotify_user_id') if token_rec else None,
+                "image_url": token_rec.get('spotify_image_url') if token_rec else None,
+                "profile_url": token_rec.get('spotify_profile_url') if token_rec else None,
+            } if token_rec else None
+        }
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/json; charset=utf-8')
+        self.end_headers()
+        self.wfile.write(json.dumps(payload).encode('utf-8'))
+
+    def handle_api_spotify_now_playing(self):
+        current_user = self.get_current_user()
+        if not current_user:
+            self.send_response(401)
+            self.end_headers()
+            return
+
+        access_token = spotify.get_valid_access_token(current_user['email'])
+        if not access_token:
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(json.dumps({'playing': False, 'connected': False}).encode('utf-8'))
+            return
+
+        now_playing = spotify.fetch_currently_playing(access_token)
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/json; charset=utf-8')
+        self.end_headers()
+        self.wfile.write(json.dumps({'playing': bool(now_playing), 'track': now_playing, 'connected': True}).encode('utf-8'))
+
+    def handle_api_spotify_history(self, query_string: str):
+        current_user = self.get_current_user()
+        if not current_user:
+            self.send_response(401)
+            self.end_headers()
+            return
+
+        params = urllib.parse.parse_qs(query_string)
+        demo_mode = params.get('demo', ['0'])[0] == '1'
+
+        if demo_mode:
+            _, sample_tracks, analytics = spotify.get_demo_sample_data()
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(json.dumps({'tracks': sample_tracks, 'analytics': analytics, 'demo': True}).encode('utf-8'))
+            return
+
+        access_token = spotify.get_valid_access_token(current_user['email'])
+        if not access_token:
+            saved_history = database.get_spotify_history(current_user['email'], limit=50)
+            analytics = spotify.compute_analytics(saved_history)
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(json.dumps({'tracks': saved_history, 'analytics': analytics, 'connected': False}).encode('utf-8'))
+            return
+
+        try:
+            tracks = spotify.fetch_recently_played(access_token, limit=50)
+            if tracks:
+                database.save_spotify_history_items(current_user['email'], tracks)
+            top_artists = spotify.fetch_top_artists(access_token, limit=20)
+            analytics = spotify.compute_analytics(tracks, top_artists=top_artists)
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(json.dumps({'tracks': tracks, 'analytics': analytics, 'connected': True}).encode('utf-8'))
+        except Exception as e:
+            saved_history = database.get_spotify_history(current_user['email'], limit=50)
+            analytics = spotify.compute_analytics(saved_history)
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(json.dumps({'tracks': saved_history, 'analytics': analytics, 'error': str(e)}).encode('utf-8'))
+
+    def handle_api_spotify_sync(self):
+        current_user = self.get_current_user()
+        if not current_user:
+            self.send_response(401)
+            self.end_headers()
+            return
+
+        access_token = spotify.get_valid_access_token(current_user['email'])
+        if not access_token:
+            self.send_response(400)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(json.dumps({'error': 'Spotify not connected'}).encode('utf-8'))
+            return
+
+        try:
+            tracks = spotify.fetch_recently_played(access_token, limit=50)
+            inserted = database.save_spotify_history_items(current_user['email'], tracks)
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(json.dumps({'success': True, 'count': len(tracks), 'new_items': inserted}).encode('utf-8'))
+        except Exception as e:
+            self.send_response(500)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(json.dumps({'error': str(e)}).encode('utf-8'))
+
+    def render_spotify_page(self, demo: bool = False, message: str = '', refresh: bool = False):
+        current_user = self.get_current_user()
+        if not current_user:
+            self.send_response(302)
+            self.send_header('Location', '/login')
+            self.end_headers()
+            return
+
+        profile = None
+        tracks: List[Dict[str, Any]] = []
+        top_artists: List[Dict[str, Any]] = []
+        now_playing = None
+        analytics = None
+        is_connected = False
+        is_demo = demo
+        is_configured = spotify.is_spotify_configured()
+
+        if is_demo:
+            profile, tracks, analytics = spotify.get_demo_sample_data()
+            now_playing = tracks[0] if tracks else None
+            is_connected = True
+        else:
+            token_rec = database.get_spotify_token(current_user['email'])
+            if token_rec:
+                access_token = spotify.get_valid_access_token(current_user['email'])
+                if access_token:
+                    is_connected = True
+                    profile = {
+                        'display_name': token_rec.get('spotify_display_name') or 'Spotify User',
+                        'id': token_rec.get('spotify_user_id') or '',
+                        'image_url': token_rec.get('spotify_image_url') or '',
+                        'spotify_url': token_rec.get('spotify_profile_url') or '',
+                    }
+                    try:
+                        tracks = spotify.fetch_recently_played(access_token, limit=50)
+                        if tracks:
+                            database.save_spotify_history_items(current_user['email'], tracks)
+                        top_artists = spotify.fetch_top_artists(access_token, limit=20)
+                        now_playing = spotify.fetch_currently_playing(access_token)
+                    except Exception as e:
+                        print(f"Spotify fetch error: {e}")
+                    
+                    if not tracks:
+                        tracks = database.get_spotify_history(current_user['email'], limit=50)
+                    
+                    analytics = spotify.compute_analytics(tracks, top_artists=top_artists)
+                else:
+                    is_connected = False
+                    if not message:
+                        message = "Your Spotify session has expired. Please reconnect your account."
+
+        if not analytics:
+            analytics = spotify.compute_analytics([])
+
+        # Build UI Sections
+        message_banner_html = f'<div class="message" style="margin-bottom: 20px;">{html_escape(message)}</div>' if message else ''
+
+        # 1. Top Bar Actions
+        top_actions = []
+        if is_demo:
+            top_actions.append('<a href="/spotify" class="pill-btn secondary" style="font-size: 0.84rem; padding: 6px 14px; text-decoration: none;">Exit Demo</a>')
+            if is_configured:
+                top_actions.append('<a href="/auth/spotify" class="spotify-green-btn" style="font-size: 0.84rem; padding: 6px 16px;">Connect Real Spotify</a>')
+        elif is_connected:
+            top_actions.append('<a href="/spotify?refresh=1" class="pill-btn secondary" style="font-size: 0.84rem; padding: 6px 14px; text-decoration: none;" title="Refresh listening history">🔄 Sync Fresh</a>')
+            top_actions.append('<a href="/auth/spotify/disconnect" class="pill-btn secondary" style="font-size: 0.84rem; padding: 6px 14px; text-decoration: none; border-color: rgba(239, 68, 68, 0.4); color: #FCA5A5;" title="Disconnect Spotify account">🚪 Disconnect</a>')
+        else:
+            if is_configured:
+                top_actions.append('<a href="/auth/spotify" class="spotify-green-btn" style="font-size: 0.84rem; padding: 8px 18px;">🎧 Connect Spotify</a>')
+            top_actions.append('<a href="/spotify?demo=1" class="pill-btn secondary" style="font-size: 0.84rem; padding: 8px 16px; text-decoration: none;">🧪 Try Demo Mode</a>')
+
+        top_actions_html = f'<div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">{"".join(top_actions)}</div>'
+
+        # 2. Connection State Card
+        if is_demo:
+            state_card_html = '''
+            <div style="background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.35); border-radius: 14px; padding: 16px 20px; display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <span style="font-size: 1.4rem;">🧪</span>
+                    <div>
+                        <div style="color: #FCD34D; font-weight: 800; font-family: 'Montserrat', sans-serif;">Interactive Demo Preview Mode</div>
+                        <div style="color: rgba(225, 232, 240, 0.7); font-size: 0.82rem; margin-top: 2px;">Viewing simulated Spotify listening history, habit charts, and lyrics integration.</div>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <a href="/spotify" class="pill-btn secondary" style="font-size: 0.78rem; padding: 6px 12px; text-decoration: none;">Exit Demo</a>
+                </div>
+            </div>
+            '''
+        elif is_connected and profile:
+            display_name = html_escape(profile.get('display_name') or 'Spotify User')
+            user_id = html_escape(profile.get('id') or '')
+            avatar_url = profile.get('image_url')
+            if avatar_url:
+                avatar_el = f'<img src="{html_escape(avatar_url)}" alt="{display_name}" style="width: 44px; height: 44px; border-radius: 50%; object-fit: cover; border: 2px solid #1DB954;">'
+            else:
+                initial = (display_name[0] if display_name else 'S').upper()
+                avatar_el = f'<div style="width: 44px; height: 44px; border-radius: 50%; background: #1DB954; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 1.1rem;">{html_escape(initial)}</div>'
+
+            history_count = database.get_spotify_history_count(current_user['email'])
+            archive_note = f' &bull; {history_count} tracks saved in personal archive' if history_count > 0 else ''
+
+            state_card_html = f'''
+            <div style="background: rgba(14, 38, 80, 0.55); border: 1px solid rgba(29, 185, 84, 0.35); border-radius: 14px; padding: 16px 22px; display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;">
+                <div style="display: flex; align-items: center; gap: 14px;">
+                    {avatar_el}
+                    <div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span style="color: #FFFFFF; font-weight: 800; font-family: 'Montserrat', sans-serif; font-size: 1.1rem;">{display_name}</span>
+                            <span style="background: rgba(29, 185, 84, 0.2); border: 1px solid rgba(29, 185, 84, 0.5); color: #6EE7B7; font-size: 0.72rem; font-weight: 700; padding: 2px 8px; border-radius: 12px;">🟢 Connected</span>
+                        </div>
+                        <div style="color: #A5C8FF; font-size: 0.8rem; margin-top: 3px;">
+                            Spotify ID: {user_id}{archive_note}
+                        </div>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <a href="/spotify?refresh=1" class="pill-btn secondary" style="font-size: 0.8rem; padding: 6px 14px; text-decoration: none;">🔄 Sync History</a>
+                </div>
+            </div>
+            '''
+        elif not is_configured:
+            redirect_uri_val = spotify.resolve_spotify_redirect_uri(self.headers.get('Host'), is_secure=self.is_request_secure())
+            state_card_html = f'''
+            <div class="spotify-card" style="border-color: rgba(245, 158, 11, 0.35); background: linear-gradient(135deg, rgba(20, 24, 45, 0.9) 0%, rgba(10, 14, 25, 0.95) 100%);">
+                <div style="display: flex; align-items: flex-start; gap: 16px; flex-wrap: wrap;">
+                    <div style="font-size: 2.2rem; line-height: 1;">⚙️</div>
+                    <div style="flex: 1; min-width: 280px;">
+                        <h2 style="margin: 0 0 6px 0; font-family: 'Montserrat', sans-serif; font-size: 1.25rem; color: #FFFFFF;">Spotify API Setup Required</h2>
+                        <p style="margin: 0 0 14px 0; color: rgba(225, 232, 240, 0.8); font-size: 0.88rem; line-height: 1.5;">
+                            To fetch your real listening history and habit analytics, configure free Spotify Developer credentials for Calling Hours:
+                        </p>
+                        <ol style="margin: 0 0 16px 20px; padding: 0; color: #A5C8FF; font-size: 0.85rem; line-height: 1.6;">
+                            <li>Open the <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noopener noreferrer" style="color: #1DB954; font-weight: 700; text-decoration: underline;">Spotify Developer Dashboard</a> and create an App (e.g. <em>Calling Hours</em>).</li>
+                            <li>In the App Settings, add this exact Redirect URI:<br>
+                                <code style="display: inline-block; background: rgba(0,0,0,0.5); padding: 4px 10px; border-radius: 6px; color: #6EE7B7; margin: 4px 0; font-family: monospace;">{html_escape(redirect_uri_val)}</code>
+                            </li>
+                            <li>Copy your <strong>Client ID</strong> and <strong>Client Secret</strong> into <code style="background: rgba(0,0,0,0.4); padding: 2px 6px; border-radius: 4px; color: #E1E8F0;">calling_hours_secrets.py</code> (or set <code style="background: rgba(0,0,0,0.4); padding: 2px 6px; border-radius: 4px; color: #E1E8F0;">SPOTIFY_CLIENT_ID</code> and <code style="background: rgba(0,0,0,0.4); padding: 2px 6px; border-radius: 4px; color: #E1E8F0;">SPOTIFY_CLIENT_SECRET</code> env vars).</li>
+                            <li>Reload this page and click <strong>Connect with Spotify</strong>.</li>
+                        </ol>
+                        <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+                            <a href="/spotify?demo=1" class="pill-btn primary" style="text-decoration: none; font-size: 0.86rem; padding: 8px 16px;">
+                                🧪 Try Demo Mode with Sample Data &rarr;
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            '''
+        else:
+            state_card_html = '''
+            <div class="spotify-card" style="border-color: rgba(29, 185, 84, 0.4); text-align: center; padding: 40px 24px;">
+                <div style="font-size: 3rem; margin-bottom: 12px;">🎧</div>
+                <h2 style="font-family: 'Montserrat', sans-serif; font-size: 1.5rem; color: #FFFFFF; margin: 0 0 8px 0;">Connect Your Spotify Account</h2>
+                <p style="max-width: 580px; margin: 0 auto 20px auto; color: rgba(225, 232, 240, 0.75); font-size: 0.92rem; line-height: 1.5;">
+                    Link your Spotify account to sync listening history, analyze listening habits, discover release eras, and trigger 1-click Gemini poetic lyrics analysis on the songs you love.
+                </p>
+                <div style="display: flex; justify-content: center; gap: 14px; flex-wrap: wrap;">
+                    <a href="/auth/spotify" class="spotify-green-btn" style="font-size: 0.95rem; padding: 12px 28px;">
+                        🎧 Connect with Spotify
+                    </a>
+                    <a href="/spotify?demo=1" class="pill-btn secondary" style="font-size: 0.9rem; padding: 10px 20px; text-decoration: none;">
+                        🧪 Preview Demo
+                    </a>
+                </div>
+            </div>
+            '''
+
+        # 3. Now Playing Card (if active)
+        now_playing_html = ''
+        if now_playing:
+            np_track = html_escape(now_playing.get('name') or 'Unknown Track')
+            np_artist = html_escape(now_playing.get('artist') or 'Unknown Artist')
+            np_album = html_escape(now_playing.get('album') or '')
+            np_img = html_escape(now_playing.get('album_image') or '')
+            np_url = html_escape(now_playing.get('spotify_url') or '')
+            np_prog_fmt = html_escape(now_playing.get('progress_formatted') or '0:00')
+            np_dur_fmt = html_escape(now_playing.get('duration_formatted') or '0:00')
+            np_pct = now_playing.get('progress_percent') or 0
+
+            img_el = f'<img src="{np_img}" alt="{np_track}" style="width: 64px; height: 64px; border-radius: 10px; object-fit: cover; border: 1px solid rgba(29, 185, 84, 0.4); flex-shrink: 0;">' if np_img else ''
+            analyze_link = f'/?artist={urllib.parse.quote(now_playing.get("artist") or "")}&song={urllib.parse.quote(now_playing.get("name") or "")}&auto_analyze=1'
+            artist_link = f'/artist?artist={urllib.parse.quote(now_playing.get("artist") or "")}'
+
+            now_playing_html = f'''
+            <div class="spotify-now-playing-card">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <div class="spotify-equalizer">
+                            <div class="eq-bar"></div>
+                            <div class="eq-bar"></div>
+                            <div class="eq-bar"></div>
+                            <div class="eq-bar"></div>
+                        </div>
+                        <span style="font-family: 'Montserrat', sans-serif; font-size: 0.8rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: #1DB954;">Currently Playing</span>
+                    </div>
+                    <div style="font-size: 0.78rem; color: #6EE7B7; font-weight: 600;">{np_prog_fmt} / {np_dur_fmt}</div>
+                </div>
+
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;">
+                    <div style="display: flex; align-items: center; gap: 14px;">
+                        {img_el}
+                        <div>
+                            <div style="font-size: 1.2rem; font-weight: 800; color: #FFFFFF; font-family: 'Montserrat', sans-serif;">
+                                <a href="{np_url}" target="_blank" rel="noopener noreferrer" style="color: #FFFFFF; text-decoration: none;" title="Open in Spotify">{np_track}</a>
+                            </div>
+                            <div style="font-size: 0.88rem; color: #A5C8FF; margin-top: 2px;">
+                                <a href="{artist_link}" style="color: #A5C8FF; text-decoration: none;" title="View Artist Profile">{np_artist}</a>
+                                {f' &bull; <span style="color: rgba(225, 232, 240, 0.6);">{np_album}</span>' if np_album else ''}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                        <a href="{analyze_link}" class="pill-btn primary" style="font-size: 0.82rem; padding: 8px 16px; text-decoration: none;" title="Fetch lyrics and launch Gemini thematic analysis">
+                            ✨ Analyze Lyrics
+                        </a>
+                        <a href="{artist_link}" class="pill-btn secondary" style="font-size: 0.82rem; padding: 8px 14px; text-decoration: none;">
+                            👤 Artist Intel
+                        </a>
+                        {f'<a href="{np_url}" target="_blank" rel="noopener noreferrer" class="pill-btn secondary" style="font-size: 0.82rem; padding: 8px 12px; text-decoration: none; border-color: rgba(29, 185, 84, 0.4); color: #6EE7B7;">🎧 Spotify</a>' if np_url else ''}
+                    </div>
+                </div>
+
+                <div style="width: 100%; height: 4px; background: rgba(255, 255, 255, 0.1); border-radius: 2px; margin-top: 14px; overflow: hidden;">
+                    <div style="width: {np_pct}%; height: 100%; background: #1DB954; border-radius: 2px;"></div>
+                </div>
+            </div>
+            '''
+
+        # 4. KPI Cards
+        kpis = [
+            ("🎧 Recent Plays", str(analytics.get('total_tracks', 0)), "Tracks in listening sample"),
+            ("⏱️ Total Audio", html_escape(analytics.get('total_duration_formatted', '0m')), "Continuous listening time"),
+            ("👥 Unique Artists", str(analytics.get('unique_artists_count', 0)), f"Across {analytics.get('unique_albums_count', 0)} distinct albums"),
+            ("⭐ Avg Popularity", f"{analytics.get('avg_popularity', 0)}/100", html_escape(analytics.get('popularity_vibe', ''))),
+            ("🎭 Archetype", html_escape(analytics.get('persona', 'Explorer')), html_escape(analytics.get('persona_desc', ''))),
+        ]
+        kpi_cards = []
+        for label, val, sub in kpis:
+            kpi_cards.append(f'''
+            <div class="spotify-kpi-card">
+                <div class="kpi-label">{label}</div>
+                <div class="kpi-value">{val}</div>
+                <div class="kpi-subtext">{sub}</div>
+            </div>
+            ''')
+        kpi_grid_html = f'<div class="spotify-kpi-grid">{"".join(kpi_cards)}</div>'
+
+        # 5. Visual Habit Analytics Grid
+        # Time of Day
+        tod_data = analytics.get('time_of_day', {})
+        tod_rows = []
+        tod_styles = {
+            'morning': ('🌅 Morning', '#F59E0B'),
+            'afternoon': ('☀️ Afternoon', '#3B82F6'),
+            'evening': ('🌆 Evening', '#8B5CF6'),
+            'night': ('🌙 Late Night', '#10B981'),
+        }
+        for key_name, (label, color) in tod_styles.items():
+            entry = tod_data.get(key_name, {})
+            pct = entry.get('percent', 0)
+            cnt = entry.get('count', 0)
+            tod_rows.append(f'''
+            <div class="time-bar-row">
+                <div class="time-bar-header">
+                    <span>{label}</span>
+                    <span style="font-weight: 700; color: #E1E8F0;">{pct}% <span style="font-weight: 400; color: rgba(225, 232, 240, 0.5);">({cnt})</span></span>
+                </div>
+                <div class="time-bar-bg">
+                    <div class="time-bar-fill" style="width: {pct}%; background: {color};"></div>
+                </div>
+            </div>
+            ''')
+        tod_html = f'''
+        <div class="analytics-block">
+            <div class="analytics-block-title">
+                <span>⏱️ Listening by Time of Day</span>
+                <span style="font-size: 0.75rem; color: #A5C8FF; font-weight: 400;">24-hour cycle</span>
+            </div>
+            {"".join(tod_rows)}
+        </div>
+        '''
+
+        # Day of Week
+        dow_data = analytics.get('day_of_week', {})
+        max_dow = max([v.get('count', 0) for v in dow_data.values()] or [1]) or 1
+        dow_cols = []
+        for day in ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]:
+            d_entry = dow_data.get(day, {})
+            cnt = d_entry.get('count', 0)
+            pct = d_entry.get('percent', 0)
+            h_pct = max(int((cnt / max_dow) * 85), 6) if cnt > 0 else 4
+            dow_cols.append(f'''
+            <div class="dow-col">
+                <div class="dow-count">{cnt}</div>
+                <div class="dow-bar-fill" style="height: {h_pct}%;" title="{day}: {cnt} plays ({pct}%)"></div>
+                <div class="dow-label">{day}</div>
+            </div>
+            ''')
+        dow_html = f'''
+        <div class="analytics-block">
+            <div class="analytics-block-title">
+                <span>📅 Activity by Day of Week</span>
+                <span style="font-size: 0.75rem; color: #A5C8FF; font-weight: 400;">Weekly distribution</span>
+            </div>
+            <div class="dow-bars-container">
+                {"".join(dow_cols)}
+            </div>
+        </div>
+        '''
+
+        # Top Artists
+        top_art_items = []
+        for a in analytics.get('top_artists', [])[:6]:
+            a_name = html_escape(a.get('artist') or '')
+            cnt = a.get('count', 0)
+            pct = a.get('percent', 0)
+            art_link = f'/artist?artist={urllib.parse.quote(a.get("artist") or "")}'
+            top_art_items.append(f'''
+            <div class="artist-rank-item">
+                <a href="{art_link}" style="color: #FFFFFF; font-weight: 700; text-decoration: none; font-size: 0.88rem;" title="Explore Artist Intelligence">{a_name}</a>
+                <span style="font-size: 0.78rem; color: #1DB954; font-weight: 700; background: rgba(29, 185, 84, 0.15); padding: 3px 8px; border-radius: 8px;">{cnt} plays ({pct}%)</span>
+            </div>
+            ''')
+        top_art_html = f'''
+        <div class="analytics-block">
+            <div class="analytics-block-title">
+                <span>👑 Top Artists in History</span>
+                <span style="font-size: 0.75rem; color: #A5C8FF; font-weight: 400;">Frequency</span>
+            </div>
+            {"".join(top_art_items) if top_art_items else '<div style="color: rgba(225, 232, 240, 0.5); font-style: italic; font-size: 0.85rem; padding: 20px 0; text-align: center;">No artist history available yet.</div>'}
+        </div>
+        '''
+
+        # Release Eras
+        era_data = analytics.get('release_eras', {})
+        era_rows = []
+        era_colors = {
+            '2020s': '#10B981',
+            '2010s': '#3B82F6',
+            '2000s': '#8B5CF6',
+            '1990s': '#EC4899',
+            '1980s': '#F59E0B',
+            'Classic': '#6B7280',
+        }
+        for era_name, color in era_colors.items():
+            e_entry = era_data.get(era_name, {})
+            pct = e_entry.get('percent', 0)
+            cnt = e_entry.get('count', 0)
+            if cnt > 0 or era_name in ('2020s', '2010s', '2000s'):
+                era_rows.append(f'''
+                <div class="time-bar-row">
+                    <div class="time-bar-header">
+                        <span>{era_name}</span>
+                        <span style="font-weight: 700; color: #E1E8F0;">{pct}% <span style="font-weight: 400; color: rgba(225, 232, 240, 0.5);">({cnt})</span></span>
+                    </div>
+                    <div class="time-bar-bg">
+                        <div class="time-bar-fill" style="width: {pct}%; background: {color};"></div>
+                    </div>
+                </div>
+                ''')
+        eras_html = f'''
+        <div class="analytics-block">
+            <div class="analytics-block-title">
+                <span>📻 Release Era Breakdown</span>
+                <span style="font-size: 0.75rem; color: #A5C8FF; font-weight: 400;">Decades</span>
+            </div>
+            {"".join(era_rows)}
+        </div>
+        '''
+
+        # Top Genres
+        genre_chips = []
+        for g in analytics.get('top_genres', []):
+            g_name = html_escape(g.get('genre') or '')
+            g_cnt = g.get('count', 0)
+            genre_chips.append(f'<span class="genre-chip">{g_name} <span style="opacity: 0.7; font-size: 0.7rem;">&bull; {g_cnt}</span></span>')
+        genres_html = ''
+        if genre_chips:
+            genres_html = f'''
+            <div class="analytics-block" style="grid-column: 1 / -1;">
+                <div class="analytics-block-title">
+                    <span>🏷️ Top Genre Landscape</span>
+                    <span style="font-size: 0.75rem; color: #A5C8FF; font-weight: 400;">Derived from your top artists</span>
+                </div>
+                <div style="display: flex; flex-wrap: wrap; gap: 4px;">
+                    {"".join(genre_chips)}
+                </div>
+            </div>
+            '''
+
+        analytics_grid_html = f'''
+        <div class="spotify-analytics-grid">
+            {tod_html}
+            {dow_html}
+            {top_art_html}
+            {eras_html}
+            {genres_html}
+        </div>
+        '''
+
+        # 6. Listening History Feed
+        history_cards = []
+        for idx, t in enumerate(tracks):
+            t_name = html_escape(t.get('name') or 'Unknown Track')
+            a_name = html_escape(t.get('artist') or 'Unknown Artist')
+            all_a = html_escape(t.get('all_artists') or a_name)
+            alb = html_escape(t.get('album') or '')
+            img = html_escape(t.get('album_image') or '')
+            dur = html_escape(t.get('duration_formatted') or '0:00')
+            rel = html_escape(t.get('relative_time') or '')
+            pop = t.get('popularity', 0)
+            preview = html_escape(t.get('preview_url') or '')
+            spot_url = html_escape(t.get('spotify_url') or '')
+            year = html_escape(t.get('release_year') or '')
+
+            search_blob = html_escape(f"{t.get('name', '')} {t.get('artist', '')} {t.get('album', '')} {year}")
+
+            img_el = f'<img src="{img}" alt="{t_name}" style="width: 48px; height: 48px; border-radius: 8px; object-fit: cover; flex-shrink: 0; border: 1px solid rgba(165, 200, 255, 0.2);">' if img else '<div style="width: 48px; height: 48px; border-radius: 8px; background: rgba(14, 38, 80, 0.6); display: flex; align-items: center; justify-content: center; font-size: 1.2rem; flex-shrink: 0;">🎵</div>'
+            preview_btn = f'<button type="button" class="preview-audio-btn" onclick="toggleAudioPreview(this, \'{preview}\')" title="Play 30s audio preview">▶</button>' if preview else ''
+
+            analyze_link = f'/?artist={urllib.parse.quote(t.get("artist") or "")}&song={urllib.parse.quote(t.get("name") or "")}&auto_analyze=1'
+            artist_link = f'/artist?artist={urllib.parse.quote(t.get("artist") or "")}'
+
+            album_year_text = f'{alb} ({year})' if year else alb
+
+            history_cards.append(f'''
+            <div class="history-track-card" data-search="{search_blob}">
+                <div style="display: flex; align-items: center; gap: 14px; min-width: 0; flex: 1;">
+                    {preview_btn}
+                    {img_el}
+                    <div style="min-width: 0; flex: 1;">
+                        <div style="font-weight: 800; font-size: 1rem; color: #FFFFFF; font-family: 'Montserrat', sans-serif; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                            <a href="{spot_url}" target="_blank" rel="noopener noreferrer" style="color: #FFFFFF; text-decoration: none;" title="Open in Spotify">{t_name}</a>
+                        </div>
+                        <div style="font-size: 0.84rem; color: #A5C8FF; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                            <a href="{artist_link}" style="color: #A5C8FF; text-decoration: none;" title="View Artist Profile">{all_a}</a>
+                            {f' &bull; <span style="color: rgba(225, 232, 240, 0.55);">{album_year_text}</span>' if alb else ''}
+                        </div>
+                    </div>
+                </div>
+
+                <div style="display: flex; align-items: center; gap: 12px; flex-shrink: 0;">
+                    <div style="text-align: right;">
+                        <div style="font-size: 0.8rem; color: #E1E8F0; font-weight: 600;">{rel}</div>
+                        <div style="font-size: 0.74rem; color: rgba(225, 232, 240, 0.5);">{dur} &bull; Pop: {pop}</div>
+                    </div>
+                    <div style="display: flex; gap: 6px; align-items: center;">
+                        <a href="{analyze_link}" class="pill-btn primary" style="font-size: 0.78rem; padding: 6px 12px; text-decoration: none;" title="Analyze lyrics with Gemini">
+                            ✨ Analyze Lyrics
+                        </a>
+                        <a href="{artist_link}" class="pill-btn secondary" style="font-size: 0.78rem; padding: 6px 10px; text-decoration: none;" title="Artist Intelligence">
+                            👤
+                        </a>
+                        {f'<a href="{spot_url}" target="_blank" rel="noopener noreferrer" class="pill-btn secondary" style="font-size: 0.78rem; padding: 6px 10px; text-decoration: none; border-color: rgba(29, 185, 84, 0.35); color: #6EE7B7;" title="Open in Spotify">🎧</a>' if spot_url else ''}
+                    </div>
+                </div>
+            </div>
+            ''')
+
+        tracks_count = len(tracks)
+        history_feed_html = f'''
+        <div style="display: flex; flex-direction: column; gap: 14px; margin-top: 10px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;">
+                <div>
+                    <h2 style="font-family: 'Montserrat', sans-serif; font-size: 1.3rem; font-weight: 800; color: #FFFFFF; margin: 0;">Listening History Stream ({tracks_count})</h2>
+                    <div style="font-size: 0.82rem; color: #A5C8FF; margin-top: 2px;">Recently played tracks synced from Spotify with 1-click lyric analysis</div>
+                </div>
+                <div style="flex: 1; max-width: 360px;">
+                    <input type="text" id="spotify-filter-input" class="spotify-search-input" placeholder="Filter recent songs or artists..." oninput="filterSpotifyHistory()">
+                </div>
+            </div>
+
+            <div id="history-no-match" style="display: none; text-align: center; color: rgba(225, 232, 240, 0.6); padding: 30px; font-style: italic;">
+                No recently played tracks match your filter.
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+                {"".join(history_cards) if history_cards else '<div style="text-align: center; color: rgba(225, 232, 240, 0.6); padding: 40px; font-style: italic;">No listening history found. Start listening on Spotify or click Sync to fetch tracks!</div>'}
+            </div>
+        </div>
+        '''
+
+        # Full Page Assembly
+        full_content = f'''
+        <div class="spotify-top-bar">
+            <div>
+                <h1 style="font-family: 'Montserrat', sans-serif; font-size: 2rem; font-weight: 900; margin: 0; color: #FFFFFF;">
+                    🎧 Spotify Listening Intelligence
+                </h1>
+                <div style="font-size: 0.88rem; color: #A5C8FF; margin-top: 4px;">
+                    Live playback, listening habits, recent streams, and one-click Gemini lyric analysis
+                </div>
+            </div>
+            {top_actions_html}
+        </div>
+
+        {message_banner_html}
+        {state_card_html}
+        {now_playing_html}
+        {kpi_grid_html if (is_connected or is_demo) else ''}
+        {analytics_grid_html if (is_connected or is_demo) else ''}
+        {history_feed_html if (is_connected or is_demo) else ''}
+        '''
+
+        content = SPOTIFY_PAGE_HTML.replace('{app_header}', build_app_header('spotify', user=current_user))\
+                                   .replace('{spotify_page_content}', full_content)
+
         self.send_response(200)
         self.send_header('Content-Type', 'text/html; charset=utf-8')
         self.send_header('Content-Length', str(len(content.encode('utf-8'))))

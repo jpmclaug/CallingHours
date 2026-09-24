@@ -363,6 +363,91 @@ class TestDatabase(unittest.TestCase):
         self.assertIsNotNone(shiver_rec)
         self.assertEqual(shiver_rec["theaudiodb_data"]["tempo"], 125)
 
+    def test_spotify_tokens_and_history(self):
+        # 1. Save and retrieve Spotify token
+        database.save_spotify_token(
+            user_email="testuser@example.com",
+            access_token="initial_access_token_123",
+            refresh_token="initial_refresh_token_456",
+            expires_at="2026-10-01 12:00:00",
+            spotify_user_id="spot_user_1",
+            spotify_display_name="Test Spotify User",
+            spotify_profile_url="https://open.spotify.com/user/spot_user_1",
+            spotify_image_url="https://img.spotify.com/avatar.jpg",
+            db_path=self.db_path
+        )
+        tok = database.get_spotify_token("testuser@example.com", db_path=self.db_path)
+        self.assertIsNotNone(tok)
+        self.assertEqual(tok["access_token"], "initial_access_token_123")
+        self.assertEqual(tok["refresh_token"], "initial_refresh_token_456")
+        self.assertEqual(tok["spotify_user_id"], "spot_user_1")
+        self.assertEqual(tok["spotify_display_name"], "Test Spotify User")
+
+        # 2. Update access token without refresh token (retaining previous refresh_token)
+        database.save_spotify_token(
+            user_email="testuser@example.com",
+            access_token="refreshed_access_token_789",
+            refresh_token=None,
+            expires_at="2026-10-02 12:00:00",
+            db_path=self.db_path
+        )
+        tok2 = database.get_spotify_token("testuser@example.com", db_path=self.db_path)
+        self.assertIsNotNone(tok2)
+        self.assertEqual(tok2["access_token"], "refreshed_access_token_789")
+        self.assertEqual(tok2["refresh_token"], "initial_refresh_token_456")
+        self.assertEqual(tok2["spotify_display_name"], "Test Spotify User")
+
+        # 3. Save Spotify history items
+        items = [
+            {
+                "track_id": "trk_1",
+                "played_at": "2026-09-24T10:00:00Z",
+                "name": "Bleed American",
+                "artist": "Jimmy Eat World",
+                "album": "Bleed American",
+                "album_image": "https://img.spotify.com/alb1.jpg",
+                "duration_ms": 182000,
+                "popularity": 75,
+                "preview_url": "https://preview.spotify.com/1",
+                "spotify_url": "https://open.spotify.com/track/trk_1",
+                "release_date": "2001-07-24"
+            },
+            {
+                "track_id": "trk_2",
+                "played_at": "2026-09-24T09:30:00Z",
+                "name": "Kisses",
+                "artist": "Slowdive",
+                "album": "everything is alive",
+                "album_image": "https://img.spotify.com/alb2.jpg",
+                "duration_ms": 236000,
+                "popularity": 65,
+                "preview_url": "https://preview.spotify.com/2",
+                "spotify_url": "https://open.spotify.com/track/trk_2",
+                "release_date": "2023-09-01"
+            }
+        ]
+        inserted = database.save_spotify_history_items("testuser@example.com", items, db_path=self.db_path)
+        self.assertEqual(inserted, 2)
+        self.assertEqual(database.get_spotify_history_count("testuser@example.com", db_path=self.db_path), 2)
+
+        # 4. Duplicate items ignored
+        database.save_spotify_history_items("testuser@example.com", items, db_path=self.db_path)
+        self.assertEqual(database.get_spotify_history_count("testuser@example.com", db_path=self.db_path), 2)
+
+        # 5. Fetch history
+        hist = database.get_spotify_history("testuser@example.com", limit=10, db_path=self.db_path)
+        self.assertEqual(len(hist), 2)
+        self.assertEqual(hist[0]["track_name"], "Bleed American")
+        self.assertEqual(hist[1]["track_name"], "Kisses")
+
+        # 6. Delete token (disconnect)
+        database.delete_spotify_token("testuser@example.com", db_path=self.db_path)
+        self.assertIsNone(database.get_spotify_token("testuser@example.com", db_path=self.db_path))
+
+        # 7. Clear history
+        database.clear_spotify_history("testuser@example.com", db_path=self.db_path)
+        self.assertEqual(database.get_spotify_history_count("testuser@example.com", db_path=self.db_path), 0)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -36,3 +36,12 @@ THEAUDIODB_API_KEY = "123"
 # Obtain a key from https://www.setlist.fm/settings/api
 SETLIST_FM_API_KEY = ""
 
+# Spotify API credentials (for listening history, recently played tracks, and listening analytics)
+# Obtain these from the Spotify Developer Dashboard: https://developer.spotify.com/dashboard
+# In your Spotify App settings, add Redirect URI: http://127.0.0.1:8000/auth/spotify/callback
+SPOTIFY_CLIENT_ID = ""
+SPOTIFY_CLIENT_SECRET = ""
+# Optional: explicitly set callback redirect URI (defaults to dynamic host detection)
+# SPOTIFY_REDIRECT_URI = "http://127.0.0.1:8000/auth/spotify/callback"
+
+
