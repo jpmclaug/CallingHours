@@ -26,6 +26,8 @@ SPOTIFY_SCOPES = [
     "user-read-currently-playing",
     "user-read-private",
     "user-read-email",
+    "playlist-modify-public",
+    "playlist-modify-private",
 ]
 
 DEFAULT_TIMEOUT = 10
@@ -887,3 +889,192 @@ def get_demo_sample_data() -> Tuple[Dict[str, Any], List[Dict[str, Any]], Dict[s
 
     analytics = compute_analytics(sample_tracks, sample_top_artists)
     return profile, sample_tracks, analytics
+
+
+def search_track(access_token: str, artist: str, song: str) -> Optional[Dict[str, Any]]:
+    """Search Spotify for a track by artist and song title."""
+    clean_artist = artist.strip()
+    clean_song = song.strip()
+    if not clean_artist or not clean_song:
+        return None
+
+    headers = {"Authorization": f"Bearer {access_token}"}
+    query = f'track:"{clean_song}" artist:"{clean_artist}"'
+    url = f"{SPOTIFY_API_BASE_URL}/search"
+    params = {"q": query, "type": "track", "limit": 1}
+
+    try:
+        resp = requests.get(url, headers=headers, params=params, timeout=DEFAULT_TIMEOUT)
+        if resp.status_code == 200:
+            data = resp.json()
+            items = data.get("tracks", {}).get("items", [])
+            if items:
+                item = items[0]
+                album_imgs = item.get("album", {}).get("images", [])
+                img_url = album_imgs[0].get("url") if album_imgs else ""
+                artists = [a.get("name", "") for a in item.get("artists", [])]
+                return {
+                    "id": item.get("id"),
+                    "uri": item.get("uri"),
+                    "name": item.get("name"),
+                    "artist": ", ".join(artists),
+                    "album": item.get("album", {}).get("name", ""),
+                    "album_image_url": img_url,
+                    "duration_ms": item.get("duration_ms"),
+                    "preview_url": item.get("preview_url"),
+                    "spotify_url": item.get("external_urls", {}).get("spotify", ""),
+                }
+
+        # Fallback without strict quotes
+        fallback_query = f"{clean_song} {clean_artist}"
+        resp = requests.get(url, headers=headers, params={"q": fallback_query, "type": "track", "limit": 1}, timeout=DEFAULT_TIMEOUT)
+        if resp.status_code == 200:
+            data = resp.json()
+            items = data.get("tracks", {}).get("items", [])
+            if items:
+                item = items[0]
+                album_imgs = item.get("album", {}).get("images", [])
+                img_url = album_imgs[0].get("url") if album_imgs else ""
+                artists = [a.get("name", "") for a in item.get("artists", [])]
+                return {
+                    "id": item.get("id"),
+                    "uri": item.get("uri"),
+                    "name": item.get("name"),
+                    "artist": ", ".join(artists),
+                    "album": item.get("album", {}).get("name", ""),
+                    "album_image_url": img_url,
+                    "duration_ms": item.get("duration_ms"),
+                    "preview_url": item.get("preview_url"),
+                    "spotify_url": item.get("external_urls", {}).get("spotify", ""),
+                }
+    except Exception as e:
+        print(f"Spotify search_track error for '{clean_artist} - {clean_song}': {e}")
+    return None
+
+
+def create_playlist(
+    access_token: str,
+    user_id: Optional[str] = None,
+    name: str = "Calling Hours Playlist",
+    description: str = "",
+    public: bool = False
+) -> Dict[str, Any]:
+    """Create a new playlist on Spotify."""
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "name": name,
+        "description": description or "Generated with Calling Hours Lyric Intelligence",
+        "public": public
+    }
+
+    # /v1/me/playlists is standard in current Spotify Web API
+    url = f"{SPOTIFY_API_BASE_URL}/me/playlists"
+    try:
+        resp = requests.post(url, headers=headers, json=payload, timeout=DEFAULT_TIMEOUT)
+        if resp.status_code not in (200, 201) and user_id:
+            url = f"{SPOTIFY_API_BASE_URL}/users/{user_id}/playlists"
+            resp = requests.post(url, headers=headers, json=payload, timeout=DEFAULT_TIMEOUT)
+        if resp.status_code in (200, 201):
+            data = resp.json()
+            return {
+                "id": data.get("id"),
+                "name": data.get("name"),
+                "uri": data.get("uri"),
+                "url": data.get("external_urls", {}).get("spotify", ""),
+            }
+        raise RuntimeError(f"Spotify API create playlist error ({resp.status_code}): {resp.text}")
+    except Exception as e:
+        print(f"Spotify create_playlist error: {e}")
+        raise
+
+
+def add_tracks_to_playlist(access_token: str, playlist_id: str, track_uris: List[str]) -> int:
+    """Add a list of track URIs to a Spotify playlist in chunks of up to 100."""
+    if not track_uris:
+        return 0
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json"
+    }
+    url = f"{SPOTIFY_API_BASE_URL}/playlists/{playlist_id}/tracks"
+    total_added = 0
+    batch_size = 100
+
+    for i in range(0, len(track_uris), batch_size):
+        chunk = track_uris[i:i + batch_size]
+        try:
+            resp = requests.post(url, headers=headers, json={"uris": chunk}, timeout=DEFAULT_TIMEOUT)
+            if resp.status_code in (200, 201):
+                total_added += len(chunk)
+            else:
+                print(f"Spotify add_tracks batch error ({resp.status_code}): {resp.text}")
+        except Exception as e:
+            print(f"Spotify add_tracks request exception: {e}")
+    return total_added
+
+
+def export_songs_to_spotify_playlist(
+    access_token: str,
+    user_id: Optional[str],
+    playlist_name: str,
+    songs: List[Dict[str, Any]],
+    description: str = ""
+) -> Dict[str, Any]:
+    """Resolve track URIs and generate a playlist directly in Spotify."""
+    playlist_meta = create_playlist(access_token, user_id, playlist_name, description=description)
+    playlist_id = playlist_meta["id"]
+
+    resolved_uris: List[str] = []
+    matched_count = 0
+    unmatched: List[str] = []
+
+    for item in songs:
+        artist = item.get("artist", "")
+        song = item.get("song", "")
+        # First check direct or audiodb spotify_id
+        spotify_id = item.get("spotify_id")
+        if not spotify_id and item.get("theaudiodb_data"):
+            audiodb = item["theaudiodb_data"]
+            if isinstance(audiodb, str):
+                try:
+                    audiodb = json.loads(audiodb)
+                except Exception:
+                    audiodb = {}
+            if isinstance(audiodb, dict):
+                spotify_id = audiodb.get("spotify_id")
+
+        if spotify_id and str(spotify_id).strip():
+            resolved_uris.append(f"spotify:track:{str(spotify_id).strip()}")
+            matched_count += 1
+            continue
+
+        # Otherwise search track
+        track_res = search_track(access_token, artist, song)
+        if track_res and track_res.get("uri"):
+            resolved_uris.append(track_res["uri"])
+            matched_count += 1
+        else:
+            unmatched.append(f"{artist} - {song}")
+
+    # Remove duplicates preserving order
+    seen = set()
+    unique_uris = []
+    for u in resolved_uris:
+        if u not in seen:
+            seen.add(u)
+            unique_uris.append(u)
+
+    added_count = add_tracks_to_playlist(access_token, playlist_id, unique_uris)
+    return {
+        "success": True,
+        "playlist_id": playlist_id,
+        "playlist_name": playlist_meta.get("name"),
+        "playlist_url": playlist_meta.get("url"),
+        "tracks_requested": len(songs),
+        "tracks_matched": matched_count,
+        "tracks_added": added_count,
+        "unmatched": unmatched,
+    }

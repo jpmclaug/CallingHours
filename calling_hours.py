@@ -446,6 +446,7 @@ def build_app_header(active_page: str = 'song', user: Optional[Dict[str, Any]] =
     song_active = ' active' if active_page == 'song' else ''
     artist_active = ' active' if active_page == 'artist' else ''
     spotify_active = ' active' if active_page == 'spotify' else ''
+    playlists_active = ' active' if active_page in ('playlist', 'playlists') else ''
     history_active = ' active' if active_page == 'history' else ''
     prompts_active = ' active' if active_page == 'prompts' else ''
     admin_active = ' active' if active_page == 'admin' else ''
@@ -515,6 +516,10 @@ def build_app_header(active_page: str = 'song', user: Optional[Dict[str, Any]] =
                     <span class="nav-icon">🎧</span>
                     <span class="nav-text">Spotify</span>
                 </a>
+                <a href="/playlists" class="app-nav-link{playlists_active}" id="nav-link-playlists">
+                    <span class="nav-icon">🎶</span>
+                    <span class="nav-text">Playlists</span>
+                </a>
                 <a href="/history" class="app-nav-link{history_active}" id="nav-link-history">
                     <span class="nav-icon">📜</span>
                     <span class="nav-text"><span class="desktop-only-text">Search </span>History</span>
@@ -539,6 +544,10 @@ def build_app_header(active_page: str = 'song', user: Optional[Dict[str, Any]] =
         <a href="/spotify" class="app-bottom-nav-link{spotify_active}" id="mobile-nav-link-spotify">
             <span class="nav-icon">🎧</span>
             <span class="nav-text">Spotify</span>
+        </a>
+        <a href="/playlists" class="app-bottom-nav-link{playlists_active}" id="mobile-nav-link-playlists">
+            <span class="nav-icon">🎶</span>
+            <span class="nav-text">Playlists</span>
         </a>
         <a href="/history" class="app-bottom-nav-link{history_active}" id="mobile-nav-link-history">
             <span class="nav-icon">📜</span>
@@ -4523,6 +4532,816 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
 </body>
 </html>'''
 
+PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
+    <div class="stars"></div>
+    <div class="horizon"></div>
+    {app_header}
+    <style>
+        .playlist-page-container {
+            position: relative;
+            z-index: 2;
+            width: min(1180px, 94vw);
+            margin: 0 auto 60px auto;
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+        }
+        .playlist-top-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+        .playlist-card {
+            background: linear-gradient(135deg, rgba(14, 34, 72, 0.85) 0%, rgba(6, 14, 30, 0.95) 100%);
+            border: 1px solid rgba(165, 200, 255, 0.22);
+            border-radius: 16px;
+            padding: 24px 28px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+        }
+        .playlist-kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 16px;
+        }
+        .playlist-kpi-card {
+            background: rgba(14, 38, 80, 0.6);
+            border: 1px solid rgba(165, 200, 255, 0.2);
+            border-radius: 12px;
+            padding: 16px 18px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            transition: transform 0.2s ease, border-color 0.2s ease;
+        }
+        .playlist-kpi-card:hover {
+            transform: translateY(-2px);
+            border-color: rgba(165, 200, 255, 0.4);
+        }
+        .playlist-kpi-value {
+            font-size: 1.8rem;
+            font-weight: 800;
+            color: #E1E8F0;
+            font-family: 'Montserrat', sans-serif;
+            line-height: 1.1;
+        }
+        .playlist-kpi-label {
+            font-size: 0.78rem;
+            color: #A5C8FF;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            font-weight: 600;
+        }
+        .playlist-mode-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+            gap: 14px;
+        }
+        .playlist-mode-card {
+            background: rgba(11, 30, 63, 0.55);
+            border: 1px solid rgba(165, 200, 255, 0.2);
+            border-radius: 14px;
+            padding: 18px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            gap: 12px;
+            cursor: pointer;
+            text-decoration: none;
+            transition: all 0.2s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        .playlist-mode-card:hover {
+            background: rgba(165, 200, 255, 0.12);
+            border-color: rgba(165, 200, 255, 0.5);
+            transform: translateY(-2px);
+        }
+        .playlist-mode-card.active {
+            background: linear-gradient(135deg, rgba(25, 70, 133, 0.5) 0%, rgba(14, 34, 72, 0.8) 100%);
+            border: 2px solid #A5C8FF;
+            box-shadow: 0 0 20px rgba(165, 200, 255, 0.25);
+        }
+        .playlist-mode-card.flagship {
+            border-color: rgba(165, 200, 255, 0.4);
+        }
+        .playlist-mode-badge {
+            align-self: flex-start;
+            font-size: 0.68rem;
+            font-weight: 800;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            padding: 3px 8px;
+            border-radius: 6px;
+            background: rgba(165, 200, 255, 0.15);
+            color: #A5C8FF;
+        }
+        .playlist-mode-badge.primary {
+            background: #A5C8FF;
+            color: #050A14;
+            box-shadow: 0 0 10px rgba(165, 200, 255, 0.4);
+        }
+        .playlist-mode-icon {
+            font-size: 1.8rem;
+            line-height: 1;
+        }
+        .playlist-mode-title {
+            font-size: 1.05rem;
+            font-weight: 800;
+            color: #E1E8F0;
+            font-family: 'Montserrat', sans-serif;
+            margin-top: 4px;
+        }
+        .playlist-mode-desc {
+            font-size: 0.8rem;
+            color: rgba(225, 232, 240, 0.68);
+            line-height: 1.4;
+        }
+        .playlist-mode-count {
+            font-size: 0.76rem;
+            color: #A5C8FF;
+            font-weight: 600;
+            margin-top: auto;
+        }
+        .playlist-form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 16px;
+            align-items: flex-end;
+        }
+        .playlist-input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .playlist-input-group label {
+            font-size: 0.78rem;
+            font-weight: 700;
+            color: #A5C8FF;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+        .playlist-input-group select,
+        .playlist-input-group input[type="text"] {
+            background: rgba(5, 10, 20, 0.85);
+            border: 1px solid rgba(165, 200, 255, 0.3);
+            border-radius: 8px;
+            padding: 10px 14px;
+            color: #FFFFFF;
+            font-family: inherit;
+            font-size: 0.9rem;
+            outline: none;
+            transition: border-color 0.2s ease;
+        }
+        .playlist-input-group select:focus,
+        .playlist-input-group input[type="text"]:focus {
+            border-color: #A5C8FF;
+            box-shadow: 0 0 10px rgba(165, 200, 255, 0.25);
+        }
+        .playlist-actions-toolbar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .btn-playlist-action {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 0.84rem;
+            font-weight: 700;
+            cursor: pointer;
+            text-decoration: none;
+            transition: all 0.2s ease;
+            border: 1px solid transparent;
+        }
+        .btn-playlist-spotify {
+            background: #1DB954;
+            color: #050A14;
+            font-weight: 800;
+            box-shadow: 0 4px 14px rgba(29, 185, 84, 0.35);
+        }
+        .btn-playlist-spotify:hover {
+            background: #1ed760;
+            transform: translateY(-1px);
+            box-shadow: 0 6px 18px rgba(29, 185, 84, 0.45);
+        }
+        .btn-playlist-outline {
+            background: rgba(165, 200, 255, 0.1);
+            border-color: rgba(165, 200, 255, 0.25);
+            color: #A5C8FF;
+        }
+        .btn-playlist-outline:hover {
+            background: rgba(165, 200, 255, 0.2);
+            color: #FFFFFF;
+            border-color: #A5C8FF;
+        }
+        .playlist-tracklist-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0 8px;
+        }
+        .playlist-tracklist-row {
+            background: rgba(11, 30, 63, 0.55);
+            border: 1px solid rgba(165, 200, 255, 0.15);
+            border-radius: 10px;
+            transition: all 0.15s ease;
+        }
+        .playlist-tracklist-row:hover {
+            background: rgba(165, 200, 255, 0.12);
+            border-color: rgba(165, 200, 255, 0.35);
+        }
+        .playlist-tracklist-row td {
+            padding: 12px 16px;
+            vertical-align: middle;
+        }
+        .playlist-tracklist-row td:first-child {
+            border-top-left-radius: 10px;
+            border-bottom-left-radius: 10px;
+        }
+        .playlist-tracklist-row td:last-child {
+            border-top-right-radius: 10px;
+            border-bottom-right-radius: 10px;
+        }
+        .playlist-track-num {
+            font-size: 0.86rem;
+            color: rgba(225, 232, 240, 0.5);
+            font-weight: 700;
+            width: 40px;
+            text-align: center;
+        }
+        .playlist-track-main {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+        .playlist-track-title {
+            font-weight: 700;
+            color: #E1E8F0;
+            font-size: 0.98rem;
+        }
+        .playlist-track-artist {
+            color: #A5C8FF;
+            font-size: 0.84rem;
+        }
+        .playlist-badge-model {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 0.72rem;
+            padding: 2px 7px;
+            border-radius: 6px;
+            background: rgba(120, 90, 255, 0.25);
+            color: #D1C4E9;
+            font-weight: 600;
+        }
+        .playlist-tab-btn {
+            background: transparent;
+            border: none;
+            color: #A5C8FF;
+            font-size: 0.95rem;
+            font-weight: 700;
+            font-family: 'Montserrat', sans-serif;
+            padding: 8px 18px;
+            border-radius: 20px;
+            cursor: pointer;
+            text-decoration: none;
+            transition: all 0.2s ease;
+        }
+        .playlist-tab-btn.active {
+            background: #A5C8FF;
+            color: #050A14;
+        }
+        .playlist-tag-chip {
+            display: inline-block;
+            background: rgba(165, 200, 255, 0.12);
+            color: #A5C8FF;
+            border: 1px solid rgba(165, 200, 255, 0.25);
+            padding: 3px 10px;
+            border-radius: 16px;
+            font-size: 0.76rem;
+            cursor: pointer;
+            text-decoration: none;
+            transition: all 0.15s ease;
+        }
+        .playlist-tag-chip:hover {
+            background: #A5C8FF;
+            color: #050A14;
+        }
+        .playlist-modal-backdrop {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(5, 10, 20, 0.85);
+            backdrop-filter: blur(8px);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .playlist-modal {
+            background: #0E2248;
+            border: 1px solid #A5C8FF;
+            border-radius: 16px;
+            padding: 28px;
+            max-width: 500px;
+            width: 100%;
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.7);
+            color: #E1E8F0;
+            position: relative;
+        }
+        #toast-notification {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            background: #194685;
+            color: #FFFFFF;
+            border: 1px solid #A5C8FF;
+            padding: 12px 20px;
+            border-radius: 10px;
+            font-size: 0.88rem;
+            font-weight: 600;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.5);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease, transform 0.3s ease;
+            transform: translateY(10px);
+            z-index: 2000;
+        }
+        #toast-notification.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    </style>
+
+    <div class="playlist-page-container">
+        {message_banner_html}
+
+        <!-- Top Title & Navigation -->
+        <div class="playlist-top-bar">
+            <div>
+                <h1 style="font-size: 2.1rem; font-weight: 800; font-family: 'Montserrat', sans-serif; color: #FFFFFF; display: flex; align-items: center; gap: 12px; margin: 0;">
+                    <span>🎶</span> Playlist Generator
+                </h1>
+                <p style="color: rgba(225, 232, 240, 0.7); font-size: 0.92rem; margin: 6px 0 0 0;">
+                    Curate, export, and listen to intelligent playlists created from your Calling Hours lyric analyses.
+                </p>
+            </div>
+            <div style="display: flex; gap: 10px; align-items: center; background: rgba(11, 30, 63, 0.7); padding: 4px; border-radius: 24px; border: 1px solid rgba(165, 200, 255, 0.2);">
+                <a href="/playlists" class="playlist-tab-btn{generate_tab_active}">✨ Generator Studio</a>
+                <a href="/playlists?tab=saved" class="playlist-tab-btn{saved_playlists_tab_active}">💾 Saved Playlists ({saved_playlists_count})</a>
+            </div>
+        </div>
+
+        <!-- Global Stats KPI Grid -->
+        <div class="playlist-kpi-grid">
+            <div class="playlist-kpi-card">
+                <span class="playlist-kpi-label">Analyzed Songs</span>
+                <span class="playlist-kpi-value">{total_analyzed_count}</span>
+            </div>
+            <div class="playlist-kpi-card">
+                <span class="playlist-kpi-label">Artists Analyzed</span>
+                <span class="playlist-kpi-value">{total_artists_count}</span>
+            </div>
+            <div class="playlist-kpi-card">
+                <span class="playlist-kpi-label">Genre & Vibe Tags</span>
+                <span class="playlist-kpi-value">{total_tags_count}</span>
+            </div>
+            <div class="playlist-kpi-card">
+                <span class="playlist-kpi-label">Spotify Destination</span>
+                <div style="margin-top: 4px;">{spotify_status_badge}</div>
+            </div>
+        </div>
+
+        <!-- Generator Studio View -->
+        <div id="generator-view" style="{generator_view_display}; display: flex; flex-direction: column; gap: 24px;">
+            <!-- Different Generator Options (First one is All Analyzed Songs) -->
+            <div class="playlist-card">
+                <div style="margin-bottom: 16px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                        <h2 style="font-size: 1.15rem; font-weight: 800; font-family: 'Montserrat', sans-serif; color: #FFFFFF; margin: 0;">
+                            1. Select Playlist Generator Option
+                        </h2>
+                        <span style="font-size: 0.8rem; color: #A5C8FF; font-weight: 600;">Choose a generation strategy below</span>
+                    </div>
+                </div>
+
+                <div class="playlist-mode-grid">
+                    <!-- Option 1: All Analyzed Songs (Flagship / Primary) -->
+                    <a href="/playlists?mode=all_analyzed" class="playlist-mode-card flagship{mode_all_analyzed_active}" id="option-card-all">
+                        <div class="playlist-mode-badge primary">Option 1 • Flagship</div>
+                        <div>
+                            <div class="playlist-mode-icon">✦</div>
+                            <div class="playlist-mode-title">All Analyzed Songs</div>
+                        </div>
+                        <div class="playlist-mode-desc">
+                            Create a master playlist containing every track in your collection that has been analyzed by Gemini.
+                        </div>
+                        <div class="playlist-mode-count">{total_analyzed_count} tracks ready</div>
+                    </a>
+
+                    <!-- Option 2: By Artist / Band -->
+                    <a href="/playlists?mode=artist" class="playlist-mode-card{mode_artist_active}" id="option-card-artist">
+                        <div class="playlist-mode-badge">Option 2 • Artist</div>
+                        <div>
+                            <div class="playlist-mode-icon">👤</div>
+                            <div class="playlist-mode-title">By Artist / Band</div>
+                        </div>
+                        <div class="playlist-mode-desc">
+                            Generate a curated playlist focusing on all analyzed songs from a specific band or musician.
+                        </div>
+                        <div class="playlist-mode-count">{total_artists_count} artists available</div>
+                    </a>
+
+                    <!-- Option 3: By Genre & Mood Tag -->
+                    <a href="/playlists?mode=tag" class="playlist-mode-card{mode_tag_active}" id="option-card-tag">
+                        <div class="playlist-mode-badge">Option 3 • Last.fm</div>
+                        <div>
+                            <div class="playlist-mode-icon">🏷️</div>
+                            <div class="playlist-mode-title">By Genre & Mood Tag</div>
+                        </div>
+                        <div class="playlist-mode-desc">
+                            Filter analyzed songs by Last.fm community genre tags like Post-Punk, Shoegaze, or Midwest Emo.
+                        </div>
+                        <div class="playlist-mode-count">{total_tags_count} tags available</div>
+                    </a>
+
+                    <!-- Option 4: By Audio Attributes -->
+                    <a href="/playlists?mode=mood" class="playlist-mode-card{mode_mood_active}" id="option-card-mood">
+                        <div class="playlist-mode-badge">Option 4 • Audio</div>
+                        <div>
+                            <div class="playlist-mode-icon">⚡</div>
+                            <div class="playlist-mode-title">By Audio Attributes</div>
+                        </div>
+                        <div class="playlist-mode-desc">
+                            Curate songs by musical energy, danceability, deep melancholy (valence), or acoustic atmosphere.
+                        </div>
+                        <div class="playlist-mode-count">Sonic Audio Radar</div>
+                    </a>
+
+                    <!-- Option 5: Spotify Heavy Rotation -->
+                    <a href="/playlists?mode=spotify" class="playlist-mode-card{mode_spotify_active}" id="option-card-spotify">
+                        <div class="playlist-mode-badge">Option 5 • Streaming</div>
+                        <div>
+                            <div class="playlist-mode-icon">🎧</div>
+                            <div class="playlist-mode-title">Spotify Rotation</div>
+                        </div>
+                        <div class="playlist-mode-desc">
+                            Build a playlist from your recent Spotify listening history matched with Calling Hours analyses.
+                        </div>
+                        <div class="playlist-mode-count">Listening Sync</div>
+                    </a>
+                </div>
+            </div>
+
+            <!-- Configuration & Filter Bar -->
+            <div class="playlist-card" style="padding: 20px 26px;">
+                <form method="GET" action="/playlists" id="generator-form">
+                    <input type="hidden" name="mode" value="{current_mode}">
+                    <div style="font-weight: 700; color: #E1E8F0; font-size: 0.95rem; margin-bottom: 14px; display: flex; align-items: center; gap: 8px;">
+                        <span>⚙️</span> 2. Configure Generator Settings
+                    </div>
+
+                    <div class="playlist-form-grid">
+                        <!-- Mode-specific selector -->
+                        {mode_specific_inputs}
+
+                        <div class="playlist-input-group">
+                            <label for="select-order">Sort Order</label>
+                            <select name="order" id="select-order">
+                                {sort_options_html}
+                            </select>
+                        </div>
+
+                        <div class="playlist-input-group">
+                            <label for="select-limit">Track Limit</label>
+                            <select name="limit" id="select-limit">
+                                {limit_options_html}
+                            </select>
+                        </div>
+
+                        <div class="playlist-input-group">
+                            <label for="input-playlist-name">Playlist Title</label>
+                            <input type="text" name="name" id="input-playlist-name" value="{active_playlist_title}" placeholder="Playlist Title">
+                        </div>
+
+                        <div>
+                            <button type="submit" class="btn-playlist-action" style="background: #194685; color: #FFFFFF; border-color: #A5C8FF; width: 100%; height: 42px; justify-content: center;">
+                                <span>⚡</span> Generate Playlist
+                            </button>
+                        </div>
+                    </div>
+                    {tag_chips_container_html}
+                </form>
+            </div>
+
+            <!-- Generated Playlist Output Card -->
+            <div class="playlist-card" id="generated-playlist-section">
+                <!-- Header with Title, Count, and Export Actions -->
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; flex-wrap: wrap; padding-bottom: 20px; border-bottom: 1px solid rgba(165, 200, 255, 0.15);">
+                    <div style="display: flex; gap: 16px; align-items: center;">
+                        <div style="width: 60px; height: 60px; border-radius: 12px; background: linear-gradient(135deg, #194685 0%, #0B1E3F 100%); border: 1px solid #A5C8FF; display: flex; align-items: center; justify-content: center; font-size: 1.8rem; box-shadow: 0 4px 16px rgba(0,0,0,0.4);">
+                            🎶
+                        </div>
+                        <div>
+                            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                                <h3 id="display-playlist-title" style="margin: 0; font-size: 1.35rem; font-weight: 800; font-family: 'Montserrat', sans-serif; color: #FFFFFF;">
+                                    {active_playlist_title}
+                                </h3>
+                                <span class="playlist-mode-badge primary">{track_count} Tracks</span>
+                            </div>
+                            <div style="font-size: 0.84rem; color: rgba(225, 232, 240, 0.7); margin-top: 4px;">
+                                {active_playlist_desc}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div class="playlist-actions-toolbar">
+                        <button type="button" class="btn-playlist-action btn-playlist-spotify" onclick="triggerSpotifyExport()" id="btn-export-spotify">
+                            <span>🎧</span> Export to Spotify
+                        </button>
+                        <a href="{export_m3u_url}" class="btn-playlist-action btn-playlist-outline" title="Download .m3u8 playlist file">
+                            <span>📥</span> .M3U8
+                        </a>
+                        <a href="{export_csv_url}" class="btn-playlist-action btn-playlist-outline" title="Download .csv spreadsheet">
+                            <span>📄</span> .CSV
+                        </a>
+                        <button type="button" class="btn-playlist-action btn-playlist-outline" onclick="copyPlaylistTracklist()" title="Copy tracklist to clipboard">
+                            <span>📋</span> Copy
+                        </button>
+                        <button type="button" class="btn-playlist-action btn-playlist-outline" onclick="savePlaylistToCallingHours()" id="btn-save-db" title="Save playlist in Calling Hours">
+                            <span>💾</span> Save
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Tracklist Search & Table -->
+                <div style="margin-top: 20px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; gap: 12px; flex-wrap: wrap;">
+                        <span style="font-size: 0.85rem; font-weight: 700; color: #A5C8FF; text-transform: uppercase; letter-spacing: 0.04em;">Tracklist Overview</span>
+                        <input type="text" id="tracklist-filter-input" placeholder="Filter songs in this playlist..." onkeyup="filterPlaylistTracks()" style="background: rgba(5, 10, 20, 0.7); border: 1px solid rgba(165, 200, 255, 0.25); border-radius: 20px; padding: 6px 14px; color: #FFFFFF; font-size: 0.82rem; outline: none; width: min(280px, 100%);">
+                    </div>
+
+                    <div style="overflow-x: auto;">
+                        <table class="playlist-tracklist-table">
+                            <tbody id="playlist-tracklist-body">
+                                {tracklist_html}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div id="playlist-no-tracks" style="display: none; text-align: center; color: #A5C8FF; padding: 30px; font-style: italic;">
+                        No matching tracks found in this playlist.
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Saved Playlists Library View -->
+        <div id="saved-view" style="{saved_view_display}; display: flex; flex-direction: column; gap: 20px;">
+            <div class="playlist-card">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 20px;">
+                    <div>
+                        <h2 style="font-size: 1.25rem; font-weight: 800; font-family: 'Montserrat', sans-serif; color: #FFFFFF; margin: 0;">
+                            Saved Playlists
+                        </h2>
+                        <p style="font-size: 0.82rem; color: rgba(225, 232, 240, 0.65); margin: 4px 0 0 0;">
+                            Browse previously generated playlists saved to your database.
+                        </p>
+                    </div>
+                    <a href="/playlists" class="btn-playlist-action btn-playlist-outline" style="font-size: 0.8rem; padding: 6px 14px;">
+                        <span>✨</span> Create New Playlist
+                    </a>
+                </div>
+                {saved_playlists_html}
+            </div>
+        </div>
+    </div>
+
+    <!-- Spotify Export Modal -->
+    <div class="playlist-modal-backdrop" id="spotify-modal-backdrop" onclick="closeSpotifyModal(event)">
+        <div class="playlist-modal" onclick="event.stopPropagation()">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span style="font-size: 1.5rem;">🎧</span>
+                    <h3 style="margin: 0; font-size: 1.15rem; font-family: 'Montserrat', sans-serif; font-weight: 800; color: #1DB954;">
+                        Spotify Playlist Export
+                    </h3>
+                </div>
+                <button type="button" onclick="closeSpotifyModal()" style="background: none; border: none; color: #A5C8FF; font-size: 1.4rem; cursor: pointer;">&times;</button>
+            </div>
+            <div id="spotify-modal-content">
+                <!-- Content injected dynamically -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Floating Toast Notification -->
+    <div id="toast-notification"></div>
+
+    <script>
+        const CURRENT_PLAYLIST = {current_playlist_json};
+        const IS_SPOTIFY_CONNECTED = {is_spotify_connected_json};
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast-notification');
+            if (!toast) return;
+            toast.textContent = msg;
+            toast.classList.add('show');
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 3000);
+        }
+
+        function filterPlaylistTracks() {
+            const query = (document.getElementById('tracklist-filter-input').value || '').toLowerCase().trim();
+            const rows = document.querySelectorAll('.playlist-tracklist-row');
+            let visible = 0;
+            rows.forEach(r => {
+                const text = (r.getAttribute('data-search') || '').toLowerCase();
+                if (!query || text.includes(query)) {
+                    r.style.display = '';
+                    visible++;
+                } else {
+                    r.style.display = 'none';
+                }
+            });
+            const noMatch = document.getElementById('playlist-no-tracks');
+            if (noMatch) {
+                noMatch.style.display = (visible === 0 && rows.length > 0) ? 'block' : 'none';
+            }
+        }
+
+        function copyPlaylistTracklist() {
+            if (!CURRENT_PLAYLIST || !CURRENT_PLAYLIST.tracks || CURRENT_PLAYLIST.tracks.length === 0) {
+                showToast("No tracks to copy!");
+                return;
+            }
+            const lines = CURRENT_PLAYLIST.tracks.map((t, idx) => `${idx + 1}. ${t.artist} - ${t.song}`);
+            const text = `${CURRENT_PLAYLIST.name}\\n${lines.join('\\n')}`;
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text).then(() => {
+                    showToast("Copied " + CURRENT_PLAYLIST.tracks.length + " tracks to clipboard!");
+                }).catch(() => {
+                    fallbackCopy(text);
+                });
+            } else {
+                fallbackCopy(text);
+            }
+        }
+
+        function fallbackCopy(text) {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.position = 'fixed';
+            ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.select();
+            try {
+                document.execCommand('copy');
+                showToast("Copied tracklist to clipboard!");
+            } catch (e) {
+                showToast("Could not copy automatically.");
+            }
+            document.body.removeChild(ta);
+        }
+
+        async function savePlaylistToCallingHours() {
+            const btn = document.getElementById('btn-save-db');
+            if (btn) {
+                btn.disabled = true;
+                btn.textContent = 'Saving...';
+            }
+            try {
+                const payload = {
+                    name: document.getElementById('input-playlist-name').value || CURRENT_PLAYLIST.name,
+                    description: CURRENT_PLAYLIST.description,
+                    generator_type: CURRENT_PLAYLIST.mode,
+                    criteria: CURRENT_PLAYLIST.criteria || {},
+                    items: CURRENT_PLAYLIST.tracks || []
+                };
+                const resp = await fetch('/api/playlists/save', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(payload)
+                });
+                const res = await resp.json();
+                if (res.success) {
+                    showToast("Playlist saved to Calling Hours library!");
+                    if (btn) btn.textContent = '✓ Saved';
+                } else {
+                    showToast("Error saving playlist: " + (res.error || 'Unknown error'));
+                    if (btn) { btn.disabled = false; btn.textContent = '💾 Save'; }
+                }
+            } catch (err) {
+                showToast("Save request failed.");
+                if (btn) { btn.disabled = false; btn.textContent = '💾 Save'; }
+            }
+        }
+
+        function triggerSpotifyExport() {
+            const backdrop = document.getElementById('spotify-modal-backdrop');
+            const content = document.getElementById('spotify-modal-content');
+            backdrop.style.display = 'flex';
+
+            if (!IS_SPOTIFY_CONNECTED) {
+                content.innerHTML = `
+                    <p style="color: rgba(225, 232, 240, 0.85); font-size: 0.92rem; line-height: 1.5; margin-bottom: 20px;">
+                        Connect your personal Spotify account to export Calling Hours playlists directly into your Spotify library with 1 click!
+                    </p>
+                    <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                        <button type="button" class="btn-playlist-action btn-playlist-outline" onclick="closeSpotifyModal()">Cancel</button>
+                        <a href="/auth/spotify" class="btn-playlist-action btn-playlist-spotify">Connect Spotify Account</a>
+                    </div>
+                `;
+                return;
+            }
+
+            content.innerHTML = `
+                <div style="text-align: center; padding: 20px 10px;">
+                    <div style="font-size: 2rem; animation: spin 1s linear infinite; display: inline-block;">⏳</div>
+                    <div style="font-weight: 700; color: #E1E8F0; margin-top: 14px; font-size: 1.05rem;">Exporting to Spotify...</div>
+                    <div style="color: rgba(225, 232, 240, 0.6); font-size: 0.84rem; margin-top: 6px;">Matching track catalog and creating your Spotify playlist.</div>
+                </div>
+                <style>@keyframes spin { 100% { transform: rotate(360deg); } }</style>
+            `;
+
+            const payload = {
+                name: document.getElementById('input-playlist-name').value || CURRENT_PLAYLIST.name,
+                description: CURRENT_PLAYLIST.description,
+                tracks: CURRENT_PLAYLIST.tracks || []
+            };
+
+            fetch('/api/playlists/export-spotify', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload)
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    content.innerHTML = `
+                        <div style="padding: 10px 0;">
+                            <div style="color: #1DB954; font-size: 2.2rem; text-align: center; margin-bottom: 10px;">🎉</div>
+                            <h4 style="margin: 0 0 10px 0; font-size: 1.15rem; color: #FFFFFF; text-align: center; font-family: 'Montserrat', sans-serif;">
+                                Playlist Created on Spotify!
+                            </h4>
+                            <p style="color: rgba(225, 232, 240, 0.8); font-size: 0.88rem; line-height: 1.5; text-align: center;">
+                                Successfully created <strong>${data.playlist_name}</strong> with <strong>${data.tracks_added} tracks</strong> added to your Spotify account.
+                            </p>
+                            <div style="margin-top: 24px; display: flex; gap: 10px; justify-content: center;">
+                                <a href="${data.playlist_url}" target="_blank" rel="noopener noreferrer" class="btn-playlist-action btn-playlist-spotify" style="text-decoration: none;">
+                                    Open in Spotify ↗
+                                </a>
+                                <button type="button" class="btn-playlist-action btn-playlist-outline" onclick="closeSpotifyModal()">Done</button>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    content.innerHTML = `
+                        <div style="padding: 10px 0;">
+                            <div style="color: #f08c5a; font-size: 2rem; text-align: center; margin-bottom: 10px;">⚠️</div>
+                            <h4 style="margin: 0 0 10px 0; color: #FFFFFF; text-align: center;">Export Failed</h4>
+                            <p style="color: rgba(225, 232, 240, 0.8); font-size: 0.86rem; text-align: center;">
+                                ${data.error || 'An error occurred during Spotify export.'}
+                            </p>
+                            <div style="margin-top: 20px; display: flex; justify-content: center;">
+                                <button type="button" class="btn-playlist-action btn-playlist-outline" onclick="closeSpotifyModal()">Close</button>
+                            </div>
+                        </div>
+                    `;
+                }
+            })
+            .catch(err => {
+                content.innerHTML = `
+                    <div style="padding: 10px 0;">
+                        <h4 style="margin: 0 0 10px 0; color: #f08c5a; text-align: center;">Export Error</h4>
+                        <p style="color: rgba(225, 232, 240, 0.8); font-size: 0.86rem; text-align: center;">
+                            Network or server error while exporting.
+                        </p>
+                        <div style="margin-top: 20px; display: flex; justify-content: center;">
+                            <button type="button" class="btn-playlist-action btn-playlist-outline" onclick="closeSpotifyModal()">Close</button>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        function closeSpotifyModal(e) {
+            if (e && e.target !== e.currentTarget) return;
+            const backdrop = document.getElementById('spotify-modal-backdrop');
+            if (backdrop) backdrop.style.display = 'none';
+        }
+    </script>
+</body>
+</html>'''
+
 LOGIN_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
     <div class="stars"></div>
     <div class="horizon"></div>
@@ -5177,6 +5996,74 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             self.handle_api_spotify_sync()
             return
 
+        if parsed.path in ('/playlists', '/playlist-generator'):
+            params = urllib.parse.parse_qs(parsed.query)
+            mode = params.get('mode', ['all_analyzed'])[0].strip()
+            artist = params.get('artist', [''])[0].strip()
+            tag = params.get('tag', [''])[0].strip()
+            order = params.get('order', ['updated_at DESC'])[0].strip()
+            mood = params.get('mood', [''])[0].strip()
+            limit_str = params.get('limit', [''])[0].strip()
+            limit = int(limit_str) if limit_str.isdigit() else None
+            playlist_name = params.get('name', [''])[0].strip()
+            saved_id_str = params.get('id', [''])[0].strip()
+            saved_id = int(saved_id_str) if saved_id_str.isdigit() else None
+            tab = params.get('tab', ['generate'])[0].strip()
+            msg = params.get('msg', [''])[0].strip()
+            self.render_playlists_page(
+                mode=mode,
+                selected_artist=artist,
+                selected_tag=tag,
+                selected_mood=mood,
+                order_by=order,
+                limit=limit,
+                custom_name=playlist_name,
+                saved_id=saved_id,
+                active_tab=tab,
+                message=msg
+            )
+            return
+
+        if parsed.path == '/playlists/export/m3u':
+            self.handle_export_m3u(parsed.query)
+            return
+
+        if parsed.path == '/playlists/export/csv':
+            self.handle_export_csv(parsed.query)
+            return
+
+        if parsed.path == '/playlists/delete':
+            params = urllib.parse.parse_qs(parsed.query)
+            pid = params.get('id', [''])[0].strip()
+            if pid.isdigit():
+                database.delete_saved_playlist(int(pid))
+            self.send_response(302)
+            self.send_header('Location', '/playlists?tab=saved&msg=' + urllib.parse.quote('Playlist deleted successfully.'))
+            self.end_headers()
+            return
+
+        if parsed.path == '/api/playlists/analyzed-songs':
+            params = urllib.parse.parse_qs(parsed.query)
+            artist = params.get('artist', [''])[0].strip() or None
+            tag = params.get('tag', [''])[0].strip() or None
+            order = params.get('order', ['updated_at DESC'])[0].strip()
+            limit_str = params.get('limit', [''])[0].strip()
+            limit = int(limit_str) if limit_str.isdigit() else None
+            songs = database.get_analyzed_songs(artist=artist, tag=tag, order_by=order, limit=limit)
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(json.dumps({'songs': songs, 'count': len(songs)}).encode('utf-8'))
+            return
+
+        if parsed.path == '/api/playlists/saved':
+            playlists = database.get_saved_playlists()
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(json.dumps({'playlists': playlists}).encode('utf-8'))
+            return
+
         if parsed.path == '/history':
             params = urllib.parse.parse_qs(parsed.query)
             selected_artist = params.get('artist', [''])[0].strip()
@@ -5653,6 +6540,28 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             return
         if self.path == '/auth/spotify/disconnect':
             self.handle_spotify_disconnect()
+            return
+
+        if self.path == '/api/playlists/save':
+            content_length = int(self.headers.get('Content-Length', 0))
+            body = self.rfile.read(content_length).decode('utf-8')
+            try:
+                data = json.loads(body)
+            except Exception:
+                data = urllib.parse.parse_qs(body)
+                data = {k: v[0] if isinstance(v, list) and len(v) == 1 else v for k, v in data.items()}
+            self.handle_api_playlists_save(data)
+            return
+
+        if self.path == '/api/playlists/export-spotify':
+            content_length = int(self.headers.get('Content-Length', 0))
+            body = self.rfile.read(content_length).decode('utf-8')
+            try:
+                data = json.loads(body)
+            except Exception:
+                data = urllib.parse.parse_qs(body)
+                data = {k: v[0] if isinstance(v, list) and len(v) == 1 else v for k, v in data.items()}
+            self.handle_api_playlists_export_spotify(data)
             return
 
         if self.path not in ('/submit', '/analyze', '/prompts/save'):
@@ -7439,6 +8348,641 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         self.send_header('Content-Length', str(len(content.encode('utf-8'))))
         self.end_headers()
         self.wfile.write(content.encode('utf-8'))
+
+    def render_playlists_page(
+        self,
+        mode: str = 'all_analyzed',
+        selected_artist: str = '',
+        selected_tag: str = '',
+        selected_mood: str = '',
+        order_by: str = 'updated_at DESC',
+        limit: Optional[int] = None,
+        custom_name: str = '',
+        saved_id: Optional[int] = None,
+        active_tab: str = 'generate',
+        message: str = ''
+    ):
+        current_user = self.get_current_user()
+        if not current_user:
+            self.send_response(302)
+            self.send_header('Location', '/login')
+            self.end_headers()
+            return
+
+        total_analyzed_count = database.get_analyzed_songs_count()
+        analyzed_artists = database.get_analyzed_artists()
+        analyzed_tags = database.get_analyzed_tags()
+        saved_playlists = database.get_saved_playlists()
+        total_artists_count = len(analyzed_artists)
+        total_tags_count = len(analyzed_tags)
+
+        # Check Spotify connection
+        token_rec = database.get_spotify_token(current_user['email'])
+        spotify_access_token = spotify.get_valid_access_token(current_user['email']) if token_rec else None
+        is_spotify_connected = bool(spotify_access_token)
+
+        if is_spotify_connected:
+            spotify_status_badge = '<span style="background: rgba(29, 185, 84, 0.2); color: #1DB954; border: 1px solid rgba(29, 185, 84, 0.4); padding: 2px 8px; border-radius: 12px; font-size: 0.74rem; font-weight: 700;">🟢 Connected</span>'
+        elif spotify.is_spotify_configured():
+            spotify_status_badge = '<a href="/auth/spotify" style="background: rgba(165, 200, 255, 0.15); color: #A5C8FF; border: 1px solid rgba(165, 200, 255, 0.3); padding: 2px 8px; border-radius: 12px; font-size: 0.74rem; font-weight: 700; text-decoration: none;">Connect Spotify</a>'
+        else:
+            spotify_status_badge = '<span style="background: rgba(225, 232, 240, 0.1); color: rgba(225, 232, 240, 0.5); padding: 2px 8px; border-radius: 12px; font-size: 0.74rem;">M3U/CSV Available</span>'
+
+        active_mode = mode if mode in ('all_analyzed', 'artist', 'tag', 'mood', 'spotify') else 'all_analyzed'
+        songs: List[Dict[str, Any]] = []
+        active_playlist_title = custom_name.strip()
+        active_playlist_desc = ""
+
+        if saved_id:
+            saved_p = database.get_saved_playlist(saved_id)
+            if saved_p:
+                songs = saved_p.get('items', [])
+                if not active_playlist_title:
+                    active_playlist_title = saved_p.get('name', 'Saved Playlist')
+                active_playlist_desc = saved_p.get('description') or f"Saved playlist ({len(songs)} tracks)"
+                active_mode = saved_p.get('generator_type', 'all_analyzed')
+
+        if not songs and not saved_id:
+            if active_mode == 'artist':
+                if not selected_artist and analyzed_artists:
+                    selected_artist = analyzed_artists[0]['artist']
+                songs = database.get_analyzed_songs(artist=selected_artist, order_by=order_by, limit=limit)
+                if not active_playlist_title:
+                    active_playlist_title = f"Calling Hours: {selected_artist} (Analyzed)" if selected_artist else "Calling Hours: Artist Tracks"
+                active_playlist_desc = f"Lyrical analysis collection for {selected_artist}." if selected_artist else "Analyzed songs for selected artist."
+            elif active_mode == 'tag':
+                if not selected_tag and analyzed_tags:
+                    selected_tag = analyzed_tags[0]['tag']
+                songs = database.get_analyzed_songs(tag=selected_tag, order_by=order_by, limit=limit)
+                if not active_playlist_title:
+                    active_playlist_title = f"Calling Hours: #{selected_tag} Vibes" if selected_tag else "Calling Hours: Tagged Tracks"
+                active_playlist_desc = f"Analyzed songs tagged with #{selected_tag} on Last.fm." if selected_tag else "Analyzed songs matching tag."
+            elif active_mode == 'mood':
+                selected_mood = selected_mood or 'high_energy'
+                all_songs = database.get_analyzed_songs(order_by=order_by)
+                filtered = []
+                for s in all_songs:
+                    audiodb = s.get('theaudiodb_data') or {}
+                    if isinstance(audiodb, str):
+                        try:
+                            audiodb = json.loads(audiodb)
+                        except Exception:
+                            audiodb = {}
+                    energy = audiodb.get('energy') or 0
+                    danceability = audiodb.get('danceability') or 0
+                    valence = audiodb.get('valence') or 0
+                    acousticness = audiodb.get('acousticness') or 0
+                    mood_str = (audiodb.get('mood') or '').lower()
+
+                    if selected_mood == 'high_energy':
+                        if energy >= 60 or any(w in mood_str for w in ('energy', 'fast', 'hard', 'heavy', 'upbeat')):
+                            filtered.append(s)
+                    elif selected_mood == 'danceable':
+                        if danceability >= 55 or 'dance' in mood_str or 'groove' in mood_str:
+                            filtered.append(s)
+                    elif selected_mood == 'melancholic':
+                        if (valence > 0 and valence <= 45) or any(w in mood_str for w in ('sad', 'dark', 'melanchol', 'gloom', 'depress', 'slow')):
+                            filtered.append(s)
+                    elif selected_mood == 'acoustic':
+                        if acousticness >= 40 or 'acoustic' in mood_str or 'folk' in mood_str:
+                            filtered.append(s)
+                    else:
+                        filtered.append(s)
+                if not filtered:
+                    filtered = all_songs
+                if limit and limit > 0:
+                    filtered = filtered[:limit]
+                songs = filtered
+                mood_labels = {
+                    'high_energy': 'High Energy ⚡',
+                    'danceable': 'Upbeat & Danceable 💃',
+                    'melancholic': 'Deep & Melancholic 🌧️',
+                    'acoustic': 'Acoustic & Mellow 🎻',
+                }
+                m_label = mood_labels.get(selected_mood, 'Curated')
+                if not active_playlist_title:
+                    active_playlist_title = f"Calling Hours: {m_label}"
+                active_playlist_desc = f"Analyzed songs curated for {m_label} sonic atmosphere."
+            elif active_mode == 'spotify':
+                recent_streams = database.get_spotify_history(current_user['email'], limit=50) if is_spotify_connected else []
+                if not recent_streams and is_spotify_connected and spotify_access_token:
+                    try:
+                        recent_streams = spotify.fetch_recently_played(spotify_access_token, limit=50)
+                    except Exception:
+                        recent_streams = []
+                analyzed_map = {}
+                for s in database.get_analyzed_songs():
+                    key = (s.get('artist_normalized') or s.get('artist', '').lower(), s.get('song_normalized') or s.get('song', '').lower())
+                    analyzed_map[key] = s
+                matched_songs = []
+                for r in recent_streams:
+                    art = (r.get('artist_name') or r.get('artist', '')).lower()
+                    sng = (r.get('track_name') or r.get('name', '')).lower()
+                    m = analyzed_map.get((art, sng))
+                    if m and m not in matched_songs:
+                        matched_songs.append(m)
+                if not matched_songs:
+                    matched_songs = database.get_analyzed_songs(limit=limit)
+                elif limit and limit > 0:
+                    matched_songs = matched_songs[:limit]
+                songs = matched_songs
+                if not active_playlist_title:
+                    active_playlist_title = "Calling Hours: Spotify Rotation"
+                active_playlist_desc = "Analyzed songs matched from your recent Spotify listening history."
+            else:
+                active_mode = 'all_analyzed'
+                songs = database.get_analyzed_songs(order_by=order_by, limit=limit)
+                if not active_playlist_title:
+                    active_playlist_title = "Calling Hours: All Analyzed Tracks"
+                active_playlist_desc = "Master collection of all tracks analyzed for poetic and thematic lyrics in Calling Hours."
+
+        # Build Sort Options
+        sort_choices = [
+            ('updated_at DESC', 'Recently Analyzed (Newest First)'),
+            ('updated_at ASC', 'Earliest Analyzed (Oldest First)'),
+            ('artist ASC', 'Artist (A-Z)'),
+            ('song ASC', 'Song Title (A-Z)'),
+        ]
+        sort_options_html = "".join(f'<option value="{k}"{" selected" if k == order_by else ""}>{html_escape(v)}</option>' for k, v in sort_choices)
+
+        # Build Limit Options
+        limit_choices = [
+            ('', f'All Songs ({total_analyzed_count})'),
+            ('25', 'Top 25 Songs'),
+            ('50', 'Top 50 Songs'),
+            ('100', 'Top 100 Songs'),
+        ]
+        cur_limit_str = str(limit) if limit else ''
+        limit_options_html = "".join(f'<option value="{k}"{" selected" if k == cur_limit_str else ""}>{html_escape(v)}</option>' for k, v in limit_choices)
+
+        # Build Mode-Specific Inputs
+        mode_specific_inputs = ""
+        tag_chips_container_html = ""
+        if active_mode == 'artist':
+            artist_opts = "".join(
+                f'<option value="{html_escape(a["artist"])}"' +
+                (' selected' if a['artist'].lower() == (selected_artist or '').lower() else '') +
+                f'>{html_escape(a["artist"])} ({a["song_count"]})</option>'
+                for a in analyzed_artists
+            )
+            mode_specific_inputs = f'''
+                <div class="playlist-input-group">
+                    <label for="select-artist">Select Artist</label>
+                    <select name="artist" id="select-artist" onchange="document.getElementById('generator-form').submit()">
+                        {artist_opts or '<option value="">No analyzed artists yet</option>'}
+                    </select>
+                </div>
+            '''
+        elif active_mode == 'tag':
+            tag_opts = "".join(
+                f'<option value="{html_escape(t["tag"])}"' +
+                (' selected' if t['tag'].lower() == (selected_tag or '').lower() else '') +
+                f'>#{html_escape(t["tag"])} ({t["count"]})</option>'
+                for t in analyzed_tags
+            )
+            mode_specific_inputs = f'''
+                <div class="playlist-input-group">
+                    <label for="select-tag">Select Genre Tag</label>
+                    <select name="tag" id="select-tag" onchange="document.getElementById('generator-form').submit()">
+                        {tag_opts or '<option value="">No tags found yet</option>'}
+                    </select>
+                </div>
+            '''
+            top_tag_chips = []
+            for t in analyzed_tags[:10]:
+                t_esc = html_escape(t['tag'])
+                top_tag_chips.append(f'<a href="/playlists?mode=tag&tag={urllib.parse.quote(t["tag"])}" class="playlist-tag-chip">#{t_esc} ({t["count"]})</a>')
+            if top_tag_chips:
+                tag_chips_container_html = '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:14px; align-items:center;"><span style="font-size:0.75rem; color:#A5C8FF; font-weight:700;">Popular Tags:</span>' + "".join(top_tag_chips) + '</div>'
+        elif active_mode == 'mood':
+            mood_choices = [
+                ('high_energy', '⚡ High Energy (Rock / Fast / Punchy)'),
+                ('danceable', '💃 Upbeat & Danceable (Rhythm & Groove)'),
+                ('melancholic', '🌧️ Deep & Melancholic (Reflective / Minor Key)'),
+                ('acoustic', '🎻 Acoustic & Mellow (Organic / Intimate)'),
+            ]
+            mood_opts = "".join(
+                f'<option value="{k}"{" selected" if k == selected_mood else ""}>{html_escape(v)}</option>'
+                for k, v in mood_choices
+            )
+            mode_specific_inputs = f'''
+                <div class="playlist-input-group">
+                    <label for="select-mood">Audio Characteristic</label>
+                    <select name="mood" id="select-mood" onchange="document.getElementById('generator-form').submit()">
+                        {mood_opts}
+                    </select>
+                </div>
+            '''
+        elif active_mode == 'spotify':
+            mode_specific_inputs = f'''
+                <div class="playlist-input-group">
+                    <label>Spotify Source</label>
+                    <input type="text" value="Recent Listening Stream" readonly style="opacity: 0.8; cursor: default;">
+                </div>
+            '''
+        else:
+            mode_specific_inputs = f'''
+                <div class="playlist-input-group">
+                    <label>Library Scope</label>
+                    <input type="text" value="Complete Analyzed Collection ({total_analyzed_count} songs)" readonly style="opacity: 0.85; cursor: default; color: #A5C8FF; font-weight: 600;">
+                </div>
+            '''
+
+        # Build Tracklist HTML
+        track_rows: List[str] = []
+        clean_tracks_for_json: List[Dict[str, Any]] = []
+
+        if not songs:
+            tracklist_html = '''
+                <tr class="playlist-tracklist-row">
+                    <td colspan="5" style="text-align: center; padding: 40px; color: #A5C8FF; font-style: italic;">
+                        No analyzed songs match your current criteria. Analyze songs from the Song tab to add them to your collection!
+                    </td>
+                </tr>
+            '''
+        else:
+            for idx, s in enumerate(songs, 1):
+                s_id = s.get('id') or s.get('search_id') or ''
+                artist_val = s.get('artist', '')
+                song_val = s.get('song', '')
+                artist_esc = html_escape(artist_val)
+                song_esc = html_escape(song_val)
+                model_name = s.get('model_name') or 'Gemini'
+                model_esc = html_escape(model_name)
+
+                # Track tags
+                tags_list = s.get('track_tags') or []
+                tag_chips = []
+                if tags_list:
+                    for t in tags_list[:2]:
+                        t_str = t.get('name', '') if isinstance(t, dict) else str(t)
+                        if t_str:
+                            tag_chips.append(f'<span class="playlist-tag-chip" style="font-size:0.7rem; padding: 1px 7px;">#{html_escape(t_str)}</span>')
+                tags_chips_html = "".join(tag_chips)
+
+                # AudioDB data
+                audiodb_data = s.get('theaudiodb_data')
+                if isinstance(audiodb_data, str):
+                    try:
+                        audiodb_data = json.loads(audiodb_data)
+                    except Exception:
+                        audiodb_data = None
+                pills = []
+                spotify_id = s.get('spotify_id')
+                if audiodb_data and isinstance(audiodb_data, dict):
+                    if not spotify_id:
+                        spotify_id = audiodb_data.get('spotify_id')
+                    if audiodb_data.get('tempo'):
+                        pills.append(f'<span style="font-size:0.7rem; color:#A5C8FF; background:rgba(165,200,255,0.08); padding:1px 6px; border-radius:4px;">⏱️ {audiodb_data["tempo"]} BPM</span>')
+                    if audiodb_data.get('key'):
+                        pills.append(f'<span style="font-size:0.7rem; color:#A5C8FF; background:rgba(165,200,255,0.08); padding:1px 6px; border-radius:4px;">🎹 {html_escape(audiodb_data["key"])}</span>')
+                    if audiodb_data.get('energy'):
+                        pills.append(f'<span style="font-size:0.7rem; color:#F59E0B; background:rgba(245,158,11,0.1); padding:1px 6px; border-radius:4px;">⚡ {int(audiodb_data["energy"])}%</span>')
+                audiodb_pills_html = "".join(pills)
+
+                listen_spotify_link = ""
+                if spotify_id:
+                    listen_spotify_link = f'<a href="https://open.spotify.com/track/{html_escape(spotify_id)}" target="_blank" rel="noopener noreferrer" style="color: #1DB954; font-size: 1.1rem; text-decoration: none;" title="Listen on Spotify">🎧</a>'
+
+                analysis_link_html = f'<a href="/?id={s_id}" style="color: #C5B8FF; font-size: 0.76rem; text-decoration: none; border-bottom: 1px dotted rgba(197, 184, 255, 0.5);" title="View Gemini lyric analysis">✦ View Analysis</a>' if s_id else ''
+
+                track_rows.append(f'''
+                    <tr class="playlist-tracklist-row" data-search="{artist_esc} {song_esc}">
+                        <td class="playlist-track-num">#{idx}</td>
+                        <td>
+                            <div class="playlist-track-main">
+                                <span class="playlist-track-title">{song_esc}</span>
+                                <span class="playlist-track-artist">{artist_esc}</span>
+                            </div>
+                        </td>
+                        <td>
+                            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                                <span class="playlist-badge-model">✨ {model_esc}</span>
+                                {analysis_link_html}
+                            </div>
+                        </td>
+                        <td>
+                            <div style="display: flex; gap: 4px; align-items: center; flex-wrap: wrap;">
+                                {tags_chips_html}
+                                {audiodb_pills_html}
+                            </div>
+                        </td>
+                        <td style="text-align: right;">
+                            <div style="display: flex; gap: 8px; justify-content: flex-end; align-items: center;">
+                                {listen_spotify_link}
+                                <a href="/?id={s_id}" class="btn-playlist-action btn-playlist-outline" style="font-size: 0.74rem; padding: 3px 8px; text-decoration: none;">Lyrics ↗</a>
+                            </div>
+                        </td>
+                    </tr>
+                ''')
+
+                clean_tracks_for_json.append({
+                    'id': s_id,
+                    'artist': artist_val,
+                    'song': song_val,
+                    'model_name': model_name,
+                    'spotify_id': spotify_id or '',
+                })
+
+            tracklist_html = "".join(track_rows)
+
+        # Build Saved Playlists HTML
+        if not saved_playlists:
+            saved_playlists_html = '<p style="text-align: center; color: #A5C8FF; padding: 40px; font-style: italic;">No saved playlists yet. Generate a playlist above and click "Save" to keep it in your library!</p>'
+        else:
+            saved_cards = []
+            for p in saved_playlists:
+                p_id = p['id']
+                p_name = html_escape(p.get('name') or 'Untitled Playlist')
+                p_desc = html_escape(p.get('description') or '')
+                p_count = p.get('track_count', 0)
+                p_type = html_escape(p.get('generator_type') or 'all_analyzed')
+                p_date = html_escape(p.get('created_at') or '')
+                spotify_url = p.get('spotify_playlist_url')
+                spotify_link_html = f'<a href="{html_escape(spotify_url)}" target="_blank" rel="noopener noreferrer" class="btn-playlist-action btn-playlist-spotify" style="font-size:0.76rem; padding:4px 10px; text-decoration:none;">Open in Spotify ↗</a>' if spotify_url else ''
+
+                saved_cards.append(f'''
+                    <div style="background: rgba(11, 30, 63, 0.6); border: 1px solid rgba(165, 200, 255, 0.2); border-radius: 12px; padding: 16px 20px; display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;">
+                        <div style="flex: 1; min-width: 220px;">
+                            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                                <span style="font-size: 1.1rem; font-weight: 700; color: #FFFFFF;">{p_name}</span>
+                                <span class="playlist-mode-badge primary">{p_count} tracks</span>
+                                <span class="playlist-mode-badge" style="text-transform: uppercase;">{p_type}</span>
+                            </div>
+                            <div style="font-size: 0.82rem; color: rgba(225, 232, 240, 0.6); margin-top: 4px;">
+                                {p_desc} • Saved {p_date}
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                            {spotify_link_html}
+                            <a href="/playlists?id={p_id}" class="btn-playlist-action btn-playlist-outline" style="font-size: 0.78rem; padding: 5px 12px; text-decoration: none;">📂 Load</a>
+                            <a href="/playlists/export/m3u?id={p_id}" class="btn-playlist-action btn-playlist-outline" style="font-size: 0.78rem; padding: 5px 10px; text-decoration: none;" title="Download M3U">📥 M3U</a>
+                            <a href="/playlists/export/csv?id={p_id}" class="btn-playlist-action btn-playlist-outline" style="font-size: 0.78rem; padding: 5px 10px; text-decoration: none;" title="Download CSV">📄 CSV</a>
+                            <a href="/playlists/delete?id={p_id}" onclick="return confirm('Delete this saved playlist?');" class="btn-playlist-action btn-playlist-outline" style="font-size: 0.78rem; padding: 5px 10px; border-color: rgba(240,140,90,0.4); color: #f08c5a; text-decoration: none;" title="Delete">&times;</a>
+                        </div>
+                    </div>
+                ''')
+            saved_playlists_html = '<div style="display: flex; flex-direction: column; gap: 12px;">' + "".join(saved_cards) + '</div>'
+
+        # Export URLs
+        if saved_id:
+            export_m3u_url = f"/playlists/export/m3u?id={saved_id}"
+            export_csv_url = f"/playlists/export/csv?id={saved_id}"
+        else:
+            q_params = {
+                'mode': active_mode,
+                'artist': selected_artist,
+                'tag': selected_tag,
+                'mood': selected_mood,
+                'order': order_by,
+                'limit': str(limit) if limit else '',
+                'name': active_playlist_title,
+            }
+            export_m3u_url = f"/playlists/export/m3u?{urllib.parse.urlencode({k: v for k, v in q_params.items() if v})}"
+            export_csv_url = f"/playlists/export/csv?{urllib.parse.urlencode({k: v for k, v in q_params.items() if v})}"
+
+        current_playlist_dict = {
+            'name': active_playlist_title,
+            'description': active_playlist_desc,
+            'mode': active_mode,
+            'criteria': {
+                'artist': selected_artist,
+                'tag': selected_tag,
+                'mood': selected_mood,
+                'order': order_by,
+                'limit': limit,
+            },
+            'tracks': clean_tracks_for_json,
+        }
+
+        is_saved_tab = (active_tab == 'saved')
+        generate_tab_active = '' if is_saved_tab else ' active'
+        saved_playlists_tab_active = ' active' if is_saved_tab else ''
+        generator_view_display = 'display: none' if is_saved_tab else 'display: flex'
+        saved_view_display = 'display: flex' if is_saved_tab else 'display: none'
+
+        mode_all_analyzed_active = ' active' if active_mode == 'all_analyzed' else ''
+        mode_artist_active = ' active' if active_mode == 'artist' else ''
+        mode_tag_active = ' active' if active_mode == 'tag' else ''
+        mode_mood_active = ' active' if active_mode == 'mood' else ''
+        mode_spotify_active = ' active' if active_mode == 'spotify' else ''
+
+        message_banner_html = f'<div class="message" style="margin-bottom: 20px;">{html_escape(message)}</div>' if message else ''
+
+        content = PLAYLISTS_PAGE_HTML.replace('{app_header}', build_app_header('playlists', user=current_user))\
+                                     .replace('{message_banner_html}', message_banner_html)\
+                                     .replace('{total_analyzed_count}', str(total_analyzed_count))\
+                                     .replace('{total_artists_count}', str(total_artists_count))\
+                                     .replace('{total_tags_count}', str(total_tags_count))\
+                                     .replace('{spotify_status_badge}', spotify_status_badge)\
+                                     .replace('{mode_all_analyzed_active}', mode_all_analyzed_active)\
+                                     .replace('{mode_artist_active}', mode_artist_active)\
+                                     .replace('{mode_tag_active}', mode_tag_active)\
+                                     .replace('{mode_mood_active}', mode_mood_active)\
+                                     .replace('{mode_spotify_active}', mode_spotify_active)\
+                                     .replace('{current_mode}', html_escape(active_mode))\
+                                     .replace('{mode_specific_inputs}', mode_specific_inputs)\
+                                     .replace('{sort_options_html}', sort_options_html)\
+                                     .replace('{limit_options_html}', limit_options_html)\
+                                     .replace('{active_playlist_title}', html_escape(active_playlist_title))\
+                                     .replace('{active_playlist_desc}', html_escape(active_playlist_desc))\
+                                     .replace('{tag_chips_container_html}', tag_chips_container_html)\
+                                     .replace('{track_count}', str(len(songs)))\
+                                     .replace('{tracklist_html}', tracklist_html)\
+                                     .replace('{export_m3u_url}', export_m3u_url)\
+                                     .replace('{export_csv_url}', export_csv_url)\
+                                     .replace('{saved_playlists_count}', str(len(saved_playlists)))\
+                                     .replace('{generate_tab_active}', generate_tab_active)\
+                                     .replace('{saved_playlists_tab_active}', saved_playlists_tab_active)\
+                                     .replace('{generator_view_display}', generator_view_display)\
+                                     .replace('{saved_view_display}', saved_view_display)\
+                                     .replace('{saved_playlists_html}', saved_playlists_html)\
+                                     .replace('{current_playlist_json}', json.dumps(current_playlist_dict))\
+                                     .replace('{is_spotify_connected_json}', 'true' if is_spotify_connected else 'false')
+
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/html; charset=utf-8')
+        self.send_header('Content-Length', str(len(content.encode('utf-8'))))
+        self.end_headers()
+        self.wfile.write(content.encode('utf-8'))
+
+    def handle_export_m3u(self, query_string: str):
+        current_user = self.get_current_user()
+        if not current_user:
+            self.send_response(302)
+            self.send_header('Location', '/login')
+            self.end_headers()
+            return
+
+        params = urllib.parse.parse_qs(query_string)
+        saved_id = params.get('id', [''])[0].strip()
+        if saved_id.isdigit():
+            saved_p = database.get_saved_playlist(int(saved_id))
+            if saved_p:
+                tracks = saved_p.get('items', [])
+                title = saved_p.get('name', 'Calling Hours Playlist')
+            else:
+                tracks, title = [], 'Calling Hours Playlist'
+        else:
+            mode = params.get('mode', ['all_analyzed'])[0].strip()
+            artist = params.get('artist', [''])[0].strip() or None
+            tag = params.get('tag', [''])[0].strip() or None
+            order = params.get('order', ['updated_at DESC'])[0].strip()
+            limit_str = params.get('limit', [''])[0].strip()
+            limit = int(limit_str) if limit_str.isdigit() else None
+            title = params.get('name', [''])[0].strip() or 'Calling Hours All Analyzed Songs'
+            tracks = database.get_analyzed_songs(artist=artist, tag=tag, order_by=order, limit=limit)
+
+        lines = ['#EXTM3U', f'#PLAYLIST:{title}']
+        for t in tracks:
+            a = t.get('artist', 'Unknown Artist').strip()
+            s = t.get('song', 'Unknown Track').strip()
+            lines.append(f'#EXTINF:-1,{a} - {s}')
+            lines.append(f'{a} - {s}')
+
+        content = '\n'.join(lines) + '\n'
+        safe_name = "".join(c for c in title if c.isalnum() or c in (' ', '_', '-')).strip().replace(' ', '_') or 'calling_hours_playlist'
+
+        self.send_response(200)
+        self.send_header('Content-Type', 'audio/x-mpegurl; charset=utf-8')
+        self.send_header('Content-Disposition', f'attachment; filename="{safe_name}.m3u8"')
+        self.send_header('Content-Length', str(len(content.encode('utf-8'))))
+        self.end_headers()
+        self.wfile.write(content.encode('utf-8'))
+
+    def handle_export_csv(self, query_string: str):
+        current_user = self.get_current_user()
+        if not current_user:
+            self.send_response(302)
+            self.send_header('Location', '/login')
+            self.end_headers()
+            return
+
+        import csv
+        import io
+
+        params = urllib.parse.parse_qs(query_string)
+        saved_id = params.get('id', [''])[0].strip()
+        if saved_id.isdigit():
+            saved_p = database.get_saved_playlist(int(saved_id))
+            if saved_p:
+                tracks = saved_p.get('items', [])
+                title = saved_p.get('name', 'Calling Hours Playlist')
+            else:
+                tracks, title = [], 'Calling Hours Playlist'
+        else:
+            mode = params.get('mode', ['all_analyzed'])[0].strip()
+            artist = params.get('artist', [''])[0].strip() or None
+            tag = params.get('tag', [''])[0].strip() or None
+            order = params.get('order', ['updated_at DESC'])[0].strip()
+            limit_str = params.get('limit', [''])[0].strip()
+            limit = int(limit_str) if limit_str.isdigit() else None
+            title = params.get('name', [''])[0].strip() or 'Calling Hours All Analyzed Songs'
+            tracks = database.get_analyzed_songs(artist=artist, tag=tag, order_by=order, limit=limit)
+
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(['Artist', 'Song', 'Gemini Model', 'Analysis Prompt', 'Analyzed Date', 'Calling Hours ID'])
+        for t in tracks:
+            writer.writerow([
+                t.get('artist', ''),
+                t.get('song', ''),
+                t.get('model_name', ''),
+                t.get('prompt_name', ''),
+                t.get('updated_at') or t.get('created_at') or '',
+                t.get('id') or t.get('search_id') or '',
+            ])
+
+        content = output.getvalue()
+        safe_name = "".join(c for c in title if c.isalnum() or c in (' ', '_', '-')).strip().replace(' ', '_') or 'calling_hours_playlist'
+
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/csv; charset=utf-8')
+        self.send_header('Content-Disposition', f'attachment; filename="{safe_name}.csv"')
+        self.send_header('Content-Length', str(len(content.encode('utf-8'))))
+        self.end_headers()
+        self.wfile.write(content.encode('utf-8'))
+
+    def handle_api_playlists_save(self, data: Dict[str, Any]):
+        current_user = self.get_current_user()
+        if not current_user:
+            self.send_response(401)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(json.dumps({'error': 'Unauthorized'}).encode('utf-8'))
+            return
+
+        name = (data.get('name') or 'Calling Hours Playlist').strip()
+        description = (data.get('description') or '').strip()
+        generator_type = (data.get('generator_type') or 'all_analyzed').strip()
+        criteria = data.get('criteria') or {}
+        items = data.get('items') or []
+
+        if not items:
+            items = database.get_analyzed_songs()
+
+        playlist_id = database.save_playlist(
+            name=name,
+            generator_type=generator_type,
+            items=items,
+            description=description,
+            criteria=criteria
+        )
+
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/json; charset=utf-8')
+        self.end_headers()
+        self.wfile.write(json.dumps({'success': True, 'playlist_id': playlist_id}).encode('utf-8'))
+
+    def handle_api_playlists_export_spotify(self, data: Dict[str, Any]):
+        current_user = self.get_current_user()
+        if not current_user:
+            self.send_response(401)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(json.dumps({'error': 'Unauthorized'}).encode('utf-8'))
+            return
+
+        token_rec = database.get_spotify_token(current_user['email'])
+        access_token = spotify.get_valid_access_token(current_user['email']) if token_rec else None
+
+        if not access_token:
+            self.send_response(401)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(json.dumps({
+                'success': False,
+                'error': 'Spotify account not connected. Please connect your Spotify account first.',
+                'needs_auth': True,
+                'auth_url': '/auth/spotify'
+            }).encode('utf-8'))
+            return
+
+        name = (data.get('name') or 'Calling Hours Playlist').strip()
+        description = (data.get('description') or 'Generated by Calling Hours Lyric Intelligence').strip()
+        tracks = data.get('tracks') or []
+
+        if not tracks:
+            tracks = database.get_analyzed_songs()
+
+        try:
+            user_id = token_rec.get('spotify_user_id') if token_rec else None
+            res = spotify.export_songs_to_spotify_playlist(
+                access_token=access_token,
+                user_id=user_id,
+                playlist_name=name,
+                songs=tracks,
+                description=description
+            )
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(json.dumps(res).encode('utf-8'))
+        except Exception as e:
+            self.send_response(500)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(json.dumps({'success': False, 'error': str(e)}).encode('utf-8'))
 
     def log_message(self, format, *args):
         return

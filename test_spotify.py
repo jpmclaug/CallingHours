@@ -269,6 +269,82 @@ class TestSpotify(unittest.TestCase):
         self.assertIsNotNone(analytics)
         self.assertGreater(analytics["total_tracks"], 0)
 
+    @patch('spotify.requests.get')
+    def test_search_track(self, mock_get):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "tracks": {
+                "items": [{
+                    "id": "trk_abc",
+                    "uri": "spotify:track:trk_abc",
+                    "name": "Sweetness",
+                    "artists": [{"name": "Jimmy Eat World"}],
+                    "album": {"name": "Bleed American", "images": [{"url": "https://img.jpg"}]},
+                    "duration_ms": 220000,
+                    "external_urls": {"spotify": "https://open.spotify.com/track/trk_abc"}
+                }]
+            }
+        }
+        mock_get.return_value = mock_resp
+
+        res = spotify.search_track("token123", "Jimmy Eat World", "Sweetness")
+        self.assertIsNotNone(res)
+        self.assertEqual(res["id"], "trk_abc")
+        self.assertEqual(res["uri"], "spotify:track:trk_abc")
+        self.assertEqual(res["name"], "Sweetness")
+
+    @patch('spotify.requests.post')
+    def test_create_playlist(self, mock_post):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 201
+        mock_resp.json.return_value = {
+            "id": "pl_123",
+            "name": "Calling Hours Favorites",
+            "uri": "spotify:playlist:pl_123",
+            "external_urls": {"spotify": "https://open.spotify.com/playlist/pl_123"}
+        }
+        mock_post.return_value = mock_resp
+
+        res = spotify.create_playlist("token123", "user_1", "Calling Hours Favorites", description="Best songs")
+        self.assertEqual(res["id"], "pl_123")
+        self.assertEqual(res["url"], "https://open.spotify.com/playlist/pl_123")
+
+    @patch('spotify.requests.post')
+    def test_add_tracks_to_playlist(self, mock_post):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 201
+        mock_post.return_value = mock_resp
+
+        added = spotify.add_tracks_to_playlist("token123", "pl_123", ["spotify:track:1", "spotify:track:2"])
+        self.assertEqual(added, 2)
+
+    @patch('spotify.create_playlist')
+    @patch('spotify.search_track')
+    @patch('spotify.add_tracks_to_playlist')
+    def test_export_songs_to_spotify_playlist(self, mock_add, mock_search, mock_create):
+        mock_create.return_value = {
+            "id": "pl_xyz",
+            "name": "All Analyzed",
+            "url": "https://open.spotify.com/playlist/pl_xyz"
+        }
+        mock_search.return_value = {
+            "uri": "spotify:track:searched_1"
+        }
+        mock_add.return_value = 2
+
+        songs = [
+            {"artist": "Jimmy Eat World", "song": "Sweetness", "spotify_id": "spot_1"},
+            {"artist": "Slowdive", "song": "Alison"}
+        ]
+        res = spotify.export_songs_to_spotify_playlist("token123", "user_1", "All Analyzed", songs)
+        self.assertTrue(res["success"])
+        self.assertEqual(res["playlist_id"], "pl_xyz")
+        self.assertEqual(res["playlist_url"], "https://open.spotify.com/playlist/pl_xyz")
+        self.assertEqual(res["tracks_requested"], 2)
+        self.assertEqual(res["tracks_matched"], 2)
+        self.assertEqual(res["tracks_added"], 2)
+
 
 if __name__ == "__main__":
     unittest.main()

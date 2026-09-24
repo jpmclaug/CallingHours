@@ -148,6 +148,7 @@ class TestAppIntegration(unittest.TestCase):
             html = resp.read().decode('utf-8')
             self.assertIn('class="app-header"', html)
             self.assertIn('id="nav-link-song"', html)
+            self.assertIn('id="nav-link-playlists"', html)
             self.assertIn('id="nav-link-history"', html)
             self.assertIn('id="nav-link-prompts"', html)
             self.assertIn('id="nav-link-admin"', html)
@@ -867,6 +868,7 @@ class TestAppIntegration(unittest.TestCase):
             # Verify mobile nav links and active state on /
             self.assertIn('id="mobile-nav-link-song"', html)
             self.assertIn('id="mobile-nav-link-artist"', html)
+            self.assertIn('id="mobile-nav-link-playlists"', html)
             self.assertIn('id="mobile-nav-link-history"', html)
             self.assertIn('id="mobile-nav-link-prompts"', html)
             self.assertIn('class="app-bottom-nav-link active" id="mobile-nav-link-song"', html)
@@ -997,6 +999,169 @@ class TestAppIntegration(unittest.TestCase):
             html = resp.read().decode('utf-8')
             self.assertIn("JP Test User", html)
             self.assertIn("🟢 Connected", html)
+
+    def test_46_playlist_generator_section_and_modes(self):
+        # 1. Verify nav links on home and playlists
+        with self.authed_get("/") as resp:
+            self.assertEqual(resp.status, 200)
+            html = resp.read().decode('utf-8')
+            self.assertIn('href="/playlists"', html)
+            self.assertIn('id="nav-link-playlists"', html)
+            self.assertIn('id="mobile-nav-link-playlists"', html)
+
+        # 2. Verify /playlists page loads with Option 1 active as default
+        with self.authed_get("/playlists") as resp:
+            self.assertEqual(resp.status, 200)
+            html = resp.read().decode('utf-8')
+            self.assertIn('Playlist Generator', html)
+            self.assertIn('class="app-nav-link active" id="nav-link-playlists"', html)
+            self.assertIn('class="app-bottom-nav-link active" id="mobile-nav-link-playlists"', html)
+            # Option 1 is first and flagship
+            self.assertIn('Option 1 • Flagship', html)
+            self.assertIn('All Analyzed Songs', html)
+            self.assertIn('id="option-card-all"', html)
+            # Other options exist
+            self.assertIn('Option 2 • Artist', html)
+            self.assertIn('Option 3 • Last.fm', html)
+            self.assertIn('Option 4 • Audio', html)
+            self.assertIn('Option 5 • Streaming', html)
+            # Export buttons
+            self.assertIn('id="btn-export-spotify"', html)
+            self.assertIn('href="/playlists/export/m3u', html)
+            self.assertIn('href="/playlists/export/csv', html)
+
+        # 3. Seed test songs with analysis
+        s1 = database.save_search(
+            artist="Jimmy Eat World",
+            song="Sweetness",
+            lyrics="Are you listening?",
+            source="Genius",
+            track_tags=[{"name": "emo"}],
+            theaudiodb_data={"tempo": 135, "key": "D", "energy": 85},
+            db_path=self.db_path
+        )
+        database.save_analysis(
+            artist="Jimmy Eat World",
+            song="Sweetness",
+            analysis="## Meaning\nLyrical yearning.",
+            model_name="gemini-3.8-flash",
+            db_path=self.db_path
+        )
+        s2 = database.save_search(
+            artist="Slowdive",
+            song="When the Sun Hits",
+            lyrics="It's so cold, it's so cold",
+            source="Genius",
+            track_tags=[{"name": "shoegaze"}],
+            theaudiodb_data={"tempo": 120, "energy": 70},
+            db_path=self.db_path
+        )
+        database.save_analysis(
+            artist="Slowdive",
+            song="When the Sun Hits",
+            analysis="## Meaning\nShoegaze textures.",
+            model_name="gemini-3.8-flash",
+            db_path=self.db_path
+        )
+
+        # 4. Verify /playlists now lists both songs under Option 1 (All Analyzed Songs)
+        with self.authed_get("/playlists?mode=all_analyzed") as resp:
+            self.assertEqual(resp.status, 200)
+            html = resp.read().decode('utf-8')
+            self.assertIn("Sweetness", html)
+            self.assertIn("When the Sun Hits", html)
+            self.assertIn("Jimmy Eat World", html)
+            self.assertIn("Slowdive", html)
+            self.assertIn("✦ View Analysis", html)
+
+        # 5. Verify /playlists mode filtering
+        # By Artist
+        with self.authed_get("/playlists?mode=artist&artist=Slowdive") as resp:
+            self.assertEqual(resp.status, 200)
+            html = resp.read().decode('utf-8')
+            self.assertIn("When the Sun Hits", html)
+            self.assertNotIn("Sweetness", html)
+
+        # By Tag
+        with self.authed_get("/playlists?mode=tag&tag=emo") as resp:
+            self.assertEqual(resp.status, 200)
+            html = resp.read().decode('utf-8')
+            self.assertIn("Sweetness", html)
+            self.assertNotIn("When the Sun Hits", html)
+
+        # 6. Verify Export Endpoints
+        # M3U Export
+        with self.authed_get("/playlists/export/m3u?mode=all_analyzed") as resp:
+            self.assertEqual(resp.status, 200)
+            self.assertIn("audio/x-mpegurl", resp.headers.get("Content-Type", ""))
+            body = resp.read().decode('utf-8')
+            self.assertIn("#EXTM3U", body)
+            self.assertIn("Jimmy Eat World - Sweetness", body)
+            self.assertIn("Slowdive - When the Sun Hits", body)
+
+        # CSV Export
+        with self.authed_get("/playlists/export/csv?mode=all_analyzed") as resp:
+            self.assertEqual(resp.status, 200)
+            self.assertIn("text/csv", resp.headers.get("Content-Type", ""))
+            body = resp.read().decode('utf-8')
+            self.assertIn("Artist,Song,Gemini Model", body)
+            self.assertIn("Jimmy Eat World,Sweetness", body)
+            self.assertIn("Slowdive,When the Sun Hits", body)
+
+        # 7. Verify API Analyzed Songs
+        with self.authed_get("/api/playlists/analyzed-songs") as resp:
+            self.assertEqual(resp.status, 200)
+            data = json.loads(resp.read().decode('utf-8'))
+            self.assertGreaterEqual(data["count"], 2)
+            song_titles = [s["song"] for s in data["songs"]]
+            self.assertIn("Sweetness", song_titles)
+            self.assertIn("When the Sun Hits", song_titles)
+
+        # 8. Save playlist via API
+        payload = json.dumps({
+            "name": "Summer Jam Playlist",
+            "description": "Awesome analyzed tracks",
+            "generator_type": "all_analyzed",
+            "items": [
+                {"artist": "Jimmy Eat World", "song": "Sweetness", "id": s1}
+            ]
+        }).encode('utf-8')
+        headers = dict(self.auth_headers)
+        headers["Content-Type"] = "application/json"
+        req = urllib.request.Request(
+            f"{self.base_url}/api/playlists/save",
+            data=payload,
+            headers=headers
+        )
+        with urllib.request.urlopen(req) as resp:
+            self.assertEqual(resp.status, 200)
+            data = json.loads(resp.read().decode('utf-8'))
+            self.assertTrue(data.get("success"))
+            saved_pid = data.get("playlist_id")
+            self.assertIsNotNone(saved_pid)
+
+        # 9. Verify Saved Playlists View
+        with self.authed_get(f"/playlists?tab=saved") as resp:
+            self.assertEqual(resp.status, 200)
+            html = resp.read().decode('utf-8')
+            self.assertIn("Summer Jam Playlist", html)
+            self.assertIn(f"/playlists?id={saved_pid}", html)
+
+        # 10. Load Saved Playlist
+        with self.authed_get(f"/playlists?id={saved_pid}") as resp:
+            self.assertEqual(resp.status, 200)
+            html = resp.read().decode('utf-8')
+            self.assertIn("Summer Jam Playlist", html)
+            self.assertIn("Sweetness", html)
+
+        # 11. Delete Saved Playlist (follows 302 redirect to saved tab)
+        with self.authed_get(f"/playlists/delete?id={saved_pid}") as resp:
+            self.assertEqual(resp.status, 200)
+            html = resp.read().decode('utf-8')
+            self.assertIn("Playlist deleted successfully", html)
+            self.assertNotIn(f"/playlists?id={saved_pid}", html)
+
+        self.assertIsNone(database.get_saved_playlist(saved_pid, db_path=self.db_path))
 
 
 if __name__ == "__main__":

@@ -448,6 +448,117 @@ class TestDatabase(unittest.TestCase):
         database.clear_spotify_history("testuser@example.com", db_path=self.db_path)
         self.assertEqual(database.get_spotify_history_count("testuser@example.com", db_path=self.db_path), 0)
 
+    def test_playlist_generation_and_storage(self):
+        # 1. Initially no analyzed songs
+        self.assertEqual(database.get_analyzed_songs_count(db_path=self.db_path), 0)
+        self.assertEqual(len(database.get_analyzed_songs(db_path=self.db_path)), 0)
+        self.assertEqual(len(database.get_analyzed_artists(db_path=self.db_path)), 0)
+
+        # 2. Add songs: one with analysis, one without
+        s1_id = database.save_search(
+            artist="Jimmy Eat World",
+            song="Sweetness",
+            lyrics="Are you listening?...",
+            track_tags=[{"name": "emo"}, {"name": "alternative rock"}],
+            theaudiodb_data={"tempo": 135, "key": "D", "energy": 85},
+            db_path=self.db_path
+        )
+        s2_id = database.save_search(
+            artist="Jimmy Eat World",
+            song="The Middle",
+            lyrics="Hey, don't write yourself off yet...",
+            db_path=self.db_path
+        )
+        s3_id = database.save_search(
+            artist="Slowdive",
+            song="Alison",
+            lyrics="Listen close and don't be slow...",
+            track_tags=[{"name": "shoegaze"}, {"name": "dream pop"}],
+            db_path=self.db_path
+        )
+
+        # Save analysis for Sweetness and Alison
+        database.save_analysis(
+            artist="Jimmy Eat World",
+            song="Sweetness",
+            analysis="## Themes\nDesire for connection.",
+            db_path=self.db_path
+        )
+        database.save_analysis(
+            artist="Slowdive",
+            song="Alison",
+            analysis="## Themes\nNostalgia and melancholy.",
+            db_path=self.db_path
+        )
+
+        # Verify analyzed songs count
+        self.assertEqual(database.get_analyzed_songs_count(db_path=self.db_path), 2)
+        analyzed_songs = database.get_analyzed_songs(db_path=self.db_path)
+        self.assertEqual(len(analyzed_songs), 2)
+
+        # Filter by artist
+        jew_songs = database.get_analyzed_songs(artist="Jimmy Eat World", db_path=self.db_path)
+        self.assertEqual(len(jew_songs), 1)
+        self.assertEqual(jew_songs[0]["song"], "Sweetness")
+
+        # Filter by tag
+        shoegaze_songs = database.get_analyzed_songs(tag="shoegaze", db_path=self.db_path)
+        self.assertEqual(len(shoegaze_songs), 1)
+        self.assertEqual(shoegaze_songs[0]["song"], "Alison")
+
+        # Verify analyzed artists
+        artists = database.get_analyzed_artists(db_path=self.db_path)
+        self.assertEqual(len(artists), 2)
+        artist_names = [a["artist"] for a in artists]
+        self.assertIn("Jimmy Eat World", artist_names)
+        self.assertIn("Slowdive", artist_names)
+
+        # Verify analyzed tags
+        tags = database.get_analyzed_tags(db_path=self.db_path)
+        tag_names = [t["tag"] for t in tags]
+        self.assertIn("Emo", tag_names)
+        self.assertIn("Shoegaze", tag_names)
+
+        # 3. Save a playlist
+        playlist_items = [
+            {"id": s1_id, "artist": "Jimmy Eat World", "song": "Sweetness", "model_name": "gemini-3.8-flash"},
+            {"id": s3_id, "artist": "Slowdive", "song": "Alison", "model_name": "gemini-3.8-flash"}
+        ]
+        pid = database.save_playlist(
+            name="My Analyzed Gems",
+            generator_type="all_analyzed",
+            items=playlist_items,
+            description="The best analyzed tracks",
+            criteria={"order": "updated_at DESC"},
+            db_path=self.db_path
+        )
+        self.assertGreater(pid, 0)
+
+        # 4. Fetch saved playlist
+        saved_p = database.get_saved_playlist(pid, db_path=self.db_path)
+        self.assertIsNotNone(saved_p)
+        self.assertEqual(saved_p["name"], "My Analyzed Gems")
+        self.assertEqual(saved_p["track_count"], 2)
+        self.assertEqual(len(saved_p["items"]), 2)
+        self.assertEqual(saved_p["items"][0]["song"], "Sweetness")
+        self.assertEqual(saved_p["items"][1]["song"], "Alison")
+
+        # 5. Update Spotify info
+        database.update_playlist_spotify_info(pid, "spotify_pl_123", "https://open.spotify.com/playlist/spotify_pl_123", db_path=self.db_path)
+        updated_p = database.get_saved_playlist(pid, db_path=self.db_path)
+        self.assertEqual(updated_p["spotify_playlist_id"], "spotify_pl_123")
+        self.assertEqual(updated_p["spotify_playlist_url"], "https://open.spotify.com/playlist/spotify_pl_123")
+
+        # 6. List saved playlists
+        all_playlists = database.get_saved_playlists(db_path=self.db_path)
+        self.assertEqual(len(all_playlists), 1)
+
+        # 7. Delete saved playlist
+        deleted = database.delete_saved_playlist(pid, db_path=self.db_path)
+        self.assertTrue(deleted)
+        self.assertIsNone(database.get_saved_playlist(pid, db_path=self.db_path))
+        self.assertEqual(len(database.get_saved_playlists(db_path=self.db_path)), 0)
+
 
 if __name__ == "__main__":
     unittest.main()

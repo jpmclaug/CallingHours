@@ -13,6 +13,13 @@ Calling Hours is a web application that fetches song lyrics via the Genius API a
 - **TheAudioDB Track & Artist Insights**: Track tempos (BPM), musical keys, moods, audio feature radars (danceability, valence, energy), music videos, and artist backgrounds.
 - **Last.fm Music Intelligence**: Community-driven track genre tags and comprehensive artist profiles (top tags, listeners, scrobbles, and top songs) via the Last.fm 2.0 API. Persisted in both Neon PostgreSQL and SQLite.
 - **Spotify Listening History & Habit Analytics (`/spotify`)**: Connect your personal Spotify account via OAuth 2.0 to access a dedicated listening intelligence dashboard. Sync your recently played tracks, view live playback with an animated "Now Playing" card, explore habit analytics (time-of-day distribution, day-of-week listening, top artists in recent streams, release era/decades breakdown, and listening archetype personas like "The Night Owl" or "The Crate Digger"), and launch 1-click Gemini thematic lyrics analysis on any song in your listening history.
+- **Playlist Generator (`/playlists`)**: Dedicated playlist creation suite that creates custom playlists from your analyzed music catalog. Features 5 generation modes:
+  - **All Analyzed Songs (Primary)**: Instantly generate a playlist containing every song that has undergone Gemini thematic and poetic analysis in Calling Hours.
+  - **By Artist / Band**: Create artist-focused or multi-band playlists filtered by artist catalog and song counts.
+  - **By Genre & Mood / Tag**: Filter analyzed songs using community Last.fm tags (e.g., emo, post-hardcore, melodic hardcore, indie, melancholy).
+  - **By Audio Attributes**: Filter by tempo (BPM ranges) and musical mood attributes via TheAudioDB.
+  - **Spotify Heavy Rotation**: Blend analyzed songs with your live Spotify top played and recently streamed tracks.
+  Provides interactive tracklist previews, direct one-click Spotify Playlist creation (with automatic Genius-to-Spotify track resolution), standard `.m3u8` and `.csv` downloads, quick clipboard export, and database-persisted playlist management.
 - **Search History Dashboard**: Dedicated `/history` view to browse, filter, quick-load, and manage previously searched songs and analyses, complete with Last.fm tag chips and artist intelligence links.
 - **Editable & Custom Lyrics**: An editable lyrics workspace allowing users to review, edit, or paste lyrics manually if needed.
 - **Gemini-Powered Analysis**: Deep lyric analysis analyzing themes, narrative, emotional tone, and poetic devices.

@@ -183,6 +183,44 @@ def _format_spotify_history_record(rec: Any) -> Optional[Dict[str, Any]]:
             d['popularity'] = 0
     return d
 
+def _format_playlist_record(rec: Any) -> Optional[Dict[str, Any]]:
+    if not rec:
+        return None
+    d = dict(rec)
+    if 'created_at' in d and d['created_at'] is not None:
+        d['created_at'] = _format_datetime(d['created_at'])
+    if 'updated_at' in d and d['updated_at'] is not None:
+        d['updated_at'] = _format_datetime(d['updated_at'])
+    if 'track_count' in d and d['track_count'] is not None:
+        try:
+            d['track_count'] = int(d['track_count'])
+        except (ValueError, TypeError):
+            d['track_count'] = 0
+    if 'criteria_json' in d and d['criteria_json'] is not None:
+        if isinstance(d['criteria_json'], str):
+            try:
+                d['criteria'] = json.loads(d['criteria_json'])
+            except Exception:
+                d['criteria'] = {}
+        elif isinstance(d['criteria_json'], dict):
+            d['criteria'] = d['criteria_json']
+    else:
+        d['criteria'] = {}
+    return d
+
+def _format_playlist_item_record(rec: Any) -> Optional[Dict[str, Any]]:
+    if not rec:
+        return None
+    d = dict(rec)
+    if 'created_at' in d and d['created_at'] is not None:
+        d['created_at'] = _format_datetime(d['created_at'])
+    if 'position' in d and d['position'] is not None:
+        try:
+            d['position'] = int(d['position'])
+        except (ValueError, TypeError):
+            d['position'] = 0
+    return d
+
 
 @contextmanager
 def get_connection(db_path: Optional[str] = None):
@@ -388,6 +426,42 @@ def init_db(db_path: Optional[str] = None) -> None:
                 ON spotify_history(played_at DESC);
             """)
             cursor.execute("""
+                CREATE TABLE IF NOT EXISTS playlists (
+                    id SERIAL PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    description TEXT,
+                    generator_type TEXT NOT NULL,
+                    criteria_json TEXT,
+                    track_count INTEGER DEFAULT 0,
+                    spotify_playlist_id TEXT,
+                    spotify_playlist_url TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_playlists_updated_at 
+                ON playlists(updated_at DESC);
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS playlist_items (
+                    id SERIAL PRIMARY KEY,
+                    playlist_id INTEGER NOT NULL REFERENCES playlists(id) ON DELETE CASCADE,
+                    position INTEGER NOT NULL,
+                    search_id INTEGER,
+                    artist TEXT NOT NULL,
+                    song TEXT NOT NULL,
+                    lyrics_preview TEXT,
+                    model_name TEXT,
+                    spotify_id TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_playlist_items_playlist_id 
+                ON playlist_items(playlist_id);
+            """)
+            cursor.execute("""
                 INSERT INTO users (email, is_admin, is_active, created_at)
                 VALUES (%s, TRUE, TRUE, CURRENT_TIMESTAMP)
                 ON CONFLICT (email) DO UPDATE SET is_admin = TRUE, is_active = TRUE;
@@ -542,6 +616,43 @@ def init_db(db_path: Optional[str] = None) -> None:
             cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_spotify_hist_played 
                 ON spotify_history(played_at DESC);
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS playlists (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    description TEXT,
+                    generator_type TEXT NOT NULL,
+                    criteria_json TEXT,
+                    track_count INTEGER DEFAULT 0,
+                    spotify_playlist_id TEXT,
+                    spotify_playlist_url TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_playlists_updated_at 
+                ON playlists(updated_at DESC);
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS playlist_items (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    playlist_id INTEGER NOT NULL,
+                    position INTEGER NOT NULL,
+                    search_id INTEGER,
+                    artist TEXT NOT NULL,
+                    song TEXT NOT NULL,
+                    lyrics_preview TEXT,
+                    model_name TEXT,
+                    spotify_id TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY(playlist_id) REFERENCES playlists(id) ON DELETE CASCADE
+                );
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_playlist_items_playlist_id 
+                ON playlist_items(playlist_id);
             """)
             cursor.execute("""
                 INSERT INTO users (email, is_admin, is_active, created_at)
@@ -1645,6 +1756,284 @@ def clear_spotify_history(user_email: str, db_path: Optional[str] = None) -> Non
         cursor = conn.cursor()
         ph = "%s" if is_postgres(target) else "?"
         cursor.execute(f"DELETE FROM spotify_history WHERE LOWER(user_email) = {ph}", (clean_email,))
+
+
+def get_analyzed_songs(
+    artist: Optional[str] = None,
+    tag: Optional[str] = None,
+    order_by: str = 'updated_at DESC',
+    limit: Optional[int] = None,
+    db_path: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    """Retrieve songs that have an existing Gemini lyrics analysis."""
+    target = get_db_target(db_path)
+    with get_connection(target) as conn:
+        if is_postgres(target):
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            ph = "%s"
+        else:
+            cursor = conn.cursor()
+            ph = "?"
+
+        query = """
+            SELECT 
+                id,
+                artist,
+                song,
+                source,
+                song_url,
+                analysis,
+                model_name,
+                prompt_name,
+                track_tags,
+                theaudiodb_data,
+                lyrics,
+                (lyrics IS NOT NULL AND LENGTH(TRIM(lyrics)) > 0) as has_lyrics,
+                TRUE as has_analysis,
+                created_at,
+                updated_at
+            FROM searches
+            WHERE analysis IS NOT NULL AND LENGTH(TRIM(analysis)) > 0
+        """
+        params: List[Any] = []
+        if artist and artist.strip():
+            query += f" AND artist_normalized = {ph}"
+            params.append(normalize_text(artist.strip()))
+
+        valid_orders = {
+            'updated_at DESC': 'updated_at DESC, id DESC',
+            'updated_at ASC': 'updated_at ASC, id ASC',
+            'artist ASC': 'artist ASC, song ASC',
+            'song ASC': 'song ASC, artist ASC',
+        }
+        order_clause = valid_orders.get(order_by, 'updated_at DESC, id DESC')
+        query += f" ORDER BY {order_clause}"
+
+        # If tag filter is provided, we fetch without SQL limit first to filter in Python, then apply limit
+        if not tag and limit and limit > 0:
+            query += f" LIMIT {ph}"
+            params.append(limit)
+
+        cursor.execute(query, tuple(params))
+        rows = cursor.fetchall()
+        results = [_format_search_record(r) for r in rows]
+
+        if tag and tag.strip():
+            tag_norm = tag.strip().lower()
+            filtered = []
+            for r in results:
+                tags = r.get('track_tags') or []
+                matched = False
+                for t in tags:
+                    t_name = t.get('name', '').lower() if isinstance(t, dict) else str(t).lower()
+                    if tag_norm in t_name:
+                        matched = True
+                        break
+                if matched:
+                    filtered.append(r)
+            if limit and limit > 0:
+                filtered = filtered[:limit]
+            return filtered
+
+        return results
+
+
+def get_analyzed_songs_count(artist: Optional[str] = None, db_path: Optional[str] = None) -> int:
+    """Get the total count of songs with analysis."""
+    target = get_db_target(db_path)
+    with get_connection(target) as conn:
+        cursor = conn.cursor()
+        ph = "%s" if is_postgres(target) else "?"
+        if artist and artist.strip():
+            cursor.execute(
+                f"SELECT COUNT(*) FROM searches WHERE analysis IS NOT NULL AND LENGTH(TRIM(analysis)) > 0 AND artist_normalized = {ph}",
+                (normalize_text(artist.strip()),)
+            )
+        else:
+            cursor.execute("SELECT COUNT(*) FROM searches WHERE analysis IS NOT NULL AND LENGTH(TRIM(analysis)) > 0")
+        row = cursor.fetchone()
+        return row[0] if row else 0
+
+
+def get_analyzed_artists(db_path: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Retrieve distinct artists who have at least one analyzed song."""
+    target = get_db_target(db_path)
+    with get_connection(target) as conn:
+        if is_postgres(target):
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        else:
+            cursor = conn.cursor()
+        cursor.execute("""
+            SELECT artist, COUNT(*) as song_count
+            FROM searches
+            WHERE analysis IS NOT NULL AND LENGTH(TRIM(analysis)) > 0
+            GROUP BY artist, artist_normalized
+            ORDER BY artist ASC
+        """)
+        rows = cursor.fetchall()
+        return [dict(r) for r in rows]
+
+
+def get_analyzed_tags(db_path: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Retrieve distinct Last.fm tags from analyzed songs with occurrence counts."""
+    songs = get_analyzed_songs(db_path=db_path)
+    tag_counts: Dict[str, int] = {}
+    for s in songs:
+        tags = s.get('track_tags') or []
+        for t in tags:
+            t_name = t.get('name', '').strip() if isinstance(t, dict) else str(t).strip()
+            if t_name:
+                key = t_name.title()
+                tag_counts[key] = tag_counts.get(key, 0) + 1
+    sorted_tags = sorted(tag_counts.items(), key=lambda x: (-x[1], x[0]))
+    return [{'tag': k, 'count': v} for k, v in sorted_tags]
+
+
+def save_playlist(
+    name: str,
+    generator_type: str,
+    items: List[Dict[str, Any]],
+    description: Optional[str] = None,
+    criteria: Optional[Dict[str, Any]] = None,
+    spotify_playlist_id: Optional[str] = None,
+    spotify_playlist_url: Optional[str] = None,
+    db_path: Optional[str] = None
+) -> int:
+    """Save a generated playlist and its ordered tracks."""
+    target = get_db_target(db_path)
+    criteria_json = json.dumps(criteria) if criteria is not None else None
+    track_count = len(items)
+
+    with get_connection(target) as conn:
+        cursor = conn.cursor()
+        if is_postgres(target):
+            cursor.execute("""
+                INSERT INTO playlists (
+                    name, description, generator_type, criteria_json, track_count,
+                    spotify_playlist_id, spotify_playlist_url, created_at, updated_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                RETURNING id;
+            """, (name.strip(), description, generator_type, criteria_json, track_count, spotify_playlist_id, spotify_playlist_url))
+            playlist_id = cursor.fetchone()[0]
+            for idx, itm in enumerate(items, 1):
+                lyrics_prev = (itm.get('lyrics') or '')[:200] if itm.get('lyrics') else None
+                spotify_id = itm.get('spotify_id')
+                if not spotify_id and itm.get('theaudiodb_data'):
+                    audiodb = itm['theaudiodb_data']
+                    if isinstance(audiodb, dict):
+                        spotify_id = audiodb.get('spotify_id')
+                cursor.execute("""
+                    INSERT INTO playlist_items (
+                        playlist_id, position, search_id, artist, song, lyrics_preview, model_name, spotify_id, created_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+                """, (
+                    playlist_id,
+                    idx,
+                    itm.get('id') or itm.get('search_id'),
+                    itm.get('artist', '').strip(),
+                    itm.get('song', '').strip(),
+                    lyrics_prev,
+                    itm.get('model_name'),
+                    spotify_id,
+                ))
+            return playlist_id
+        else:
+            cursor.execute("""
+                INSERT INTO playlists (
+                    name, description, generator_type, criteria_json, track_count,
+                    spotify_playlist_id, spotify_playlist_url, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'), strftime('%Y-%m-%d %H:%M:%f', 'now'))
+            """, (name.strip(), description, generator_type, criteria_json, track_count, spotify_playlist_id, spotify_playlist_url))
+            playlist_id = cursor.lastrowid
+            for idx, itm in enumerate(items, 1):
+                lyrics_prev = (itm.get('lyrics') or '')[:200] if itm.get('lyrics') else None
+                spotify_id = itm.get('spotify_id')
+                if not spotify_id and itm.get('theaudiodb_data'):
+                    audiodb = itm['theaudiodb_data']
+                    if isinstance(audiodb, dict):
+                        spotify_id = audiodb.get('spotify_id')
+                cursor.execute("""
+                    INSERT INTO playlist_items (
+                        playlist_id, position, search_id, artist, song, lyrics_preview, model_name, spotify_id, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'))
+                """, (
+                    playlist_id,
+                    idx,
+                    itm.get('id') or itm.get('search_id'),
+                    itm.get('artist', '').strip(),
+                    itm.get('song', '').strip(),
+                    lyrics_prev,
+                    itm.get('model_name'),
+                    spotify_id,
+                ))
+            return playlist_id
+
+
+def get_saved_playlists(limit: int = 50, db_path: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Retrieve saved playlists ordered by updated_at descending."""
+    target = get_db_target(db_path)
+    with get_connection(target) as conn:
+        if is_postgres(target):
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            ph = "%s"
+        else:
+            cursor = conn.cursor()
+            ph = "?"
+        cursor.execute(f"SELECT * FROM playlists ORDER BY updated_at DESC, id DESC LIMIT {ph}", (limit,))
+        rows = cursor.fetchall()
+        return [_format_playlist_record(r) for r in rows]
+
+
+def get_saved_playlist(playlist_id: int, db_path: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """Retrieve a single saved playlist with all its items."""
+    target = get_db_target(db_path)
+    with get_connection(target) as conn:
+        if is_postgres(target):
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            ph = "%s"
+        else:
+            cursor = conn.cursor()
+            ph = "?"
+        cursor.execute(f"SELECT * FROM playlists WHERE id = {ph}", (playlist_id,))
+        row = cursor.fetchone()
+        if not row:
+            return None
+        playlist = _format_playlist_record(row)
+        cursor.execute(f"SELECT * FROM playlist_items WHERE playlist_id = {ph} ORDER BY position ASC, id ASC", (playlist_id,))
+        items_rows = cursor.fetchall()
+        playlist['items'] = [_format_playlist_item_record(ir) for ir in items_rows]
+        return playlist
+
+
+def delete_saved_playlist(playlist_id: int, db_path: Optional[str] = None) -> bool:
+    """Delete a saved playlist and cascaded items."""
+    target = get_db_target(db_path)
+    with get_connection(target) as conn:
+        cursor = conn.cursor()
+        ph = "%s" if is_postgres(target) else "?"
+        cursor.execute(f"DELETE FROM playlist_items WHERE playlist_id = {ph}", (playlist_id,))
+        cursor.execute(f"DELETE FROM playlists WHERE id = {ph}", (playlist_id,))
+        return cursor.rowcount > 0
+
+
+def update_playlist_spotify_info(playlist_id: int, spotify_id: str, spotify_url: str, db_path: Optional[str] = None) -> bool:
+    """Update Spotify ID and URL for a saved playlist."""
+    target = get_db_target(db_path)
+    with get_connection(target) as conn:
+        cursor = conn.cursor()
+        if is_postgres(target):
+            cursor.execute("""
+                UPDATE playlists
+                SET spotify_playlist_id = %s, spotify_playlist_url = %s, updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s
+            """, (spotify_id, spotify_url, playlist_id))
+        else:
+            cursor.execute("""
+                UPDATE playlists
+                SET spotify_playlist_id = ?, spotify_playlist_url = ?, updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now')
+                WHERE id = ?
+            """, (spotify_id, spotify_url, playlist_id))
+        return cursor.rowcount > 0
 
 
 
