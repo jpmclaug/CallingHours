@@ -5303,6 +5303,24 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
                             </div>
                         </div>
                     `;
+                } else if (data.needs_reauth || (data.error && (data.error.includes('403') || data.error.includes('Forbidden') || data.error.toLowerCase().includes('permission')))) {
+                    content.innerHTML = `
+                        <div style="padding: 10px 0; text-align: center;">
+                            <div style="font-size: 2.2rem; margin-bottom: 10px;">🔐</div>
+                            <h4 style="margin: 0 0 10px 0; color: #FFFFFF; font-size: 1.15rem; font-family: 'Montserrat', sans-serif;">
+                                Spotify Permissions Update Required
+                            </h4>
+                            <p style="color: rgba(225, 232, 240, 0.85); font-size: 0.88rem; line-height: 1.5; margin-bottom: 20px;">
+                                Your Spotify account was connected before playlist creation permissions were added. Please re-authorize your Spotify account with 1 click to grant permission to create playlists in your library.
+                            </p>
+                            <div style="display: flex; gap: 10px; justify-content: center;">
+                                <a href="${data.auth_url || '/auth/spotify'}" class="btn-playlist-action btn-playlist-spotify" style="text-decoration: none;">
+                                    <span>🟢</span> Re-Authorize Spotify (1-Click)
+                                </a>
+                                <button type="button" class="btn-playlist-action btn-playlist-outline" onclick="closeSpotifyModal()">Cancel</button>
+                            </div>
+                        </div>
+                    `;
                 } else {
                     content.innerHTML = `
                         <div style="padding: 10px 0;">
@@ -8977,12 +8995,19 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header('Content-Type', 'application/json; charset=utf-8')
             self.end_headers()
-            self.wfile.write(json.dumps(res).encode('utf-8'))
         except Exception as e:
-            self.send_response(500)
+            err_str = str(e)
+            is_forbidden = '403' in err_str or 'Forbidden' in err_str or 'permission' in err_str.lower()
+            self.send_response(200)
             self.send_header('Content-Type', 'application/json; charset=utf-8')
             self.end_headers()
-            self.wfile.write(json.dumps({'success': False, 'error': str(e)}).encode('utf-8'))
+            self.wfile.write(json.dumps({
+                'success': False,
+                'error': err_str,
+                'needs_reauth': is_forbidden,
+                'auth_url': '/auth/spotify',
+                'message': 'Your Spotify account was connected before playlist permissions were added. Please re-authorize to grant playlist creation access.' if is_forbidden else err_str
+            }).encode('utf-8'))
 
     def log_message(self, format, *args):
         return

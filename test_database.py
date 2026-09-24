@@ -267,15 +267,20 @@ class TestDatabase(unittest.TestCase):
         self.assertEqual(len(art["top_tracks"]), 1)
         self.assertEqual(art["top_tracks"][0]["name"], "Song 1")
 
-        # Update artist with new tags
+        # Update artist with new tags and spotify_data
         new_tags = [{"name": "hardcore punk", "count": 120, "url": ""}]
-        database.save_artist_metadata("Turnstile", tags=new_tags, db_path=self.db_path)
+        spot_data = {"popularity": 75, "followers": 500000, "genres": ["hardcore", "punk"]}
+        database.save_artist_metadata("Turnstile", tags=new_tags, spotify_data=spot_data, db_path=self.db_path)
 
         art_updated = database.get_artist_metadata("turnstile", db_path=self.db_path)
         self.assertEqual(len(art_updated["tags"]), 1)
         self.assertEqual(art_updated["tags"][0]["name"], "hardcore punk")
         # Previous top tracks should be preserved
         self.assertEqual(len(art_updated["top_tracks"]), 1)
+        # Spotify data should be persisted and parsed as dict
+        self.assertIsNotNone(art_updated.get("spotify_data"))
+        self.assertEqual(art_updated["spotify_data"]["popularity"], 75)
+        self.assertEqual(art_updated["spotify_data"]["followers"], 500000)
 
     def test_track_tags_persistence(self):
         track_tags = [

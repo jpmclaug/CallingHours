@@ -7,6 +7,7 @@ and computing rich listening habit analytics.
 from __future__ import annotations
 
 import base64
+import json
 import os
 import re
 import urllib.parse
@@ -28,6 +29,8 @@ SPOTIFY_SCOPES = [
     "user-read-email",
     "playlist-modify-public",
     "playlist-modify-private",
+    "playlist-read-private",
+    "playlist-read-collaborative",
 ]
 
 DEFAULT_TIMEOUT = 10
@@ -970,25 +973,62 @@ def create_playlist(
         "public": public
     }
 
-    # /v1/me/playlists is standard in current Spotify Web API
-    url = f"{SPOTIFY_API_BASE_URL}/me/playlists"
-    try:
-        resp = requests.post(url, headers=headers, json=payload, timeout=DEFAULT_TIMEOUT)
-        if resp.status_code not in (200, 201) and user_id:
-            url = f"{SPOTIFY_API_BASE_URL}/users/{user_id}/playlists"
-            resp = requests.post(url, headers=headers, json=payload, timeout=DEFAULT_TIMEOUT)
-        if resp.status_code in (200, 201):
-            data = resp.json()
-            return {
-                "id": data.get("id"),
-                "name": data.get("name"),
-                "uri": data.get("uri"),
-                "url": data.get("external_urls", {}).get("spotify", ""),
-            }
-        raise RuntimeError(f"Spotify API create playlist error ({resp.status_code}): {resp.text}")
-    except Exception as e:
-        print(f"Spotify create_playlist error: {e}")
-        raise
+    # If user_id is not supplied, fetch it from profile
+    if not user_id:
+        try:
+            profile = fetch_user_profile(access_token)
+            user_id = profile.get("id")
+        except Exception:
+            user_id = None
+
+    # Candidate endpoints to try:
+    # 1. /users/{user_id}/playlists (official Spotify Web API specification)
+    # 2. /me/playlists
+    urls = []
+    if user_id:
+        urls.append(f"{SPOTIFY_API_BASE_URL}/users/{user_id}/playlists")
+    urls.append(f"{SPOTIFY_API_BASE_URL}/me/playlists")
+
+    last_status = None
+    last_text = ""
+
+    for target_url in urls:
+        try:
+            resp = requests.post(target_url, headers=headers, json=payload, timeout=DEFAULT_TIMEOUT)
+            last_status = resp.status_code
+            last_text = resp.text
+
+            if resp.status_code in (200, 201):
+                data = resp.json()
+                return {
+                    "id": data.get("id"),
+                    "name": data.get("name"),
+                    "uri": data.get("uri"),
+                    "url": data.get("external_urls", {}).get("spotify", ""),
+                }
+
+            # If 403 Forbidden with public=False/True, try toggling public flag once
+            if resp.status_code == 403:
+                alt_payload = dict(payload, public=not public)
+                alt_resp = requests.post(target_url, headers=headers, json=alt_payload, timeout=DEFAULT_TIMEOUT)
+                if alt_resp.status_code in (200, 201):
+                    data = alt_resp.json()
+                    return {
+                        "id": data.get("id"),
+                        "name": data.get("name"),
+                        "uri": data.get("uri"),
+                        "url": data.get("external_urls", {}).get("spotify", ""),
+                    }
+        except Exception as e:
+            print(f"Spotify create_playlist attempt error ({target_url}): {e}")
+
+    if last_status == 403:
+        raise RuntimeError(
+            f"Spotify API create playlist error (403): Forbidden. "
+            f"Your Spotify connection lacks playlist permissions. Please re-authorize your Spotify account."
+        )
+
+    raise RuntimeError(f"Spotify API create playlist error ({last_status}): {last_text}")
 
 
 def add_tracks_to_playlist(access_token: str, playlist_id: str, track_uris: List[str]) -> int:
@@ -999,14 +1039,17 @@ def add_tracks_to_playlist(access_token: str, playlist_id: str, track_uris: List
         "Authorization": f"Bearer {access_token}",
         "Content-Type": "application/json"
     }
-    url = f"{SPOTIFY_API_BASE_URL}/playlists/{playlist_id}/tracks"
+    url_items = f"{SPOTIFY_API_BASE_URL}/playlists/{playlist_id}/items"
+    url_tracks = f"{SPOTIFY_API_BASE_URL}/playlists/{playlist_id}/tracks"
     total_added = 0
     batch_size = 100
 
     for i in range(0, len(track_uris), batch_size):
         chunk = track_uris[i:i + batch_size]
         try:
-            resp = requests.post(url, headers=headers, json={"uris": chunk}, timeout=DEFAULT_TIMEOUT)
+            resp = requests.post(url_items, headers=headers, json={"uris": chunk}, timeout=DEFAULT_TIMEOUT)
+            if resp.status_code not in (200, 201):
+                resp = requests.post(url_tracks, headers=headers, json={"uris": chunk}, timeout=DEFAULT_TIMEOUT)
             if resp.status_code in (200, 201):
                 total_added += len(chunk)
             else:
@@ -1078,3 +1121,481 @@ def export_songs_to_spotify_playlist(
         "tracks_added": added_count,
         "unmatched": unmatched,
     }
+
+
+_app_token_cache: Dict[str, Any] = {"token": None, "expires_at": 0.0}
+
+
+def get_spotify_app_token(force_refresh: bool = False) -> Optional[str]:
+    """Retrieve an application-level access token via Client Credentials flow."""
+    client_id, client_secret, _ = get_spotify_credentials()
+    if not client_id or not client_secret:
+        return None
+
+    now = datetime.now(timezone.utc).timestamp()
+    if not force_refresh and _app_token_cache.get("token") and _app_token_cache.get("expires_at", 0) > now + 60:
+        return _app_token_cache["token"]
+
+    auth_header = base64.b64encode(f"{client_id}:{client_secret}".encode("utf-8")).decode("utf-8")
+    headers = {
+        "Authorization": f"Basic {auth_header}",
+        "Content-Type": "application/x-www-form-urlencoded",
+    }
+    data = {"grant_type": "client_credentials"}
+
+    try:
+        resp = requests.post(SPOTIFY_TOKEN_URL, headers=headers, data=data, timeout=DEFAULT_TIMEOUT)
+        if resp.status_code == 200:
+            payload = resp.json()
+            tok = payload.get("access_token")
+            expires_in = payload.get("expires_in", 3600)
+            _app_token_cache["token"] = tok
+            _app_token_cache["expires_at"] = now + expires_in
+            return tok
+        else:
+            print(f"Spotify client credentials token error: {resp.status_code} {resp.text}")
+    except Exception as e:
+        print(f"Spotify client credentials request error: {e}")
+    return None
+
+
+def get_artist_api_token(user_email: Optional[str] = None, db_module: Any = None) -> Optional[str]:
+    """Obtain a valid token for public catalog access: uses user session token if present, or app token."""
+    if user_email:
+        user_tok = get_valid_access_token(user_email, db_module=db_module)
+        if user_tok:
+            return user_tok
+    return get_spotify_app_token()
+
+
+def search_artist_profile(access_token: str, artist_name: str) -> Optional[Dict[str, Any]]:
+    """Search Spotify for an artist by name and return profile details."""
+    clean_name = artist_name.strip()
+    if not clean_name:
+        return None
+
+    headers = {"Authorization": f"Bearer {access_token}"}
+    params = {"q": clean_name, "type": "artist", "limit": 5}
+    url = f"{SPOTIFY_API_BASE_URL}/search"
+
+    try:
+        resp = requests.get(url, headers=headers, params=params, timeout=DEFAULT_TIMEOUT)
+        if resp.status_code != 200:
+            return None
+        data = resp.json()
+        items = data.get("artists", {}).get("items", [])
+        if not items:
+            return None
+
+        # Prefer exact match case-insensitive
+        target_norm = clean_name.lower()
+        selected = items[0]
+        for it in items:
+            if it.get("name", "").strip().lower() == target_norm:
+                selected = it
+                break
+
+        images = selected.get("images") or []
+        image_url = images[0].get("url") if images else ""
+        followers = (selected.get("followers") or {}).get("total", 0)
+
+        return {
+            "id": selected.get("id"),
+            "name": selected.get("name"),
+            "genres": selected.get("genres", []),
+            "popularity": selected.get("popularity", 0),
+            "followers": followers,
+            "image_url": image_url,
+            "spotify_url": (selected.get("external_urls") or {}).get("spotify", ""),
+            "uri": selected.get("uri", ""),
+        }
+    except Exception as e:
+        print(f"Spotify search_artist_profile error for {clean_name}: {e}")
+        return None
+
+
+def fetch_artist_top_tracks(access_token: str, artist_id: str, market: str = "US") -> List[Dict[str, Any]]:
+    """Fetch top tracks for a Spotify artist (up to 10)."""
+    if not artist_id:
+        return []
+
+    headers = {"Authorization": f"Bearer {access_token}"}
+    url = f"{SPOTIFY_API_BASE_URL}/artists/{artist_id}/top-tracks"
+    params = {"market": market}
+
+    try:
+        resp = requests.get(url, headers=headers, params=params, timeout=DEFAULT_TIMEOUT)
+        if resp.status_code != 200:
+            return []
+        items = resp.json().get("tracks", [])
+        top_tracks = []
+        for it in items[:10]:
+            album = it.get("album") or {}
+            images = album.get("images") or []
+            img_url = images[0].get("url") if images else ""
+            dur_ms = it.get("duration_ms", 0)
+            top_tracks.append({
+                "id": it.get("id"),
+                "name": it.get("name"),
+                "duration_ms": dur_ms,
+                "duration_formatted": format_duration(dur_ms),
+                "popularity": it.get("popularity", 0),
+                "preview_url": it.get("preview_url") or "",
+                "spotify_url": (it.get("external_urls") or {}).get("spotify", ""),
+                "album_name": album.get("name", ""),
+                "album_image": img_url,
+                "release_date": album.get("release_date", ""),
+                "release_year": album.get("release_date", "")[:4] if album.get("release_date") else "",
+            })
+        return top_tracks
+    except Exception as e:
+        print(f"Spotify fetch_artist_top_tracks error for {artist_id}: {e}")
+        return []
+
+
+def fetch_artist_discography_stats(access_token: str, artist_id: str, market: str = "US") -> Dict[str, Any]:
+    """Fetch albums and singles to compute discography counts, active years, and latest release."""
+    if not artist_id:
+        return {
+            "albums_count": 0,
+            "singles_count": 0,
+            "total_releases": 0,
+            "latest_release": None,
+            "years_active_span": "",
+            "active_decades": [],
+        }
+
+    headers = {"Authorization": f"Bearer {access_token}"}
+    url = f"{SPOTIFY_API_BASE_URL}/artists/{artist_id}/albums"
+    params = {
+        "include_groups": "album,single",
+        "market": market,
+        "limit": 50,
+    }
+
+    try:
+        resp = requests.get(url, headers=headers, params=params, timeout=DEFAULT_TIMEOUT)
+        if resp.status_code != 200:
+            return {
+                "albums_count": 0,
+                "singles_count": 0,
+                "total_releases": 0,
+                "latest_release": None,
+                "years_active_span": "",
+                "active_decades": [],
+            }
+        items = resp.json().get("items", [])
+
+        seen_names = set()
+        albums = []
+        singles = []
+        years = []
+
+        for it in items:
+            name_norm = it.get("name", "").strip().lower()
+            group = it.get("album_group") or it.get("album_type") or "album"
+            if name_norm not in seen_names:
+                seen_names.add(name_norm)
+                r_date = it.get("release_date") or ""
+                year = r_date[:4] if len(r_date) >= 4 and r_date[:4].isdigit() else ""
+                if year:
+                    years.append(int(year))
+                if group == "album":
+                    albums.append(it)
+                else:
+                    singles.append(it)
+
+        # Latest release
+        latest_item = items[0] if items else None
+        latest_dict = None
+        if latest_item:
+            imgs = latest_item.get("images") or []
+            latest_dict = {
+                "name": latest_item.get("name"),
+                "release_date": latest_item.get("release_date", ""),
+                "type": (latest_item.get("album_group") or latest_item.get("album_type") or "album").title(),
+                "image_url": imgs[0].get("url") if imgs else "",
+                "spotify_url": (latest_item.get("external_urls") or {}).get("spotify", ""),
+            }
+
+        # Span
+        span_str = ""
+        decades_list = []
+        if years:
+            min_y = min(years)
+            max_y = max(years)
+            if min_y == max_y:
+                span_str = f"{min_y}"
+            else:
+                diff = max_y - min_y
+                span_str = f"{min_y} - {max_y} ({diff} yrs)"
+
+            dec_set = set()
+            for y in years:
+                d = f"{(y // 10) * 10}s"
+                dec_set.add(d)
+            decades_list = sorted(list(dec_set))
+
+        return {
+            "albums_count": len(albums),
+            "singles_count": len(singles),
+            "total_releases": len(albums) + len(singles),
+            "latest_release": latest_dict,
+            "years_active_span": span_str,
+            "active_decades": decades_list,
+        }
+    except Exception as e:
+        print(f"Spotify fetch_artist_discography_stats error: {e}")
+        return {
+            "albums_count": 0,
+            "singles_count": 0,
+            "total_releases": 0,
+            "latest_release": None,
+            "years_active_span": "",
+            "active_decades": [],
+        }
+
+
+def format_followers(followers: int) -> str:
+    """Format followers into compact human-readable string (e.g. 1.2M, 450K, 3,200)."""
+    if followers >= 1_000_000:
+        val = followers / 1_000_000
+        return f"{val:.1f}M".replace(".0M", "M")
+    elif followers >= 1_000:
+        val = followers / 1_000
+        return f"{val:.1f}K".replace(".0K", "K")
+    return f"{followers:,}"
+
+
+def compute_artist_popularity_tier(popularity: int) -> str:
+    """Classify 0-100 Spotify artist popularity into a descriptive tier."""
+    if popularity >= 80:
+        return "Global Superstar / Chart Topper"
+    elif popularity >= 65:
+        return "Mainstream Heavyweight"
+    elif popularity >= 50:
+        return "Established Act / Wide Audience"
+    elif popularity >= 35:
+        return "Cult Favorite / Strong Base"
+    else:
+        return "Indie / Underground Gem"
+
+
+def compute_artist_analytics(
+    artist_profile: Dict[str, Any],
+    top_tracks: List[Dict[str, Any]],
+    discography_stats: Dict[str, Any]
+) -> Dict[str, Any]:
+    """Compute consolidated artist analytics from Spotify data."""
+    pop = int(artist_profile.get("popularity") or 0)
+    followers = int(artist_profile.get("followers") or 0)
+    genres = [g.title() for g in artist_profile.get("genres", [])]
+
+    avg_track_pop = 0.0
+    if top_tracks:
+        avg_track_pop = round(sum(t.get("popularity", 0) for t in top_tracks) / len(top_tracks), 1)
+
+    return {
+        "popularity": pop,
+        "popularity_tier": compute_artist_popularity_tier(pop),
+        "followers": followers,
+        "followers_formatted": format_followers(followers),
+        "genres": genres,
+        "avg_track_popularity": avg_track_pop,
+        "discography": discography_stats,
+        "top_tracks": top_tracks,
+    }
+
+
+def get_demo_artist_spotify_data(artist: str) -> Dict[str, Any]:
+    """Generate realistic fallback demo Spotify artist analytics for preview mode."""
+    clean_artist = artist.strip() or "Jimmy Eat World"
+    return {
+        "is_configured": False,
+        "found": True,
+        "artist": clean_artist,
+        "artist_id": "demo_artist_id",
+        "spotify_url": "https://open.spotify.com",
+        "image_url": "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=400&h=400&fit=crop",
+        "popularity": 74,
+        "popularity_tier": "Mainstream Heavyweight",
+        "followers": 1420500,
+        "followers_formatted": "1.4M",
+        "genres": ["Alternative Rock", "Emo", "Pop Punk", "Post-Grunge"],
+        "avg_track_popularity": 68.4,
+        "discography": {
+            "albums_count": 10,
+            "singles_count": 16,
+            "total_releases": 26,
+            "years_active_span": "1994 - 2024 (30 yrs)",
+            "active_decades": ["1990s", "2000s", "2010s", "2020s"],
+            "latest_release": {
+                "name": "Surviving",
+                "release_date": "2019-10-18",
+                "type": "Album",
+                "image_url": "",
+                "spotify_url": "https://open.spotify.com",
+            }
+        },
+        "top_tracks": [
+            {
+                "id": "trk_1",
+                "name": "The Middle",
+                "duration_ms": 166000,
+                "duration_formatted": "2:46",
+                "popularity": 84,
+                "preview_url": "",
+                "spotify_url": "https://open.spotify.com",
+                "album_name": "Bleed American",
+                "album_image": "",
+                "release_year": "2001",
+            },
+            {
+                "id": "trk_2",
+                "name": "Sweetness",
+                "duration_ms": 220000,
+                "duration_formatted": "3:40",
+                "popularity": 73,
+                "preview_url": "",
+                "spotify_url": "https://open.spotify.com",
+                "album_name": "Bleed American",
+                "album_image": "",
+                "release_year": "2001",
+            },
+            {
+                "id": "trk_3",
+                "name": "Bleed American",
+                "duration_ms": 182000,
+                "duration_formatted": "3:02",
+                "popularity": 70,
+                "preview_url": "",
+                "spotify_url": "https://open.spotify.com",
+                "album_name": "Bleed American",
+                "album_image": "",
+                "release_year": "2001",
+            },
+            {
+                "id": "trk_4",
+                "name": "Hear You Me",
+                "duration_ms": 284000,
+                "duration_formatted": "4:44",
+                "popularity": 69,
+                "preview_url": "",
+                "spotify_url": "https://open.spotify.com",
+                "album_name": "Bleed American",
+                "album_image": "",
+                "release_year": "2001",
+            },
+            {
+                "id": "trk_5",
+                "name": "Pain",
+                "duration_ms": 181000,
+                "duration_formatted": "3:01",
+                "popularity": 64,
+                "preview_url": "",
+                "spotify_url": "https://open.spotify.com",
+                "album_name": "Futures",
+                "album_image": "",
+                "release_year": "2004",
+            },
+        ],
+        "cached": False,
+        "is_demo": True,
+    }
+
+
+def get_or_fetch_artist_spotify_data(
+    artist: str,
+    user_email: Optional[str] = None,
+    force_refresh: bool = False,
+    db_path: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Get aggregated Spotify artist intelligence from database cache if available,
+    otherwise query Spotify Web API and persist to database.
+    """
+    if not artist or not artist.strip():
+        return {
+            "is_configured": is_spotify_configured(),
+            "found": False,
+            "artist": "",
+            "cached": False,
+        }
+
+    import database
+
+    clean_artist = artist.strip()
+
+    # 1. Check database cache if not forced refresh
+    if not force_refresh:
+        cached = database.get_artist_metadata(clean_artist, db_path=db_path)
+        if cached and cached.get("spotify_data"):
+            spot_data = cached["spotify_data"]
+            if isinstance(spot_data, str):
+                try:
+                    spot_data = json.loads(spot_data)
+                except Exception:
+                    spot_data = None
+            if isinstance(spot_data, dict) and spot_data.get("found"):
+                spot_data["cached"] = True
+                spot_data["is_configured"] = is_spotify_configured()
+                return spot_data
+
+    # 2. Check if Spotify credentials are configured
+    if not is_spotify_configured():
+        fallback = get_demo_artist_spotify_data(clean_artist)
+        fallback["is_configured"] = False
+        return fallback
+
+    # 3. Obtain token
+    token = get_artist_api_token(user_email=user_email)
+    if not token:
+        fallback = get_demo_artist_spotify_data(clean_artist)
+        fallback["is_configured"] = False
+        return fallback
+
+    # 4. Search artist
+    profile = search_artist_profile(token, clean_artist)
+    if not profile or not profile.get("id"):
+        return {
+            "is_configured": True,
+            "found": False,
+            "artist": clean_artist,
+            "cached": False,
+        }
+
+    artist_id = profile["id"]
+    top_tracks = fetch_artist_top_tracks(token, artist_id)
+    disco = fetch_artist_discography_stats(token, artist_id)
+    analytics = compute_artist_analytics(profile, top_tracks, disco)
+
+    result: Dict[str, Any] = {
+        "is_configured": True,
+        "found": True,
+        "artist": profile.get("name") or clean_artist,
+        "artist_id": artist_id,
+        "spotify_url": profile.get("spotify_url", ""),
+        "image_url": profile.get("image_url", ""),
+        "popularity": analytics["popularity"],
+        "popularity_tier": analytics["popularity_tier"],
+        "followers": analytics["followers"],
+        "followers_formatted": analytics["followers_formatted"],
+        "genres": analytics["genres"],
+        "avg_track_popularity": analytics["avg_track_popularity"],
+        "discography": analytics["discography"],
+        "top_tracks": analytics["top_tracks"],
+        "cached": False,
+    }
+
+    # 5. Persist to database
+    try:
+        database.save_artist_metadata(
+            clean_artist,
+            spotify_data=result,
+            db_path=db_path
+        )
+    except Exception as e:
+        print(f"Database save_artist_metadata spotify error for {clean_artist}: {e}")
+
+    return result
+

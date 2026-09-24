@@ -1163,6 +1163,28 @@ class TestAppIntegration(unittest.TestCase):
 
         self.assertIsNone(database.get_saved_playlist(saved_pid, db_path=self.db_path))
 
+        # 12. Verify /api/playlists/export-spotify 403 Forbidden handling
+        database.save_spotify_token(
+            user_email="jpmclaug@gmail.com",
+            access_token="fake_token_no_scope",
+            refresh_token="fake_refresh",
+            expires_at="2099-01-01 00:00:00",
+            db_path=self.db_path
+        )
+        with patch('spotify.export_songs_to_spotify_playlist') as mock_export:
+            mock_export.side_effect = RuntimeError("Spotify API create playlist error (403): Forbidden. Your Spotify connection lacks playlist permissions.")
+            exp_req = urllib.request.Request(
+                f"{self.base_url}/api/playlists/export-spotify",
+                data=json.dumps({"name": "Test"}).encode('utf-8'),
+                headers=dict(self.auth_headers, **{"Content-Type": "application/json"})
+            )
+            with urllib.request.urlopen(exp_req) as resp:
+                self.assertEqual(resp.status, 200)
+                exp_data = json.loads(resp.read().decode('utf-8'))
+                self.assertFalse(exp_data.get("success"))
+                self.assertTrue(exp_data.get("needs_reauth"))
+                self.assertEqual(exp_data.get("auth_url"), "/auth/spotify")
+
 
 if __name__ == "__main__":
     unittest.main()

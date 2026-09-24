@@ -124,7 +124,7 @@ def _format_artist_record(rec: Any) -> Optional[Dict[str, Any]]:
                 d[field] = []
         else:
             d[field] = []
-    for dict_field in ('setlistfm_data', 'theaudiodb_data'):
+    for dict_field in ('setlistfm_data', 'theaudiodb_data', 'spotify_data'):
         if dict_field in d and d[dict_field] is not None:
             if isinstance(d[dict_field], str):
                 try:
@@ -380,6 +380,9 @@ def init_db(db_path: Optional[str] = None) -> None:
                 ALTER TABLE artist_metadata ADD COLUMN IF NOT EXISTS country TEXT;
             """)
             cursor.execute("""
+                ALTER TABLE artist_metadata ADD COLUMN IF NOT EXISTS spotify_data TEXT;
+            """)
+            cursor.execute("""
                 CREATE TABLE IF NOT EXISTS spotify_tokens (
                     id SERIAL PRIMARY KEY,
                     user_email TEXT NOT NULL UNIQUE,
@@ -534,6 +537,7 @@ def init_db(db_path: Optional[str] = None) -> None:
                 ('banner_url', 'TEXT'),
                 ('formed_year', 'INTEGER'),
                 ('country', 'TEXT'),
+                ('spotify_data', 'TEXT'),
             ]
             for col_name, col_type in art_col_defs:
                 if col_name not in art_cols:
@@ -954,10 +958,11 @@ def save_artist_metadata(
     banner_url: Optional[str] = None,
     formed_year: Optional[int] = None,
     country: Optional[str] = None,
+    spotify_data: Optional[Union[str, Dict[str, Any]]] = None,
     db_path: Optional[str] = None
 ) -> int:
     """
-    Save or update comprehensive artist metadata (Last.fm, Setlist.fm, TheAudioDB).
+    Save or update comprehensive artist metadata (Last.fm, Setlist.fm, TheAudioDB, Spotify).
     Returns the record ID.
     """
     artist_clean = artist.strip()
@@ -967,6 +972,7 @@ def save_artist_metadata(
     setlist_json = json.dumps(setlistfm_data) if isinstance(setlistfm_data, (list, dict)) else setlistfm_data
     audiodb_json = json.dumps(theaudiodb_data) if isinstance(theaudiodb_data, (list, dict)) else theaudiodb_data
     similar_json = json.dumps(similar_artists) if isinstance(similar_artists, (list, dict)) else similar_artists
+    spotify_json = json.dumps(spotify_data) if isinstance(spotify_data, (list, dict)) else spotify_data
 
     target = get_db_target(db_path)
 
@@ -992,6 +998,7 @@ def save_artist_metadata(
                 new_banner = banner_url if banner_url is not None else row.get('banner_url')
                 new_formed = formed_year if formed_year is not None else row.get('formed_year')
                 new_country = country if country is not None else row.get('country')
+                new_spotify = spotify_json if spotify_json is not None else row.get('spotify_data')
 
                 cursor.execute("""
                     UPDATE artist_metadata
@@ -1008,12 +1015,13 @@ def save_artist_metadata(
                         banner_url = %s,
                         formed_year = %s,
                         country = %s,
+                        spotify_data = %s,
                         updated_at = CURRENT_TIMESTAMP
                     WHERE id = %s
                 """, (
                     artist_clean, new_tags, new_tracks, new_setlist, new_audiodb,
                     new_bio, new_similar, new_listeners, new_playcount,
-                    new_image, new_banner, new_formed, new_country, record_id
+                    new_image, new_banner, new_formed, new_country, new_spotify, record_id
                 ))
                 return record_id
             else:
@@ -1021,14 +1029,14 @@ def save_artist_metadata(
                     INSERT INTO artist_metadata (
                         artist, artist_normalized, tags, top_tracks,
                         setlistfm_data, theaudiodb_data, bio, similar_artists,
-                        listeners, playcount, image_url, banner_url, formed_year, country,
+                        listeners, playcount, image_url, banner_url, formed_year, country, spotify_data,
                         created_at, updated_at
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                     RETURNING id;
                 """, (
                     artist_clean, artist_norm, tags_json, tracks_json,
                     setlist_json, audiodb_json, bio, similar_json,
-                    listeners, playcount, image_url, banner_url, formed_year, country
+                    listeners, playcount, image_url, banner_url, formed_year, country, spotify_json
                 ))
                 return cursor.fetchone()['id']
         else:
@@ -1053,6 +1061,7 @@ def save_artist_metadata(
                 new_banner = banner_url if banner_url is not None else row_dict.get('banner_url')
                 new_formed = formed_year if formed_year is not None else row_dict.get('formed_year')
                 new_country = country if country is not None else row_dict.get('country')
+                new_spotify = spotify_json if spotify_json is not None else row_dict.get('spotify_data')
 
                 cursor.execute("""
                     UPDATE artist_metadata
@@ -1069,12 +1078,13 @@ def save_artist_metadata(
                         banner_url = ?,
                         formed_year = ?,
                         country = ?,
+                        spotify_data = ?,
                         updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now')
                     WHERE id = ?
                 """, (
                     artist_clean, new_tags, new_tracks, new_setlist, new_audiodb,
                     new_bio, new_similar, new_listeners, new_playcount,
-                    new_image, new_banner, new_formed, new_country, record_id
+                    new_image, new_banner, new_formed, new_country, new_spotify, record_id
                 ))
                 return record_id
             else:
@@ -1082,13 +1092,13 @@ def save_artist_metadata(
                     INSERT INTO artist_metadata (
                         artist, artist_normalized, tags, top_tracks,
                         setlistfm_data, theaudiodb_data, bio, similar_artists,
-                        listeners, playcount, image_url, banner_url, formed_year, country,
+                        listeners, playcount, image_url, banner_url, formed_year, country, spotify_data,
                         created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'), strftime('%Y-%m-%d %H:%M:%f', 'now'))
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'), strftime('%Y-%m-%d %H:%M:%f', 'now'))
                 """, (
                     artist_clean, artist_norm, tags_json, tracks_json,
                     setlist_json, audiodb_json, bio, similar_json,
-                    listeners, playcount, image_url, banner_url, formed_year, country
+                    listeners, playcount, image_url, banner_url, formed_year, country, spotify_json
                 ))
                 return cursor.lastrowid
 

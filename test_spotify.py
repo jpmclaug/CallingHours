@@ -311,6 +311,18 @@ class TestSpotify(unittest.TestCase):
         self.assertEqual(res["url"], "https://open.spotify.com/playlist/pl_123")
 
     @patch('spotify.requests.post')
+    def test_create_playlist_403_raises_permission_error(self, mock_post):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 403
+        mock_resp.text = '{"error": {"status": 403, "message": "Forbidden"}}'
+        mock_post.return_value = mock_resp
+
+        with self.assertRaises(RuntimeError) as ctx:
+            spotify.create_playlist("token123", "user_1", "Test")
+        self.assertIn("403", str(ctx.exception))
+        self.assertIn("permission", str(ctx.exception).lower())
+
+    @patch('spotify.requests.post')
     def test_add_tracks_to_playlist(self, mock_post):
         mock_resp = MagicMock()
         mock_resp.status_code = 201
