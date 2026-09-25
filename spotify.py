@@ -142,13 +142,18 @@ def refresh_access_token(refresh_token: str) -> Dict[str, Any]:
     return resp.json()
 
 
-def get_valid_access_token(user_email: str, db_module: Any = None) -> Optional[str]:
-    """Retrieve stored access token for user, automatically refreshing if expired or expiring soon."""
+def get_valid_access_token(
+    user_email: str,
+    db_module: Any = None,
+    force_refresh: bool = False,
+    db_path: Optional[str] = None
+) -> Optional[str]:
+    """Retrieve stored access token for user, automatically refreshing if expired, expiring soon, or force_refresh requested."""
     if db_module is None:
         import database
         db_module = database
 
-    token_rec = db_module.get_spotify_token(user_email)
+    token_rec = db_module.get_spotify_token(user_email, db_path=db_path)
     if not token_rec:
         return None
 
@@ -157,24 +162,32 @@ def get_valid_access_token(user_email: str, db_module: Any = None) -> Optional[s
     expires_at = token_rec.get("expires_at")
 
     # Check if expired or within 60 seconds of expiration
-    is_expired = False
-    if expires_at:
+    is_expired = force_refresh
+    if not is_expired and expires_at:
         try:
             if isinstance(expires_at, str):
-                exp_dt = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+                clean_str = expires_at.strip().replace("Z", "+00:00")
+                try:
+                    exp_dt = datetime.fromisoformat(clean_str)
+                except ValueError:
+                    exp_dt = datetime.strptime(clean_str.split(".")[0], "%Y-%m-%d %H:%M:%S")
             elif isinstance(expires_at, datetime):
                 exp_dt = expires_at
-                if exp_dt.tzinfo is None:
-                    exp_dt = exp_dt.replace(tzinfo=timezone.utc)
             else:
                 exp_dt = datetime.fromtimestamp(float(expires_at), tz=timezone.utc)
+
+            # Ensure exp_dt is timezone-aware UTC before calculating difference
+            if exp_dt.tzinfo is None:
+                exp_dt = exp_dt.replace(tzinfo=timezone.utc)
+
             now_dt = datetime.now(timezone.utc)
             if (exp_dt - now_dt).total_seconds() < 60:
                 is_expired = True
-        except Exception:
+        except Exception as ex:
+            print(f"Warning: Failed to parse Spotify token expires_at '{expires_at}': {ex}")
             is_expired = False
 
-    if is_expired and refresh_tok:
+    if (is_expired or force_refresh) and refresh_tok:
         try:
             refreshed = refresh_access_token(refresh_tok)
             new_access_token = refreshed.get("access_token")
@@ -192,11 +205,14 @@ def get_valid_access_token(user_email: str, db_module: Any = None) -> Optional[s
                 spotify_display_name=token_rec.get("spotify_display_name"),
                 spotify_profile_url=token_rec.get("spotify_profile_url"),
                 spotify_image_url=token_rec.get("spotify_image_url"),
+                db_path=db_path,
             )
             return new_access_token
         except Exception as e:
             print(f"Spotify token refresh error for {user_email}: {e}")
-            return None
+            if force_refresh:
+                return None
+            return access_token
 
     return access_token
 
@@ -1022,6 +1038,12 @@ def create_playlist(
         except Exception as e:
             print(f"Spotify create_playlist attempt error ({target_url}): {e}")
 
+    if last_status == 401:
+        raise RuntimeError(
+            f"Spotify API create playlist error (401): Unauthorized. "
+            f"Your Spotify access token has expired or is invalid. Please re-authorize your Spotify account."
+        )
+
     if last_status == 403:
         raise RuntimeError(
             f"Spotify API create playlist error (403): Forbidden. "
@@ -1064,10 +1086,24 @@ def export_songs_to_spotify_playlist(
     user_id: Optional[str],
     playlist_name: str,
     songs: List[Dict[str, Any]],
-    description: str = ""
+    description: str = "",
+    user_email: Optional[str] = None
 ) -> Dict[str, Any]:
     """Resolve track URIs and generate a playlist directly in Spotify."""
-    playlist_meta = create_playlist(access_token, user_id, playlist_name, description=description)
+    try:
+        playlist_meta = create_playlist(access_token, user_id, playlist_name, description=description)
+    except Exception as e:
+        err_msg = str(e)
+        if ("401" in err_msg or "expired" in err_msg.lower() or "unauthorized" in err_msg.lower()) and user_email:
+            refreshed_tok = get_valid_access_token(user_email, force_refresh=True)
+            if refreshed_tok and refreshed_tok != access_token:
+                access_token = refreshed_tok
+                playlist_meta = create_playlist(access_token, user_id, playlist_name, description=description)
+            else:
+                raise
+        else:
+            raise
+
     playlist_id = playlist_meta["id"]
 
     resolved_uris: List[str] = []

@@ -597,7 +597,103 @@ class TestSpotify(unittest.TestCase):
         self.assertEqual(res_cached["artist_id"], "jew_123")
         mock_search.assert_not_called()
 
+    @patch("spotify.refresh_access_token")
+    def test_get_valid_access_token_expired_string_refreshes(self, mock_refresh):
+        user_email = "testuser@example.com"
+        # Save token with an expired string timestamp in the past
+        past_time = "2020-01-01 12:00:00"
+        database.save_spotify_token(
+            user_email=user_email,
+            access_token="old_expired_tok",
+            refresh_token="ref_tok_123",
+            expires_at=past_time,
+            db_path=self.db_path
+        )
+
+        mock_refresh.return_value = {
+            "access_token": "fresh_access_token_777",
+            "refresh_token": "ref_tok_123",
+            "expires_in": 3600
+        }
+
+        tok = spotify.get_valid_access_token(user_email, db_module=database, db_path=self.db_path)
+        self.assertEqual(tok, "fresh_access_token_777")
+        self.assertTrue(mock_refresh.called)
+
+        # Check token was saved in database
+        updated_rec = database.get_spotify_token(user_email, db_path=self.db_path)
+        self.assertEqual(updated_rec["access_token"], "fresh_access_token_777")
+
+    @patch("spotify.refresh_access_token")
+    def test_get_valid_access_token_unexpired_returns_cached(self, mock_refresh):
+        user_email = "freshuser@example.com"
+        # Future time string
+        future_dt = (datetime.now(timezone.utc) + timedelta(hours=2)).strftime("%Y-%m-%d %H:%M:%S")
+        database.save_spotify_token(
+            user_email=user_email,
+            access_token="current_valid_tok",
+            refresh_token="ref_tok_456",
+            expires_at=future_dt,
+            db_path=self.db_path
+        )
+
+        tok = spotify.get_valid_access_token(user_email, db_module=database, db_path=self.db_path)
+        self.assertEqual(tok, "current_valid_tok")
+        mock_refresh.assert_not_called()
+
+    @patch("spotify.refresh_access_token")
+    def test_get_valid_access_token_force_refresh(self, mock_refresh):
+        user_email = "forceuser@example.com"
+        future_dt = (datetime.now(timezone.utc) + timedelta(hours=2)).strftime("%Y-%m-%d %H:%M:%S")
+        database.save_spotify_token(
+            user_email=user_email,
+            access_token="current_valid_tok",
+            refresh_token="ref_tok_force",
+            expires_at=future_dt,
+            db_path=self.db_path
+        )
+
+        mock_refresh.return_value = {
+            "access_token": "forced_new_tok",
+            "refresh_token": "ref_tok_force",
+            "expires_in": 3600
+        }
+
+        tok = spotify.get_valid_access_token(user_email, db_module=database, force_refresh=True, db_path=self.db_path)
+        self.assertEqual(tok, "forced_new_tok")
+        self.assertTrue(mock_refresh.called)
+
+    @patch("spotify.create_playlist")
+    @patch("spotify.get_valid_access_token")
+    @patch("spotify.add_tracks_to_playlist")
+    def test_export_songs_to_spotify_playlist_retries_on_401(self, mock_add, mock_token, mock_create):
+        # First call fails with 401 Unauthorized
+        mock_create.side_effect = [
+            RuntimeError('Spotify API create playlist error (401): {"error": {"status": 401, "message": "Missing/invalid/expired access token"}}'),
+            {
+                "id": "pl_retry_success",
+                "name": "Retry Playlist",
+                "url": "https://open.spotify.com/playlist/pl_retry_success"
+            }
+        ]
+        mock_token.return_value = "new_fresh_token"
+        mock_add.return_value = 1
+
+        songs = [{"artist": "Jimmy Eat World", "song": "Sweetness", "spotify_id": "trk_1"}]
+        res = spotify.export_songs_to_spotify_playlist(
+            access_token="initial_expired_token",
+            user_id="user_123",
+            playlist_name="Retry Playlist",
+            songs=songs,
+            user_email="user@example.com"
+        )
+        self.assertTrue(res["success"])
+        self.assertEqual(res["playlist_id"], "pl_retry_success")
+        self.assertEqual(mock_create.call_count, 2)
+        mock_token.assert_called_with("user@example.com", force_refresh=True)
+
 
 if __name__ == "__main__":
     unittest.main()
+
 

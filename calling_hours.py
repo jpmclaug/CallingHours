@@ -6055,19 +6055,27 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
                             </div>
                         </div>
                     `;
-                } else if (data.needs_reauth || (data.error && (data.error.includes('403') || data.error.includes('Forbidden') || data.error.toLowerCase().includes('permission')))) {
+                } else if (data.needs_reauth || data.needs_auth || (data.error && (data.error.includes('401') || data.error.includes('403') || data.error.includes('Forbidden') || data.error.toLowerCase().includes('permission') || data.error.toLowerCase().includes('unauthorized') || data.error.toLowerCase().includes('expired')))) {
+                    const isPermission = data.error && (data.error.includes('403') || data.error.toLowerCase().includes('permission'));
+                    const title = isPermission ? 'Spotify Permissions Update Required' : (data.needs_auth ? 'Spotify Connection Required' : 'Spotify Re-Authorization Required');
+                    const explanation = data.message || (isPermission
+                        ? 'Your Spotify account requires permission to create playlists in your library. Please re-authorize your Spotify account with 1 click.'
+                        : (data.needs_auth
+                            ? 'Please connect your Spotify account to export playlists directly to your Spotify library.'
+                            : 'Your Spotify access token has expired or is invalid. Please re-authorize your Spotify account with 1 click to refresh your connection.'));
+                    const btnText = data.needs_auth ? '<span>🟢</span> Connect Spotify (1-Click)' : '<span>🟢</span> Re-Authorize Spotify (1-Click)';
                     content.innerHTML = `
                         <div style="padding: 10px 0; text-align: center;">
                             <div style="font-size: 2.2rem; margin-bottom: 10px;">🔐</div>
                             <h4 style="margin: 0 0 10px 0; color: #FFFFFF; font-size: 1.15rem; font-family: 'Montserrat', sans-serif;">
-                                Spotify Permissions Update Required
+                                ${title}
                             </h4>
                             <p style="color: rgba(225, 232, 240, 0.85); font-size: 0.88rem; line-height: 1.5; margin-bottom: 20px;">
-                                Your Spotify account was connected before playlist creation permissions were added. Please re-authorize your Spotify account with 1 click to grant permission to create playlists in your library.
+                                ${explanation}
                             </p>
                             <div style="display: flex; gap: 10px; justify-content: center;">
-                                <a href="${data.auth_url || '/auth/spotify'}" class="btn-playlist-action btn-playlist-spotify" style="text-decoration: none;">
-                                    <span>🟢</span> Re-Authorize Spotify (1-Click)
+                                <a href="${data.auth_url || '/auth/spotify?next=/playlists'}" class="btn-playlist-action btn-playlist-spotify" style="text-decoration: none;">
+                                    ${btnText}
                                 </a>
                                 <button type="button" class="btn-playlist-action btn-playlist-outline" onclick="closeSpotifyModal()">Cancel</button>
                             </div>
@@ -8733,12 +8741,21 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             return
 
+        query = urllib.parse.urlparse(self.path).query
+        params = urllib.parse.parse_qs(query)
+        next_path = params.get('next', [''])[0]
+        if not (next_path.startswith('/') and not next_path.startswith('//')):
+            next_path = ''
+
         state = secrets.token_urlsafe(16)
         redirect_uri = spotify.resolve_spotify_redirect_uri(self.headers.get('Host'), is_secure=self.is_request_secure())
         auth_url = spotify.get_auth_url(redirect_uri, state=state)
         state_cookie = build_cookie_header('spotify_oauth_state', state, max_age=300, secure=self.is_request_secure())
         self.send_response(302)
         self.send_header('Set-Cookie', state_cookie)
+        if next_path:
+            next_cookie = build_cookie_header('spotify_oauth_next', next_path, max_age=300, secure=self.is_request_secure())
+            self.send_header('Set-Cookie', next_cookie)
         self.send_header('Location', auth_url)
         self.end_headers()
 
@@ -8749,10 +8766,12 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         error = params.get('error', [''])[0]
 
         expired_state_cookie = build_cookie_header('spotify_oauth_state', '', max_age=0, secure=self.is_request_secure())
+        expired_next_cookie = build_cookie_header('spotify_oauth_next', '', max_age=0, secure=self.is_request_secure())
 
         if error:
             self.send_response(302)
             self.send_header('Set-Cookie', expired_state_cookie)
+            self.send_header('Set-Cookie', expired_next_cookie)
             self.send_header('Location', f'/spotify?error={urllib.parse.quote(error)}')
             self.end_headers()
             return
@@ -8763,6 +8782,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         if not expected_state or state != expected_state:
             self.send_response(302)
             self.send_header('Set-Cookie', expired_state_cookie)
+            self.send_header('Set-Cookie', expired_next_cookie)
             self.send_header('Location', '/spotify?error=state_mismatch')
             self.end_headers()
             return
@@ -8770,6 +8790,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         if not code:
             self.send_response(302)
             self.send_header('Set-Cookie', expired_state_cookie)
+            self.send_header('Set-Cookie', expired_next_cookie)
             self.send_header('Location', '/spotify?error=missing_code')
             self.end_headers()
             return
@@ -8778,6 +8799,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         if not current_user:
             self.send_response(302)
             self.send_header('Set-Cookie', expired_state_cookie)
+            self.send_header('Set-Cookie', expired_next_cookie)
             self.send_header('Location', '/login')
             self.end_headers()
             return
@@ -8811,14 +8833,22 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             except Exception as fe:
                 print(f"Initial Spotify recent tracks sync error: {fe}")
 
+            next_dest = cookies.get('spotify_oauth_next')
+            if next_dest and next_dest.startswith('/') and not next_dest.startswith('//'):
+                dest_url = next_dest + ('&connected=1' if '?' in next_dest else '?connected=1')
+            else:
+                dest_url = '/spotify?connected=1'
+
             self.send_response(302)
             self.send_header('Set-Cookie', expired_state_cookie)
-            self.send_header('Location', '/spotify?connected=1')
+            self.send_header('Set-Cookie', expired_next_cookie)
+            self.send_header('Location', dest_url)
             self.end_headers()
         except Exception as e:
             print(f"Spotify callback error: {e}")
             self.send_response(302)
             self.send_header('Set-Cookie', expired_state_cookie)
+            self.send_header('Set-Cookie', expired_next_cookie)
             self.send_header('Location', f'/spotify?error={urllib.parse.quote(str(e))}')
             self.end_headers()
 
@@ -10208,14 +10238,16 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         access_token = spotify.get_valid_access_token(current_user['email']) if token_rec else None
 
         if not access_token:
-            self.send_response(401)
+            self.send_response(200)
             self.send_header('Content-Type', 'application/json; charset=utf-8')
             self.end_headers()
             self.wfile.write(json.dumps({
                 'success': False,
-                'error': 'Spotify account not connected. Please connect your Spotify account first.',
+                'error': 'Spotify account not connected or authorization expired. Please connect or re-authorize Spotify.',
+                'needs_reauth': True,
                 'needs_auth': True,
-                'auth_url': '/auth/spotify'
+                'auth_url': '/auth/spotify?next=/playlists',
+                'message': 'Spotify account not connected or authorization expired. Please click below to connect Spotify.'
             }).encode('utf-8'))
             return
 
@@ -10233,7 +10265,8 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 user_id=user_id,
                 playlist_name=name,
                 songs=tracks,
-                description=description
+                description=description,
+                user_email=current_user['email']
             )
             self.send_response(200)
             self.send_header('Content-Type', 'application/json; charset=utf-8')
@@ -10241,16 +10274,32 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(json.dumps(res).encode('utf-8'))
         except Exception as e:
             err_str = str(e)
-            is_forbidden = '403' in err_str or 'Forbidden' in err_str or 'permission' in err_str.lower()
+            is_reauth = (
+                '401' in err_str or
+                '403' in err_str or
+                'unauthorized' in err_str.lower() or
+                'forbidden' in err_str.lower() or
+                'permission' in err_str.lower() or
+                'expired' in err_str.lower() or
+                'access token' in err_str.lower()
+            )
+            is_permission = '403' in err_str or 'permission' in err_str.lower()
+            if is_permission:
+                msg = 'Your Spotify account requires updated playlist creation permissions. Please re-authorize Spotify with 1-click.'
+            elif is_reauth:
+                msg = 'Your Spotify session has expired or requires re-authorization. Please re-authorize Spotify with 1-click.'
+            else:
+                msg = err_str
+
             self.send_response(200)
             self.send_header('Content-Type', 'application/json; charset=utf-8')
             self.end_headers()
             self.wfile.write(json.dumps({
                 'success': False,
                 'error': err_str,
-                'needs_reauth': is_forbidden,
-                'auth_url': '/auth/spotify',
-                'message': 'Your Spotify account was connected before playlist permissions were added. Please re-authorize to grant playlist creation access.' if is_forbidden else err_str
+                'needs_reauth': is_reauth,
+                'auth_url': '/auth/spotify?next=/playlists',
+                'message': msg
             }).encode('utf-8'))
 
     def log_message(self, format, *args):

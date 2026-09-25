@@ -1290,7 +1290,22 @@ class TestAppIntegration(unittest.TestCase):
                 exp_data = json.loads(resp.read().decode('utf-8'))
                 self.assertFalse(exp_data.get("success"))
                 self.assertTrue(exp_data.get("needs_reauth"))
-                self.assertEqual(exp_data.get("auth_url"), "/auth/spotify")
+                self.assertTrue(exp_data.get("auth_url", "").startswith("/auth/spotify"))
+
+        # 12b. Verify /api/playlists/export-spotify 401 Unauthorized handling triggers needs_reauth
+        with patch('spotify.export_songs_to_spotify_playlist') as mock_export:
+            mock_export.side_effect = RuntimeError('Spotify API create playlist error (401): {"error": {"status": 401, "message": "Missing/invalid/expired access token"}}')
+            exp_req = urllib.request.Request(
+                f"{self.base_url}/api/playlists/export-spotify",
+                data=json.dumps({"name": "Test 401"}).encode('utf-8'),
+                headers=dict(self.auth_headers, **{"Content-Type": "application/json"})
+            )
+            with urllib.request.urlopen(exp_req) as resp:
+                self.assertEqual(resp.status, 200)
+                exp_data_401 = json.loads(resp.read().decode('utf-8'))
+                self.assertFalse(exp_data_401.get("success"))
+                self.assertTrue(exp_data_401.get("needs_reauth"))
+                self.assertTrue(exp_data_401.get("auth_url", "").startswith("/auth/spotify"))
 
         # 13. Verify /api/playlists/export-spotify success writes JSON response body
         with patch('spotify.export_songs_to_spotify_playlist') as mock_export:
