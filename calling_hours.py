@@ -325,10 +325,23 @@ def build_lastfm_widget(
             playcount = t.get("playcount", 0)
             listeners = t.get("listeners", 0)
             meta_parts = []
+            listeners_int = None
             if listeners:
-                meta_parts.append(f"{listeners:,} listeners")
-            elif playcount:
-                meta_parts.append(f"{playcount:,} plays")
+                try:
+                    listeners_int = int(str(listeners).replace(',', '').strip())
+                except (ValueError, TypeError):
+                    listeners_int = None
+            playcount_int = None
+            if playcount:
+                try:
+                    playcount_int = int(str(playcount).replace(',', '').strip())
+                except (ValueError, TypeError):
+                    playcount_int = None
+
+            if listeners_int is not None:
+                meta_parts.append(f"{listeners_int:,} listeners")
+            elif playcount_int is not None:
+                meta_parts.append(f"{playcount_int:,} plays")
             meta_str = " &bull; ".join(meta_parts)
             top_tracks_rows.append(f'''
                 <div class="lastfm-track-row">
@@ -5301,74 +5314,104 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
         }
         .playlist-mode-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-            gap: 14px;
+            grid-template-columns: repeat(auto-fit, minmax(185px, 1fr));
+            gap: 10px;
         }
         .playlist-mode-card {
-            background: rgba(11, 30, 63, 0.55);
+            background: rgba(11, 30, 63, 0.6);
             border: 1px solid rgba(165, 200, 255, 0.2);
-            border-radius: 14px;
-            padding: 18px;
+            border-radius: 12px;
+            padding: 10px 14px;
             display: flex;
-            flex-direction: column;
-            justify-content: space-between;
-            gap: 12px;
+            align-items: center;
+            gap: 10px;
             cursor: pointer;
             text-decoration: none;
-            transition: all 0.2s ease;
+            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
             position: relative;
-            overflow: hidden;
+            min-height: 48px;
         }
         .playlist-mode-card:hover {
             background: rgba(165, 200, 255, 0.12);
-            border-color: rgba(165, 200, 255, 0.5);
-            transform: translateY(-2px);
+            border-color: rgba(165, 200, 255, 0.45);
+            transform: translateY(-1px);
         }
         .playlist-mode-card.active {
-            background: linear-gradient(135deg, rgba(25, 70, 133, 0.5) 0%, rgba(14, 34, 72, 0.8) 100%);
+            background: linear-gradient(135deg, rgba(25, 70, 133, 0.65) 0%, rgba(14, 34, 72, 0.95) 100%);
             border: 2px solid #A5C8FF;
-            box-shadow: 0 0 20px rgba(165, 200, 255, 0.25);
+            box-shadow: 0 0 16px rgba(165, 200, 255, 0.3);
         }
         .playlist-mode-card.flagship {
-            border-color: rgba(165, 200, 255, 0.4);
+            border-color: rgba(165, 200, 255, 0.35);
         }
         .playlist-mode-badge {
-            align-self: flex-start;
-            font-size: 0.68rem;
+            font-size: 0.62rem;
             font-weight: 800;
-            letter-spacing: 0.04em;
+            letter-spacing: 0.03em;
             text-transform: uppercase;
-            padding: 3px 8px;
-            border-radius: 6px;
-            background: rgba(165, 200, 255, 0.15);
+            padding: 2px 6px;
+            border-radius: 4px;
+            background: rgba(165, 200, 255, 0.12);
             color: #A5C8FF;
+            white-space: nowrap;
         }
         .playlist-mode-badge.primary {
             background: #A5C8FF;
             color: #050A14;
-            box-shadow: 0 0 10px rgba(165, 200, 255, 0.4);
+            font-weight: 800;
+            box-shadow: 0 0 8px rgba(165, 200, 255, 0.35);
         }
         .playlist-mode-icon {
-            font-size: 1.8rem;
+            font-size: 1.3rem;
             line-height: 1;
+            flex-shrink: 0;
+        }
+        .playlist-mode-content {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            flex: 1;
+            min-width: 0;
+        }
+        .playlist-mode-header {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
         }
         .playlist-mode-title {
-            font-size: 1.05rem;
+            font-size: 0.88rem;
             font-weight: 800;
             color: #E1E8F0;
             font-family: 'Montserrat', sans-serif;
-            margin-top: 4px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
         .playlist-mode-desc {
-            font-size: 0.8rem;
-            color: rgba(225, 232, 240, 0.68);
-            line-height: 1.4;
+            display: none;
         }
         .playlist-mode-count {
-            font-size: 0.76rem;
-            color: #A5C8FF;
+            font-size: 0.72rem;
+            color: rgba(165, 200, 255, 0.75);
             font-weight: 600;
-            margin-top: auto;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .playlist-active-banner {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            flex-wrap: wrap;
+            background: rgba(11, 30, 63, 0.45);
+            border: 1px solid rgba(165, 200, 255, 0.18);
+            border-radius: 8px;
+            padding: 8px 14px;
+            margin-top: 12px;
+            font-size: 0.82rem;
+            color: rgba(225, 232, 240, 0.85);
         }
         .playlist-form-grid {
             display: grid;
@@ -5600,8 +5643,8 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
                 </p>
             </div>
             <div style="display: flex; gap: 10px; align-items: center; background: rgba(11, 30, 63, 0.7); padding: 4px; border-radius: 24px; border: 1px solid rgba(165, 200, 255, 0.2);">
-                <a href="/playlists" class="playlist-tab-btn{generate_tab_active}">✨ Generator Studio</a>
-                <a href="/playlists?tab=saved" class="playlist-tab-btn{saved_playlists_tab_active}">💾 Saved Playlists ({saved_playlists_count})</a>
+                <a href="/playlists" class="playlist-tab-btn{generate_tab_active}" data-loading-title="Opening Generator Studio..." data-loading-subtitle="Playlist Studio" data-loading-icon="✨">✨ Generator Studio</a>
+                <a href="/playlists?tab=saved" class="playlist-tab-btn{saved_playlists_tab_active}" data-loading-title="Loading Saved Playlists..." data-loading-subtitle="Calling Hours Library" data-loading-icon="💾">💾 Saved Playlists ({saved_playlists_count})</a>
             </div>
         </div>
 
@@ -5627,104 +5670,116 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
 
         <!-- Generator Studio View -->
         <div id="generator-view" style="{generator_view_display}; display: flex; flex-direction: column; gap: 24px;">
-            <!-- Different Generator Options (First one is All Analyzed Songs) -->
-            <div class="playlist-card">
-                <div style="margin-bottom: 16px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-                        <h2 style="font-size: 1.15rem; font-weight: 800; font-family: 'Montserrat', sans-serif; color: #FFFFFF; margin: 0;">
-                            1. Select Playlist Generator Option
+            <!-- Compact Generator Strategy Selector -->
+            <div class="playlist-card" style="padding: 18px 22px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-size: 1rem;">🎛️</span>
+                        <h2 style="font-size: 1.05rem; font-weight: 800; font-family: 'Montserrat', sans-serif; color: #FFFFFF; margin: 0;">
+                            1. Select Generator Strategy
                         </h2>
-                        <span style="font-size: 0.8rem; color: #A5C8FF; font-weight: 600;">Choose a generation strategy below</span>
                     </div>
+                    <span style="font-size: 0.76rem; color: #A5C8FF; font-weight: 600;">Choose a curation method to build your playlist</span>
                 </div>
 
                 <div class="playlist-mode-grid">
                     <!-- Option 1: All Analyzed Songs (Flagship / Primary) -->
-                    <a href="/playlists?mode=all_analyzed" class="playlist-mode-card flagship{mode_all_analyzed_active}" id="option-card-all">
-                        <div class="playlist-mode-badge primary">Option 1 • Flagship</div>
-                        <div>
-                            <div class="playlist-mode-icon">✦</div>
-                            <div class="playlist-mode-title">All Analyzed Songs</div>
+                    <a href="/playlists?mode=all_analyzed" class="playlist-mode-card flagship{mode_all_analyzed_active}" id="option-card-all" data-loading-title="Loading All Analyzed Tracks..." data-loading-subtitle="Calling Hours Master Library" data-loading-icon="✦">
+                        <div class="playlist-mode-icon">✦</div>
+                        <div class="playlist-mode-content">
+                            <div class="playlist-mode-header">
+                                <span class="playlist-mode-title">All Analyzed Songs</span>
+                                <span class="playlist-mode-badge primary">Option 1 • Flagship</span>
+                            </div>
+                            <span class="playlist-mode-count">{total_analyzed_count} tracks ready</span>
+                            <div class="playlist-mode-desc">Create a master playlist containing every track in your collection that has been analyzed by Gemini.</div>
                         </div>
-                        <div class="playlist-mode-desc">
-                            Create a master playlist containing every track in your collection that has been analyzed by Gemini.
-                        </div>
-                        <div class="playlist-mode-count">{total_analyzed_count} tracks ready</div>
                     </a>
 
                     <!-- Option 2: By Artist / Band -->
-                    <a href="/playlists?mode=artist" class="playlist-mode-card{mode_artist_active}" id="option-card-artist">
-                        <div class="playlist-mode-badge">Option 2 • Artist</div>
-                        <div>
-                            <div class="playlist-mode-icon">👤</div>
-                            <div class="playlist-mode-title">By Artist / Band</div>
+                    <a href="/playlists?mode=artist" class="playlist-mode-card{mode_artist_active}" id="option-card-artist" data-loading-title="Loading Artist Playlist..." data-loading-subtitle="By Artist / Band" data-loading-icon="👤">
+                        <div class="playlist-mode-icon">👤</div>
+                        <div class="playlist-mode-content">
+                            <div class="playlist-mode-header">
+                                <span class="playlist-mode-title">By Artist / Band</span>
+                                <span class="playlist-mode-badge">Option 2 • Artist</span>
+                            </div>
+                            <span class="playlist-mode-count">{total_artists_count} artists available</span>
+                            <div class="playlist-mode-desc">Generate a curated playlist focusing on all analyzed songs from a specific band or musician.</div>
                         </div>
-                        <div class="playlist-mode-desc">
-                            Generate a curated playlist focusing on all analyzed songs from a specific band or musician.
-                        </div>
-                        <div class="playlist-mode-count">{total_artists_count} artists available</div>
                     </a>
 
                     <!-- Option 3: By Genre & Mood Tag -->
-                    <a href="/playlists?mode=tag" class="playlist-mode-card{mode_tag_active}" id="option-card-tag">
-                        <div class="playlist-mode-badge">Option 3 • Last.fm</div>
-                        <div>
-                            <div class="playlist-mode-icon">🏷️</div>
-                            <div class="playlist-mode-title">By Genre & Mood Tag</div>
+                    <a href="/playlists?mode=tag" class="playlist-mode-card{mode_tag_active}" id="option-card-tag" data-loading-title="Loading Genre & Mood Tags..." data-loading-subtitle="Last.fm Community Tags" data-loading-icon="🏷️">
+                        <div class="playlist-mode-icon">🏷️</div>
+                        <div class="playlist-mode-content">
+                            <div class="playlist-mode-header">
+                                <span class="playlist-mode-title">By Genre & Mood Tag</span>
+                                <span class="playlist-mode-badge">Option 3 • Last.fm</span>
+                            </div>
+                            <span class="playlist-mode-count">{total_tags_count} tags available</span>
+                            <div class="playlist-mode-desc">Filter analyzed songs by Last.fm community genre tags like Post-Punk, Shoegaze, or Midwest Emo.</div>
                         </div>
-                        <div class="playlist-mode-desc">
-                            Filter analyzed songs by Last.fm community genre tags like Post-Punk, Shoegaze, or Midwest Emo.
-                        </div>
-                        <div class="playlist-mode-count">{total_tags_count} tags available</div>
                     </a>
 
                     <!-- Option 4: By Audio Attributes -->
-                    <a href="/playlists?mode=mood" class="playlist-mode-card{mode_mood_active}" id="option-card-mood">
-                        <div class="playlist-mode-badge">Option 4 • Audio</div>
-                        <div>
-                            <div class="playlist-mode-icon">⚡</div>
-                            <div class="playlist-mode-title">By Audio Attributes</div>
+                    <a href="/playlists?mode=mood" class="playlist-mode-card{mode_mood_active}" id="option-card-mood" data-loading-title="Loading Audio Radar..." data-loading-subtitle="Energy & Valence Attributes" data-loading-icon="⚡">
+                        <div class="playlist-mode-icon">⚡</div>
+                        <div class="playlist-mode-content">
+                            <div class="playlist-mode-header">
+                                <span class="playlist-mode-title">By Audio Attributes</span>
+                                <span class="playlist-mode-badge">Option 4 • Audio</span>
+                            </div>
+                            <span class="playlist-mode-count">Sonic Audio Radar</span>
+                            <div class="playlist-mode-desc">Curate songs by musical energy, danceability, deep melancholy (valence), or acoustic atmosphere.</div>
                         </div>
-                        <div class="playlist-mode-desc">
-                            Curate songs by musical energy, danceability, deep melancholy (valence), or acoustic atmosphere.
-                        </div>
-                        <div class="playlist-mode-count">Sonic Audio Radar</div>
                     </a>
 
                     <!-- Option 5: Spotify Heavy Rotation -->
-                    <a href="/playlists?mode=spotify" class="playlist-mode-card{mode_spotify_active}" id="option-card-spotify">
-                        <div class="playlist-mode-badge">Option 5 • Streaming</div>
-                        <div>
-                            <div class="playlist-mode-icon">🎧</div>
-                            <div class="playlist-mode-title">Spotify Rotation</div>
+                    <a href="/playlists?mode=spotify" class="playlist-mode-card{mode_spotify_active}" id="option-card-spotify" data-loading-title="Loading Spotify History..." data-loading-subtitle="Recent Listening History" data-loading-icon="🎧">
+                        <div class="playlist-mode-icon">🎧</div>
+                        <div class="playlist-mode-content">
+                            <div class="playlist-mode-header">
+                                <span class="playlist-mode-title">Spotify Rotation</span>
+                                <span class="playlist-mode-badge">Option 5 • Streaming</span>
+                            </div>
+                            <span class="playlist-mode-count">Listening Sync</span>
+                            <div class="playlist-mode-desc">Build a playlist from your recent Spotify listening history matched with Calling Hours analyses.</div>
                         </div>
-                        <div class="playlist-mode-desc">
-                            Build a playlist from your recent Spotify listening history matched with Calling Hours analyses.
-                        </div>
-                        <div class="playlist-mode-count">Listening Sync</div>
                     </a>
 
                     <!-- Option 6: Setlist.fm Average Setlist by Year -->
-                    <a href="/playlists?mode=setlist_fm" class="playlist-mode-card{mode_setlist_fm_active}" id="option-card-setlist">
-                        <div class="playlist-mode-badge" style="background: rgba(245, 158, 11, 0.2); color: #FCD34D; border: 1px solid rgba(245, 158, 11, 0.4);">Option 6 • Setlist.fm</div>
-                        <div>
-                            <div class="playlist-mode-icon">🎫</div>
-                            <div class="playlist-mode-title">Average Setlist by Year</div>
+                    <a href="/playlists?mode=setlist_fm" class="playlist-mode-card{mode_setlist_fm_active}" id="option-card-setlist" data-loading-title="Loading Tour Setlist Intelligence..." data-loading-subtitle="Setlist.fm Concert History" data-loading-icon="🎫">
+                        <div class="playlist-mode-icon">🎫</div>
+                        <div class="playlist-mode-content">
+                            <div class="playlist-mode-header">
+                                <span class="playlist-mode-title">Average Setlist by Year</span>
+                                <span class="playlist-mode-badge" style="background: rgba(245, 158, 11, 0.2); color: #FCD34D; border: 1px solid rgba(245, 158, 11, 0.4);">Option 6 • Setlist.fm</span>
+                            </div>
+                            <span class="playlist-mode-count">Tour Setlist Intelligence</span>
+                            <div class="playlist-mode-desc">Recreate an artist's tour setlist for any given year based on Setlist.fm concert frequency and stage order.</div>
                         </div>
-                        <div class="playlist-mode-desc">
-                            Recreate an artist's tour setlist for any given year based on Setlist.fm concert frequency and stage order.
-                        </div>
-                        <div class="playlist-mode-count">Tour Setlist Intelligence</div>
                     </a>
+                </div>
+
+                <div class="playlist-active-banner">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span>💡</span>
+                        <span><strong>Strategy:</strong> {active_playlist_desc}</span>
+                    </div>
+                    {saved_playlist_quick_dropdown_html}
                 </div>
             </div>
 
             <!-- Configuration & Filter Bar -->
             <div class="playlist-card" style="padding: 20px 26px;">
-                <form method="GET" action="/playlists" id="generator-form">
+                <form method="GET" action="/playlists" id="generator-form" onsubmit="return handleGeneratorFormSubmit(event)">
                     <input type="hidden" name="mode" value="{current_mode}">
-                    <div style="font-weight: 700; color: #E1E8F0; font-size: 0.95rem; margin-bottom: 14px; display: flex; align-items: center; gap: 8px;">
-                        <span>⚙️</span> 2. Configure Generator Settings
+                    <div style="font-weight: 700; color: #E1E8F0; font-size: 0.95rem; margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span>⚙️</span> 2. Configure Generator Settings
+                        </div>
+                        <span id="name-status-indicator" style="font-size: 0.76rem; color: #5af0a5; font-weight: 600;">✦ Auto-generates name on criteria changes</span>
                     </div>
 
                     <div class="playlist-form-grid">
@@ -5733,25 +5788,33 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
 
                         <div class="playlist-input-group">
                             <label for="select-order">Sort Order</label>
-                            <select name="order" id="select-order">
+                            <select name="order" id="select-order" onchange="submitGeneratorForm()">
                                 {sort_options_html}
                             </select>
                         </div>
 
                         <div class="playlist-input-group">
                             <label for="select-limit">Track Limit</label>
-                            <select name="limit" id="select-limit">
+                            <select name="limit" id="select-limit" onchange="submitGeneratorForm()">
                                 {limit_options_html}
                             </select>
                         </div>
 
-                        <div class="playlist-input-group">
-                            <label for="input-playlist-name">Playlist Title</label>
-                            <input type="text" name="name" id="input-playlist-name" value="{active_playlist_title}" placeholder="Playlist Title">
+                        <div class="playlist-input-group" style="grid-column: span 2;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <label for="input-playlist-name">Playlist Title</label>
+                                <span id="title-mode-hint" style="font-size: 0.72rem; color: #A5C8FF;">(Editable &amp; auto-refreshes)</span>
+                            </div>
+                            <div style="display: flex; gap: 8px; align-items: center;">
+                                <input type="text" name="name" id="input-playlist-name" value="{active_playlist_title}" placeholder="Playlist Title" style="flex: 1;" oninput="onTitleManualEdit()">
+                                <button type="button" id="btn-reset-name" onclick="resetPlaylistName()" class="btn-playlist-action btn-playlist-outline" style="padding: 8px 12px; font-size: 0.76rem; white-space: nowrap; height: 42px;" title="Reset to default autogenerated title">
+                                    ↺ Auto Title
+                                </button>
+                            </div>
                         </div>
 
-                        <div>
-                            <button type="submit" class="btn-playlist-action" style="background: #194685; color: #FFFFFF; border-color: #A5C8FF; width: 100%; height: 42px; justify-content: center;">
+                        <div style="align-self: flex-end;">
+                            <button type="submit" id="btn-generate-playlist" class="btn-playlist-action" style="background: #194685; color: #FFFFFF; border-color: #A5C8FF; width: 100%; height: 42px; justify-content: center;">
                                 <span>⚡</span> Generate Playlist
                             </button>
                         </div>
@@ -5786,10 +5849,10 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
                         <button type="button" class="btn-playlist-action btn-playlist-spotify" onclick="triggerSpotifyExport()" id="btn-export-spotify">
                             <span>🎧</span> Export to Spotify
                         </button>
-                        <a href="{export_m3u_url}" class="btn-playlist-action btn-playlist-outline" title="Download .m3u8 playlist file">
+                        <a href="{export_m3u_url}" class="btn-playlist-action btn-playlist-outline" onclick="showToast('Exporting .m3u8 playlist file...')" title="Download .m3u8 playlist file">
                             <span>📥</span> .M3U8
                         </a>
-                        <a href="{export_csv_url}" class="btn-playlist-action btn-playlist-outline" title="Download .csv spreadsheet">
+                        <a href="{export_csv_url}" class="btn-playlist-action btn-playlist-outline" onclick="showToast('Exporting .csv spreadsheet...')" title="Download .csv spreadsheet">
                             <span>📄</span> .CSV
                         </a>
                         <button type="button" class="btn-playlist-action btn-playlist-outline" onclick="copyPlaylistTracklist()" title="Copy tracklist to clipboard">
@@ -5834,7 +5897,7 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
                             Browse previously generated playlists saved to your database.
                         </p>
                     </div>
-                    <a href="/playlists" class="btn-playlist-action btn-playlist-outline" style="font-size: 0.8rem; padding: 6px 14px;">
+                    <a href="/playlists" class="btn-playlist-action btn-playlist-outline" style="font-size: 0.8rem; padding: 6px 14px;" data-loading-title="Opening Generator Studio..." data-loading-subtitle="Playlist Studio" data-loading-icon="✨">
                         <span>✨</span> Create New Playlist
                     </a>
                 </div>
@@ -5876,6 +5939,140 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             setTimeout(() => {
                 toast.classList.remove('show');
             }, 3000);
+        }
+
+        let isNameManuallyEdited = false;
+
+        function onTitleManualEdit() {
+            isNameManuallyEdited = true;
+            const tag = document.getElementById('name-status-indicator');
+            if (tag) {
+                tag.textContent = '✏️ Custom name entered';
+                tag.style.color = '#FCD34D';
+            }
+        }
+
+        function updatePlaylistName(triggerField) {
+            const nameInput = document.getElementById('input-playlist-name');
+            if (!nameInput) return;
+            const form = document.getElementById('generator-form');
+            const modeInput = form ? form.querySelector('input[name="mode"]') : null;
+            const mode = modeInput ? modeInput.value : 'all_analyzed';
+            let newName = '';
+
+            if (mode === 'all_analyzed') {
+                newName = 'Calling Hours: All Analyzed Tracks';
+            } else if (mode === 'artist') {
+                const artistSelect = document.getElementById('select-artist');
+                const artist = artistSelect ? artistSelect.value.trim() : '';
+                newName = artist ? `Calling Hours: ${artist} (Analyzed)` : 'Calling Hours: Artist Tracks';
+            } else if (mode === 'tag') {
+                const tagSelect = document.getElementById('select-tag');
+                const tag = tagSelect ? tagSelect.value.trim() : '';
+                newName = tag ? `Calling Hours: #${tag} Vibes` : 'Calling Hours: Tagged Tracks';
+            } else if (mode === 'mood') {
+                const moodSelect = document.getElementById('select-mood');
+                const mood = moodSelect ? moodSelect.value : 'high_energy';
+                const moodLabels = {
+                    'high_energy': 'High Energy ⚡',
+                    'danceable': 'Upbeat & Danceable 💃',
+                    'melancholic': 'Deep & Melancholic 🌧️',
+                    'acoustic': 'Acoustic & Mellow 🎻'
+                };
+                newName = `Calling Hours: ${moodLabels[mood] || 'Curated'}`;
+            } else if (mode === 'spotify') {
+                newName = 'Calling Hours: Spotify Rotation';
+            } else if (mode === 'setlist_fm') {
+                const artistInput = document.getElementById('input-setlist-artist');
+                const yearSelect = document.getElementById('select-year');
+                const artist = (artistInput && artistInput.value.trim()) ? artistInput.value.trim() : 'Artist';
+                const year = (yearSelect && yearSelect.value.trim()) ? yearSelect.value.trim() : new Date().getFullYear();
+                newName = `${artist}: ${year} Average Setlist`;
+            }
+
+            if (newName) {
+                nameInput.value = newName;
+                isNameManuallyEdited = false;
+                const tag = document.getElementById('name-status-indicator');
+                if (tag) {
+                    tag.textContent = '✦ Auto-generates name on criteria changes';
+                    tag.style.color = '#5af0a5';
+                }
+                const disp = document.getElementById('display-playlist-title');
+                if (disp && (!CURRENT_PLAYLIST || !CURRENT_PLAYLIST.id)) {
+                    disp.textContent = newName;
+                }
+            }
+        }
+
+        function resetPlaylistName() {
+            updatePlaylistName('manual_reset');
+            showToast("Playlist title reset to autogenerated name.");
+        }
+
+        function submitGeneratorForm() {
+            const form = document.getElementById('generator-form');
+            if (!form) return;
+            const nameInput = document.getElementById('input-playlist-name');
+            const plTitle = nameInput ? nameInput.value.trim() : '';
+            const modeInput = form.querySelector('input[name="mode"]');
+            const mode = modeInput ? modeInput.value : '';
+
+            let sub = plTitle || 'Curating Tracklist';
+            if (mode === 'setlist_fm') {
+                const art = document.getElementById('input-setlist-artist')?.value || '';
+                const yr = document.getElementById('select-year')?.value || '';
+                if (art && yr) sub = `${art} — ${yr} Tour Setlist`;
+            }
+
+            if (typeof showActionLoadingOverlay === 'function') {
+                showActionLoadingOverlay({
+                    title: 'Generating Playlist...',
+                    subtitle: sub,
+                    icon: '🎶',
+                    statusSteps: [
+                        'Analyzing generator criteria & filters...',
+                        'Scanning concert setlists & popularity metrics...',
+                        'Ranking and ordering tracks...',
+                        'Compiling playlist overview...'
+                    ],
+                    notice: 'Please keep this page open while your playlist is generated.'
+                });
+            }
+            form.submit();
+        }
+
+        function handleGeneratorFormSubmit(e) {
+            submitGeneratorForm();
+            return true;
+        }
+
+        function onCriteriaChange(field) {
+            updatePlaylistName(field);
+            submitGeneratorForm();
+        }
+
+        function loadSavedPlaylist(id) {
+            if (!id) return;
+            const select = document.getElementById('quick-select-saved-playlist');
+            let title = 'Saved Playlist';
+            if (select && select.selectedOptions && select.selectedOptions[0]) {
+                title = select.selectedOptions[0].textContent.replace(/\\(\\d+ tracks\\)/, '').trim();
+            }
+            if (typeof showActionLoadingOverlay === 'function') {
+                showActionLoadingOverlay({
+                    title: 'Loading Saved Playlist...',
+                    subtitle: title,
+                    icon: '📂',
+                    statusSteps: [
+                        'Retrieving playlist tracks from database...',
+                        'Loading criteria & tags...',
+                        'Preparing tracklist workspace...'
+                    ],
+                    notice: 'Please wait while saved playlist is loaded.'
+                });
+            }
+            window.location.href = `/playlists?id=${encodeURIComponent(id)}`;
         }
 
         function filterPlaylistTracks() {
@@ -8023,9 +8220,20 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         genre = audiodb_data.get('genre') or (lastfm_data.get('tags', [{}])[0].get('name') if lastfm_data.get('tags') else '')
         style = audiodb_data.get('style')
 
-        listeners = lastfm_data.get('listeners') or 0
-        playcount = lastfm_data.get('playcount') or 0
-        total_concerts = setlist_data.get('total_concerts') or 0
+        try:
+            listeners = int(str(lastfm_data.get('listeners') or 0).replace(',', '').strip())
+        except (ValueError, TypeError):
+            listeners = 0
+
+        try:
+            playcount = int(str(lastfm_data.get('playcount') or 0).replace(',', '').strip())
+        except (ValueError, TypeError):
+            playcount = 0
+
+        try:
+            total_concerts = int(str(setlist_data.get('total_concerts') or 0).replace(',', '').strip())
+        except (ValueError, TypeError):
+            total_concerts = 0
         spotify_pop = spotify_data.get('popularity')
         spotify_followers_fmt = spotify_data.get('followers_formatted')
 
@@ -9539,8 +9747,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             saved_p = database.get_saved_playlist(saved_id)
             if saved_p:
                 songs = saved_p.get('items', [])
-                if not active_playlist_title:
-                    active_playlist_title = saved_p.get('name', 'Saved Playlist')
+                active_playlist_title = saved_p.get('name', 'Saved Playlist')
                 active_playlist_desc = saved_p.get('description') or f"Saved playlist ({len(songs)} tracks)"
                 active_mode = saved_p.get('generator_type', 'all_analyzed')
 
@@ -9549,15 +9756,17 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 if not selected_artist and analyzed_artists:
                     selected_artist = analyzed_artists[0]['artist']
                 songs = database.get_analyzed_songs(artist=selected_artist, order_by=order_by, limit=limit)
-                if not active_playlist_title:
-                    active_playlist_title = f"Calling Hours: {selected_artist} (Analyzed)" if selected_artist else "Calling Hours: Artist Tracks"
+                default_title = f"Calling Hours: {selected_artist} (Analyzed)" if selected_artist else "Calling Hours: Artist Tracks"
+                if not active_playlist_title or active_playlist_title.startswith("Calling Hours:") or active_playlist_title.endswith("Average Setlist"):
+                    active_playlist_title = default_title
                 active_playlist_desc = f"Lyrical analysis collection for {selected_artist}." if selected_artist else "Analyzed songs for selected artist."
             elif active_mode == 'tag':
                 if not selected_tag and analyzed_tags:
                     selected_tag = analyzed_tags[0]['tag']
                 songs = database.get_analyzed_songs(tag=selected_tag, order_by=order_by, limit=limit)
-                if not active_playlist_title:
-                    active_playlist_title = f"Calling Hours: #{selected_tag} Vibes" if selected_tag else "Calling Hours: Tagged Tracks"
+                default_title = f"Calling Hours: #{selected_tag} Vibes" if selected_tag else "Calling Hours: Tagged Tracks"
+                if not active_playlist_title or active_playlist_title.startswith("Calling Hours:") or active_playlist_title.endswith("Average Setlist"):
+                    active_playlist_title = default_title
                 active_playlist_desc = f"Analyzed songs tagged with #{selected_tag} on Last.fm." if selected_tag else "Analyzed songs matching tag."
             elif active_mode == 'mood':
                 selected_mood = selected_mood or 'high_energy'
@@ -9602,8 +9811,9 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                     'acoustic': 'Acoustic & Mellow 🎻',
                 }
                 m_label = mood_labels.get(selected_mood, 'Curated')
-                if not active_playlist_title:
-                    active_playlist_title = f"Calling Hours: {m_label}"
+                default_title = f"Calling Hours: {m_label}"
+                if not active_playlist_title or active_playlist_title.startswith("Calling Hours:") or active_playlist_title.endswith("Average Setlist"):
+                    active_playlist_title = default_title
                 active_playlist_desc = f"Analyzed songs curated for {m_label} sonic atmosphere."
             elif active_mode == 'spotify':
                 recent_streams = database.get_spotify_history(current_user['email'], limit=50) if is_spotify_connected else []
@@ -9628,8 +9838,9 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 elif limit and limit > 0:
                     matched_songs = matched_songs[:limit]
                 songs = matched_songs
-                if not active_playlist_title:
-                    active_playlist_title = "Calling Hours: Spotify Rotation"
+                default_title = "Calling Hours: Spotify Rotation"
+                if not active_playlist_title or active_playlist_title.startswith("Calling Hours:") or active_playlist_title.endswith("Average Setlist"):
+                    active_playlist_title = default_title
                 active_playlist_desc = "Analyzed songs matched from your recent Spotify listening history."
             elif active_mode == 'setlist_fm':
                 if not selected_artist:
@@ -9690,14 +9901,16 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                     enriched_tracks = enriched_tracks[:limit]
 
                 songs = enriched_tracks
-                if not active_playlist_title:
-                    active_playlist_title = f"{selected_artist}: {selected_year} Average Setlist"
+                default_title = f"{selected_artist}: {selected_year} Average Setlist"
+                if not active_playlist_title or active_playlist_title.endswith("Average Setlist") or active_playlist_title.startswith("Calling Hours:"):
+                    active_playlist_title = default_title
                 active_playlist_desc = f"Average tour setlist based on {total_shows} concerts in {selected_year} from Setlist.fm."
             else:
                 active_mode = 'all_analyzed'
                 songs = database.get_analyzed_songs(order_by=order_by, limit=limit)
-                if not active_playlist_title:
-                    active_playlist_title = "Calling Hours: All Analyzed Tracks"
+                default_title = "Calling Hours: All Analyzed Tracks"
+                if not active_playlist_title or active_playlist_title.startswith("Calling Hours:") or active_playlist_title.endswith("Average Setlist"):
+                    active_playlist_title = default_title
                 active_playlist_desc = "Master collection of all tracks analyzed for poetic and thematic lyrics in Calling Hours."
 
         # Build Sort Options
@@ -9742,7 +9955,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             mode_specific_inputs = f'''
                 <div class="playlist-input-group">
                     <label for="select-artist">Select Artist</label>
-                    <select name="artist" id="select-artist" onchange="document.getElementById('generator-form').submit()">
+                    <select name="artist" id="select-artist" onchange="onCriteriaChange('artist')">
                         {artist_opts or '<option value="">No analyzed artists yet</option>'}
                     </select>
                 </div>
@@ -9757,7 +9970,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             mode_specific_inputs = f'''
                 <div class="playlist-input-group">
                     <label for="select-tag">Select Genre Tag</label>
-                    <select name="tag" id="select-tag" onchange="document.getElementById('generator-form').submit()">
+                    <select name="tag" id="select-tag" onchange="onCriteriaChange('tag')">
                         {tag_opts or '<option value="">No tags found yet</option>'}
                     </select>
                 </div>
@@ -9765,7 +9978,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             top_tag_chips = []
             for t in analyzed_tags[:10]:
                 t_esc = html_escape(t['tag'])
-                top_tag_chips.append(f'<a href="/playlists?mode=tag&tag={urllib.parse.quote(t["tag"])}" class="playlist-tag-chip">#{t_esc} ({t["count"]})</a>')
+                top_tag_chips.append(f'<a href="/playlists?mode=tag&tag={urllib.parse.quote(t["tag"])}" class="playlist-tag-chip" data-loading-title="Filtering by Tag..." data-loading-subtitle="#{t_esc}" data-loading-icon="🏷️">#{t_esc} ({t["count"]})</a>')
             if top_tag_chips:
                 tag_chips_container_html = '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:14px; align-items:center;"><span style="font-size:0.75rem; color:#A5C8FF; font-weight:700;">Popular Tags:</span>' + "".join(top_tag_chips) + '</div>'
         elif active_mode == 'mood':
@@ -9782,7 +9995,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             mode_specific_inputs = f'''
                 <div class="playlist-input-group">
                     <label for="select-mood">Audio Characteristic</label>
-                    <select name="mood" id="select-mood" onchange="document.getElementById('generator-form').submit()">
+                    <select name="mood" id="select-mood" onchange="onCriteriaChange('mood')">
                         {mood_opts}
                     </select>
                 </div>
@@ -9818,14 +10031,14 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             mode_specific_inputs = f'''
                 <div class="playlist-input-group">
                     <label for="input-setlist-artist">Artist / Band</label>
-                    <input type="text" name="artist" id="input-setlist-artist" list="setlist-artist-list" value="{html_escape(selected_artist)}" placeholder="Band Name (e.g. Jimmy Eat World)" required>
+                    <input type="text" name="artist" id="input-setlist-artist" list="setlist-artist-list" value="{html_escape(selected_artist)}" placeholder="Band Name (e.g. Jimmy Eat World)" required oninput="updatePlaylistName('artist')" onchange="updatePlaylistName('artist')">
                     <datalist id="setlist-artist-list">
                         {artist_datalist_options}
                     </datalist>
                 </div>
                 <div class="playlist-input-group">
                     <label for="select-year">Tour / Setlist Year</label>
-                    <select name="year" id="select-year" onchange="document.getElementById('generator-form').submit()">
+                    <select name="year" id="select-year" onchange="onCriteriaChange('year')">
                         {year_opts}
                     </select>
                 </div>
@@ -9982,14 +10195,31 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                         </div>
                         <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
                             {spotify_link_html}
-                            <a href="/playlists?id={p_id}" class="btn-playlist-action btn-playlist-outline" style="font-size: 0.78rem; padding: 5px 12px; text-decoration: none;">📂 Load</a>
-                            <a href="/playlists/export/m3u?id={p_id}" class="btn-playlist-action btn-playlist-outline" style="font-size: 0.78rem; padding: 5px 10px; text-decoration: none;" title="Download M3U">📥 M3U</a>
-                            <a href="/playlists/export/csv?id={p_id}" class="btn-playlist-action btn-playlist-outline" style="font-size: 0.78rem; padding: 5px 10px; text-decoration: none;" title="Download CSV">📄 CSV</a>
-                            <a href="/playlists/delete?id={p_id}" onclick="return confirm('Delete this saved playlist?');" class="btn-playlist-action btn-playlist-outline" style="font-size: 0.78rem; padding: 5px 10px; border-color: rgba(240,140,90,0.4); color: #f08c5a; text-decoration: none;" title="Delete">&times;</a>
+                            <a href="/playlists?id={p_id}" class="btn-playlist-action btn-playlist-outline" style="font-size: 0.78rem; padding: 5px 12px; text-decoration: none;" data-loading-title="Loading Saved Playlist..." data-loading-subtitle="{p_name}" data-loading-icon="📂">📂 Load</a>
+                            <a href="/playlists/export/m3u?id={p_id}" class="btn-playlist-action btn-playlist-outline" style="font-size: 0.78rem; padding: 5px 10px; text-decoration: none;" onclick="showToast('Exporting .m3u8 file...')" title="Download M3U">📥 M3U</a>
+                            <a href="/playlists/export/csv?id={p_id}" class="btn-playlist-action btn-playlist-outline" style="font-size: 0.78rem; padding: 5px 10px; text-decoration: none;" onclick="showToast('Exporting .csv spreadsheet...')" title="Download CSV">📄 CSV</a>
+                            <a href="/playlists/delete?id={p_id}" onclick="if (confirm('Delete this saved playlist?')) {{ showActionLoadingOverlay({{ title: 'Deleting Playlist...', subtitle: '{p_name}', icon: '🗑️', statusSteps: ['Removing playlist from database...', 'Refreshing library...'] }}); return true; }} return false;" class="btn-playlist-action btn-playlist-outline" style="font-size: 0.78rem; padding: 5px 10px; border-color: rgba(240,140,90,0.4); color: #f08c5a; text-decoration: none;" title="Delete">&times;</a>
                         </div>
                     </div>
                 ''')
             saved_playlists_html = '<div style="display: flex; flex-direction: column; gap: 12px;">' + "".join(saved_cards) + '</div>'
+
+        # Quick Load Dropdown in Generator Studio
+        saved_playlist_quick_dropdown_html = ""
+        if saved_playlists:
+            saved_options = "".join(
+                f'<option value="{p["id"]}"{" selected" if saved_id == p["id"] else ""}>{html_escape(p.get("name") or "Untitled")} ({p.get("track_count", 0)} tracks)</option>'
+                for p in saved_playlists
+            )
+            saved_playlist_quick_dropdown_html = f'''
+                <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                    <span style="font-size: 0.76rem; color: #A5C8FF; font-weight: 700; text-transform: uppercase;">📁 Quick Load:</span>
+                    <select id="quick-select-saved-playlist" onchange="loadSavedPlaylist(this.value)" style="background: rgba(5, 10, 20, 0.85); border: 1px solid rgba(165, 200, 255, 0.3); border-radius: 6px; padding: 4px 10px; color: #FFFFFF; font-size: 0.8rem; outline: none; cursor: pointer;">
+                        <option value="">-- Load Saved Playlist ({len(saved_playlists)}) --</option>
+                        {saved_options}
+                    </select>
+                </div>
+            '''
 
         # Export URLs
         if saved_id:
@@ -10057,6 +10287,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                                      .replace('{limit_options_html}', limit_options_html)\
                                      .replace('{active_playlist_title}', html_escape(active_playlist_title))\
                                      .replace('{active_playlist_desc}', html_escape(active_playlist_desc))\
+                                     .replace('{saved_playlist_quick_dropdown_html}', saved_playlist_quick_dropdown_html)\
                                      .replace('{tag_chips_container_html}', tag_chips_container_html)\
                                      .replace('{track_count}', str(len(songs)))\
                                      .replace('{tracklist_html}', tracklist_html)\
