@@ -4,6 +4,7 @@ import os
 import sqlite3
 import secrets
 import json
+import re
 from contextlib import contextmanager
 from datetime import datetime, date, timedelta, timezone
 from typing import Optional, List, Dict, Any, Union
@@ -1123,10 +1124,20 @@ def get_cached_average_setlist(artist: str, year: Union[str, int], db_path: Opti
     """Retrieve cached Setlist.fm average setlist for an artist and year."""
     if not artist or not str(year).strip():
         return None
-    artist_meta = get_artist_metadata(artist, db_path=db_path)
+    clean_artist = artist.strip()
+    artist_meta = get_artist_metadata(clean_artist, db_path=db_path)
+    if not artist_meta or not artist_meta.get('setlistfm_data'):
+        base_artist = re.sub(r'[\s\-_]+(?:617|\d{3,4}|\([^\)]+\))$', '', clean_artist, flags=re.IGNORECASE).strip()
+        if base_artist and base_artist.lower() != clean_artist.lower():
+            artist_meta = get_artist_metadata(base_artist, db_path=db_path)
     if not artist_meta or not artist_meta.get('setlistfm_data'):
         return None
     s_data = artist_meta['setlistfm_data']
+    if isinstance(s_data, str):
+        try:
+            s_data = json.loads(s_data)
+        except Exception:
+            s_data = None
     if isinstance(s_data, dict):
         avg_dict = s_data.get('average_setlists', {})
         if isinstance(avg_dict, dict):
@@ -1211,7 +1222,11 @@ def get_distinct_bands(db_path: Optional[str] = None) -> List[Dict[str, Any]]:
 
 def get_songs_by_band(artist: str, db_path: Optional[str] = None) -> List[Dict[str, Any]]:
     """Returns all searched songs for a specific band/artist ordered by most recent activity."""
-    artist_norm = normalize_text(artist)
+    raw_art = artist.strip()
+    artist_norm = normalize_text(raw_art)
+    base_art = re.sub(r'[\s\-_]+(?:617|\d{3,4}|\([^\)]+\))$', '', raw_art, flags=re.IGNORECASE).strip()
+    base_norm = normalize_text(base_art)
+
     target = get_db_target(db_path)
     with get_connection(target) as conn:
         if is_postgres(target):
@@ -1220,6 +1235,16 @@ def get_songs_by_band(artist: str, db_path: Optional[str] = None) -> List[Dict[s
         else:
             cursor = conn.cursor()
             ph = "?"
+
+        where_parts = [f"artist_normalized = {ph}"]
+        params = [artist_norm]
+        if base_norm and base_norm != artist_norm:
+            where_parts.append(f"artist_normalized = {ph}")
+            params.append(base_norm)
+        search_base = base_norm if base_norm else artist_norm
+        where_parts.append(f"artist_normalized LIKE {ph}")
+        params.append(search_base + " %")
+
         cursor.execute(f"""
             SELECT 
                 id,
@@ -1236,9 +1261,9 @@ def get_songs_by_band(artist: str, db_path: Optional[str] = None) -> List[Dict[s
                 created_at,
                 updated_at
             FROM searches
-            WHERE artist_normalized = {ph}
+            WHERE ({' OR '.join(where_parts)})
             ORDER BY updated_at DESC, id DESC
-        """, (artist_norm,))
+        """, tuple(params))
         rows = cursor.fetchall()
         return [_format_search_record(r) for r in rows]
 
@@ -1839,8 +1864,20 @@ def get_analyzed_songs(
         """
         params: List[Any] = []
         if artist and artist.strip():
-            query += f" AND artist_normalized = {ph}"
-            params.append(normalize_text(artist.strip()))
+            raw_art = artist.strip()
+            artist_norm = normalize_text(raw_art)
+            base_art = re.sub(r'[\s\-_]+(?:617|\d{3,4}|\([^\)]+\))$', '', raw_art, flags=re.IGNORECASE).strip()
+            base_norm = normalize_text(base_art)
+
+            where_parts = [f"artist_normalized = {ph}"]
+            params.append(artist_norm)
+            if base_norm and base_norm != artist_norm:
+                where_parts.append(f"artist_normalized = {ph}")
+                params.append(base_norm)
+            search_base = base_norm if base_norm else artist_norm
+            where_parts.append(f"artist_normalized LIKE {ph}")
+            params.append(search_base + " %")
+            query += f" AND ({' OR '.join(where_parts)})"
 
         valid_orders = {
             'updated_at DESC': 'updated_at DESC, id DESC',

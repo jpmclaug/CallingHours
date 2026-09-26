@@ -1543,9 +1543,13 @@ def get_demo_artist_spotify_data(artist: str) -> Dict[str, Any]:
     # Dynamic generation for any other artist using DB/LastFM if available
     track_names = []
     genres = []
+    base_artist = re.sub(r'[\s\-_]+(?:617|\d{3,4}|\([^\)]+\))$', '', clean_artist, flags=re.IGNORECASE).strip()
+
     try:
         import database
         db_songs = database.get_songs_by_band(clean_artist) or []
+        if not db_songs and base_artist and base_artist.lower() != clean_artist.lower():
+            db_songs = database.get_songs_by_band(base_artist) or []
         for s in db_songs:
             s_name = s.get("song")
             if s_name and s_name not in track_names:
@@ -1557,11 +1561,15 @@ def get_demo_artist_spotify_data(artist: str) -> Dict[str, Any]:
         import lastfm
         if len(track_names) < 5:
             lfm_tracks = lastfm.fetch_artist_top_tracks(clean_artist, limit=10) or []
+            if not lfm_tracks and base_artist and base_artist.lower() != clean_artist.lower():
+                lfm_tracks = lastfm.fetch_artist_top_tracks(base_artist, limit=10) or []
             for lt in lfm_tracks:
                 lt_name = lt.get("name")
                 if lt_name and lt_name not in track_names:
                     track_names.append(lt_name)
         lfm_tags = lastfm.fetch_artist_top_tags(clean_artist) or []
+        if not lfm_tags and base_artist and base_artist.lower() != clean_artist.lower():
+            lfm_tags = lastfm.fetch_artist_top_tags(base_artist) or []
         for tg in lfm_tags[:4]:
             t_name = tg.get("name") if isinstance(tg, dict) else str(tg)
             if t_name and t_name.title() not in genres:
@@ -1649,10 +1657,13 @@ def get_or_fetch_artist_spotify_data(
     import database
 
     clean_artist = artist.strip()
+    base_artist = re.sub(r'[\s\-_]+(?:617|\d{3,4}|\([^\)]+\))$', '', clean_artist, flags=re.IGNORECASE).strip()
 
     # 1. Check database cache if not forced refresh
     if not force_refresh:
         cached = database.get_artist_metadata(clean_artist, db_path=db_path)
+        if (not cached or not cached.get("spotify_data")) and base_artist and base_artist.lower() != clean_artist.lower():
+            cached = database.get_artist_metadata(base_artist, db_path=db_path)
         if cached and cached.get("spotify_data"):
             spot_data = cached["spotify_data"]
             if isinstance(spot_data, str):
@@ -1661,9 +1672,16 @@ def get_or_fetch_artist_spotify_data(
                 except Exception:
                     spot_data = None
             if isinstance(spot_data, dict) and spot_data.get("found"):
-                spot_data["cached"] = True
-                spot_data["is_configured"] = is_spotify_configured()
-                return spot_data
+                # Validate meaningful telemetry (not zeroed-out stats)
+                has_meaningful_data = bool(
+                    (spot_data.get("top_tracks") and len(spot_data["top_tracks"]) > 0) or
+                    (spot_data.get("followers") and spot_data["followers"] > 0) or
+                    (spot_data.get("popularity") and spot_data["popularity"] > 0)
+                )
+                if has_meaningful_data:
+                    spot_data["cached"] = True
+                    spot_data["is_configured"] = is_spotify_configured()
+                    return spot_data
 
     # 2. Check if Spotify credentials are configured
     if not is_spotify_configured():
@@ -1675,6 +1693,12 @@ def get_or_fetch_artist_spotify_data(
                 spotify_data=fallback,
                 db_path=db_path
             )
+            if base_artist and base_artist.lower() != clean_artist.lower():
+                database.save_artist_metadata(
+                    base_artist,
+                    spotify_data=fallback,
+                    db_path=db_path
+                )
         except Exception as e:
             print(f"Database save fallback spotify error for {clean_artist}: {e}")
         return fallback
@@ -1690,12 +1714,21 @@ def get_or_fetch_artist_spotify_data(
                 spotify_data=fallback,
                 db_path=db_path
             )
+            if base_artist and base_artist.lower() != clean_artist.lower():
+                database.save_artist_metadata(
+                    base_artist,
+                    spotify_data=fallback,
+                    db_path=db_path
+                )
         except Exception as e:
             print(f"Database save fallback spotify error for {clean_artist}: {e}")
         return fallback
 
     # 4. Search artist
     profile = search_artist_profile(token, clean_artist)
+    if not profile or not profile.get("id"):
+        if base_artist and base_artist.lower() != clean_artist.lower():
+            profile = search_artist_profile(token, base_artist)
     if not profile or not profile.get("id"):
         return {
             "is_configured": True,

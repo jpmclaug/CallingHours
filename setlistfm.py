@@ -88,6 +88,9 @@ def search_artist(
         data = resp.json()
         artists = data.get("artist", [])
         if not artists:
+            base_name = re.sub(r'[\s\-_]+(?:617|\d{3,4}|\([^\)]+\))$', '', clean_name, flags=re.IGNORECASE).strip()
+            if base_name and base_name.lower() != clean_name.lower():
+                return search_artist(base_name, api_key=key, timeout=timeout)
             return None
 
         # Prioritize exact match
@@ -1048,11 +1051,14 @@ def fetch_average_setlist_by_year(
 
     clean_artist = artist_name.strip()
     clean_year = str(year).strip()
+    base_artist = re.sub(r'[\s\-_]+(?:617|\d{3,4}|\([^\)]+\))$', '', clean_artist, flags=re.IGNORECASE).strip()
     key = api_key or get_setlistfm_api_key()
 
     # 1. Check database cache unless refresh forced
     if not force_refresh:
         cached = database.get_cached_average_setlist(clean_artist, clean_year, db_path=db_path)
+        if (not cached or not cached.get("tracks")) and base_artist and base_artist.lower() != clean_artist.lower():
+            cached = database.get_cached_average_setlist(base_artist, clean_year, db_path=db_path)
         if cached and isinstance(cached, dict) and cached.get("tracks"):
             cached["cached"] = True
             return cached
@@ -1070,6 +1076,9 @@ def fetch_average_setlist_by_year(
 
     # Check cached artist metadata first to save an API search call
     cached_meta = database.get_artist_metadata(clean_artist, db_path=db_path)
+    if not cached_meta and base_artist and base_artist.lower() != clean_artist.lower():
+        cached_meta = database.get_artist_metadata(base_artist, db_path=db_path)
+
     if cached_meta and cached_meta.get("setlistfm_data"):
         s_meta = cached_meta["setlistfm_data"]
         if isinstance(s_meta, dict) and s_meta.get("mbid"):
@@ -1079,12 +1088,16 @@ def fetch_average_setlist_by_year(
 
     if not target_mbid or not setlist_url:
         art_info = search_artist(clean_artist, api_key=key, timeout=timeout)
+        if (not art_info or not art_info.get("mbid")) and base_artist and base_artist.lower() != clean_artist.lower():
+            art_info = search_artist(base_artist, api_key=key, timeout=timeout)
         if art_info:
             target_mbid = art_info.get("mbid")
             official_name = art_info.get("name") or clean_artist
             setlist_url = art_info.get("url")
 
     if not target_mbid:
+        if base_artist and base_artist.lower() != clean_artist.lower():
+            return fetch_average_setlist_by_year(base_artist, clean_year, api_key=key, force_refresh=force_refresh, db_path=db_path, timeout=timeout)
         return get_demo_average_setlist(clean_artist, clean_year)
 
     # 4. Method 1: Web Scraping Setlist.fm stats/average-setlist
@@ -1139,6 +1152,8 @@ def fetch_average_setlist_by_year(
                             "cached": False,
                         }
                         database.save_cached_average_setlist(clean_artist, clean_year, result, db_path=db_path)
+                        if base_artist and base_artist.lower() != clean_artist.lower():
+                            database.save_cached_average_setlist(base_artist, clean_year, result, db_path=db_path)
                         return result
         except Exception as we:
             print(f"Setlist.fm web stats retrieval error for {clean_artist} ({clean_year}): {we}")
@@ -1169,6 +1184,20 @@ def fetch_average_setlist_by_year(
                     pass
 
         if not all_setlists:
+            # If this was a suffix variation (e.g. "Haywire 617"), try the base artist ("Haywire")
+            if base_artist and base_artist.lower() != clean_artist.lower():
+                fallback_res = fetch_average_setlist_by_year(
+                    artist_name=base_artist,
+                    year=clean_year,
+                    api_key=key,
+                    force_refresh=force_refresh,
+                    db_path=db_path,
+                    timeout=timeout
+                )
+                if fallback_res and fallback_res.get("tracks"):
+                    database.save_cached_average_setlist(clean_artist, clean_year, fallback_res, db_path=db_path)
+                    return fallback_res
+
             empty_result = {
                 "artist": official_name,
                 "year": clean_year,
@@ -1280,6 +1309,8 @@ def fetch_average_setlist_by_year(
         }
 
         database.save_cached_average_setlist(clean_artist, clean_year, result, db_path=db_path)
+        if base_artist and base_artist.lower() != clean_artist.lower():
+            database.save_cached_average_setlist(base_artist, clean_year, result, db_path=db_path)
         return result
 
     except Exception as ae:
