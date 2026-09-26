@@ -3730,6 +3730,7 @@ PAGE_HTML = r'''<!DOCTYPE html>
             if (quickLoadBtn) {
                 quickLoadBtn.style.display = 'inline-block';
             }
+            loadSelectedSavedSong();
         }
 
         function loadSelectedSavedSong() {
@@ -3749,7 +3750,7 @@ PAGE_HTML = r'''<!DOCTYPE html>
                     notice: 'Please wait while saved song analysis is loaded.'
                 });
             }
-            window.location.href = '/?id=' + encodeURIComponent(songSelect.value);
+            window.location.href = '/?id=' + encodeURIComponent(songSelect.value) + '&auto_analyze=1';
         }
 
         function forceRefreshSearch() {
@@ -3958,11 +3959,14 @@ PAGE_HTML = r'''<!DOCTYPE html>
 
             // Auto-select workspace tab based on content
             const analysisWrapper = document.getElementById('analysis-result-wrapper');
-            const hasAnalysis = analysisWrapper && analysisWrapper.style.display !== 'none' && analysisWrapper.textContent.trim() !== '';
+            const rawAnalysisEl = document.getElementById('analysis-raw');
+            const urlParams = new URLSearchParams(window.location.search);
+            const isAutoAnalyze = urlParams.get('auto_analyze') === '1' || urlParams.get('analyze') === '1';
+            const hasAnalysis = (rawAnalysisEl && rawAnalysisEl.textContent.trim() !== '') || (analysisWrapper && analysisWrapper.style.display !== 'none' && analysisWrapper.textContent.trim() !== '');
             const hasLyrics = textarea && textarea.value.trim() !== '';
 
             let initialTab = 'search';
-            if (hasAnalysis) {
+            if (hasAnalysis || isAutoAnalyze) {
                 initialTab = 'analysis';
             } else if (hasLyrics) {
                 initialTab = 'lyrics';
@@ -4434,8 +4438,38 @@ ARTIST_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
         .artist-links-row {
             display: flex;
             flex-wrap: wrap;
-            gap: 10px;
-            margin-top: 14px;
+            align-items: center;
+            gap: 6px;
+            margin-top: 8px;
+        }
+        .artist-site-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 0.72rem;
+            font-weight: 600;
+            color: #C5D8F6;
+            background: rgba(165, 200, 255, 0.08);
+            border: 1px solid rgba(165, 200, 255, 0.22);
+            padding: 2px 8px;
+            border-radius: 6px;
+            text-decoration: none;
+            transition: all 0.15s ease;
+            white-space: nowrap;
+        }
+        .artist-site-link:hover {
+            color: #FFFFFF;
+            background: rgba(165, 200, 255, 0.2);
+            border-color: rgba(165, 200, 255, 0.45);
+            text-decoration: none;
+        }
+        .artist-site-link.refresh-link {
+            color: #93C5FD;
+            border-color: rgba(147, 197, 253, 0.3);
+        }
+        .artist-site-link.refresh-link:hover {
+            color: #FFFFFF;
+            background: rgba(59, 130, 246, 0.25);
         }
         .nc-spotlight-card {
             background: linear-gradient(135deg, rgba(16, 48, 102, 0.8) 0%, rgba(8, 24, 56, 0.9) 100%);
@@ -4887,9 +4921,8 @@ ARTIST_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
                 font-size: 0.76rem;
                 padding: 3px 8px;
             }
-            .artist-links-row .pill-btn {
-                flex: 1 1 100%;
-                text-align: center;
+            .artist-links-row {
+                gap: 5px;
                 justify-content: center;
             }
             .spotify-kpi-grid {
@@ -7221,14 +7254,73 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 except Exception as lfe:
                     print(f"Last.fm artist metadata load error: {lfe}")
 
-                genius_link = f' <a href="{html_escape(song_url)}" target="_blank" style="color:#A8D2FF; text-decoration:underline;">View on Genius</a>' if song_url else ''
-                has_analysis_msg = ' with saved analysis' if analysis else ''
-                message = (
-                    f'<div class="message">'
-                    f'Loaded saved search for <strong>{html_escape(artist)}</strong> - <strong>{html_escape(song)}</strong> from database{has_analysis_msg}.'
-                    f'{genius_link}'
-                    f'</div>'
-                )
+                # If lyrics are not present in cached search row, fetch them online
+                if not lyrics or not lyrics.strip():
+                    if ACCESS_TOKEN or (GENIUS_CLIENT_ID and GENIUS_CLIENT_SECRET):
+                        try:
+                            genius_info = search_genius_song_details(artist, song)
+                            if genius_info:
+                                song_url = genius_info.get('url') or song_url
+                                fetched = fetch_genius_lyrics(song_url)
+                                if fetched:
+                                    lyrics = fetched
+                                    source = 'Genius'
+                        except Exception as gse:
+                            print(f"Genius search error in load_id: {gse}")
+                    if not lyrics or not lyrics.strip():
+                        try:
+                            lrclib_lyrics = fetch_lrclib_lyrics(artist=artist, song=song)
+                            if lrclib_lyrics:
+                                lyrics = lrclib_lyrics
+                                source = 'LRCLIB'
+                        except Exception as lre:
+                            print(f"LRCLIB fetch error in load_id: {lre}")
+                    if lyrics and lyrics.strip():
+                        try:
+                            database.save_search(
+                                artist=artist,
+                                song=song,
+                                lyrics=lyrics,
+                                source=source or 'Online',
+                                song_url=song_url,
+                                track_tags=track_tags,
+                                theaudiodb_data=theaudiodb_data
+                            )
+                        except Exception as sse:
+                            print(f"Save search in load_id error: {sse}")
+
+                # Auto-analyze if requested and lyrics exist but no analysis yet
+                did_analyze = False
+                if auto_analyze and not analysis and lyrics and GEMINI_API_KEY:
+                    try:
+                        prompts = load_prompts()
+                        p_template = prompts[0]['text'] if prompts else "Analyze lyrics:\n{lyrics_text}"
+                        p_text = p_template.replace('{song}', song).replace('{artist}', artist).replace('{lyrics_text}', html.unescape(lyrics))
+                        client = genai.Client(api_key=GEMINI_API_KEY)
+                        inter = client.interactions.create(model=model_name, input=p_text)
+                        analysis = inter.output_text or ''
+                        database.save_analysis(
+                            artist=artist,
+                            song=song,
+                            analysis=analysis,
+                            model_name=model_name,
+                            prompt_name="Default Analysis",
+                            lyrics=lyrics,
+                            track_tags=track_tags,
+                            theaudiodb_data=theaudiodb_data
+                        )
+                        did_analyze = True
+                    except Exception as aae:
+                        print(f"Auto-analyze error in load_id: {aae}")
+
+                genius_link = f' <a href="{html_escape(song_url)}" target="_blank" rel="noopener noreferrer" style="color:#A8D2FF; text-decoration:underline;">View on Genius</a>' if song_url else ''
+                if did_analyze:
+                    msg_text = f'Successfully analyzed <strong>{html_escape(artist)}</strong> - <strong>{html_escape(song)}</strong> with Gemini.'
+                elif analysis:
+                    msg_text = f'Loaded saved search and analysis for <strong>{html_escape(artist)}</strong> - <strong>{html_escape(song)}</strong> from database.'
+                else:
+                    msg_text = f'Loaded saved search for <strong>{html_escape(artist)}</strong> - <strong>{html_escape(song)}</strong> from database.'
+                message = f'<div class="message">{msg_text}{genius_link}</div>'
                 self.render_page(
                     message=message,
                     lyrics_text=lyrics,
@@ -7236,7 +7328,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                     song_value=html_escape(song),
                     analysis_result=analysis,
                     selected_model=model_name,
-                    show_editor=bool(lyrics or analysis),
+                    show_editor=True,
                     track_tags=track_tags,
                     artist_metadata=artist_metadata,
                     theaudiodb_data=theaudiodb_data
@@ -7244,7 +7336,8 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 return
         elif artist_param and song_param:
             rec = database.get_search(artist_param, song_param)
-            if rec:
+            has_cached_lyrics = bool(rec and rec.get('lyrics') and rec['lyrics'].strip())
+            if has_cached_lyrics:
                 artist = rec['artist']
                 song = rec['song']
                 try:
@@ -7252,9 +7345,9 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 except Exception as e:
                     print(f"Touch search error: {e}")
                 lyrics = rec['lyrics'] or ''
-                analysis = rec['analysis'] or ''
-                source = rec['source'] or 'Database'
-                model_name = rec['model_name'] or DEFAULT_GEMINI_MODEL
+                analysis = rec.get('analysis') or ''
+                source = rec.get('source') or 'Database'
+                model_name = rec.get('model_name') or DEFAULT_GEMINI_MODEL
                 song_url = rec.get('song_url')
                 track_tags = rec.get('track_tags') or []
                 if not track_tags and LASTFM_API_KEY:
@@ -7274,7 +7367,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 except Exception as lfe:
                     print(f"Last.fm artist metadata load error: {lfe}")
 
-                # Auto-analyze if requested and lyrics exist but no analysis yet
+                did_analyze = False
                 if auto_analyze and not analysis and lyrics and GEMINI_API_KEY:
                     try:
                         prompts = load_prompts()
@@ -7293,17 +7386,18 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                             track_tags=track_tags,
                             theaudiodb_data=theaudiodb_data
                         )
+                        did_analyze = True
                     except Exception as aae:
                         print(f"Auto-analyze error: {aae}")
 
-                genius_link = f' <a href="{html_escape(song_url)}" target="_blank" style="color:#A8D2FF; text-decoration:underline;">View on Genius</a>' if song_url else ''
-                has_analysis_msg = ' with saved analysis' if analysis else ''
-                message = (
-                    f'<div class="message">'
-                    f'Loaded saved search for <strong>{html_escape(artist)}</strong> - <strong>{html_escape(song)}</strong> from database{has_analysis_msg}.'
-                    f'{genius_link}'
-                    f'</div>'
-                )
+                genius_link = f' <a href="{html_escape(song_url)}" target="_blank" rel="noopener noreferrer" style="color:#A8D2FF; text-decoration:underline;">View on Genius</a>' if song_url else ''
+                if did_analyze:
+                    msg_text = f'Successfully analyzed <strong>{html_escape(artist)}</strong> - <strong>{html_escape(song)}</strong> with Gemini.'
+                elif analysis:
+                    msg_text = f'Loaded saved search and analysis for <strong>{html_escape(artist)}</strong> - <strong>{html_escape(song)}</strong> from database.'
+                else:
+                    msg_text = f'Loaded saved search for <strong>{html_escape(artist)}</strong> - <strong>{html_escape(song)}</strong> from database.'
+                message = f'<div class="message">{msg_text}{genius_link}</div>'
                 self.render_page(
                     message=message,
                     lyrics_text=lyrics,
@@ -7311,14 +7405,14 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                     song_value=html_escape(song),
                     analysis_result=analysis,
                     selected_model=model_name,
-                    show_editor=bool(lyrics or analysis),
+                    show_editor=True,
                     track_tags=track_tags,
                     artist_metadata=artist_metadata,
                     theaudiodb_data=theaudiodb_data
                 )
                 return
             else:
-                # Song not previously cached in searches table: fetch lyrics online
+                # Song not previously cached in searches table or lacks lyrics: fetch lyrics online
                 lyrics = ''
                 song_url = None
                 source = None
@@ -7381,6 +7475,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                     pass
 
                 analysis = ''
+                did_analyze = False
                 if lyrics:
                     try:
                         database.save_search(
@@ -7413,11 +7508,20 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                                 track_tags=track_tags,
                                 theaudiodb_data=theaudiodb_data
                             )
+                            did_analyze = True
                         except Exception as aae:
                             print(f"Auto-analyze new song error: {aae}")
 
-                genius_link = f' <a href="{html_escape(song_url)}" target="_blank" rel="noopener noreferrer" style="color:#A8D2FF; text-decoration:underline;">View on Genius</a>' if song_url else ''
-                msg = f'<div class="message">Loaded <strong>{html_escape(effective_artist)}</strong> - <strong>{html_escape(effective_song)}</strong>.{genius_link}</div>' if lyrics else ''
+                    genius_link = f' <a href="{html_escape(song_url)}" target="_blank" rel="noopener noreferrer" style="color:#A8D2FF; text-decoration:underline;">View on Genius</a>' if song_url else ''
+                    if did_analyze:
+                        msg_text = f'Loaded lyrics and completed Gemini analysis for <strong>{html_escape(effective_artist)}</strong> - <strong>{html_escape(effective_song)}</strong>.'
+                    else:
+                        msg_text = f'Loaded <strong>{html_escape(effective_artist)}</strong> - <strong>{html_escape(effective_song)}</strong>.'
+                    msg = f'<div class="message">{msg_text}{genius_link}</div>'
+                else:
+                    genius_link = f' <a href="{html_escape(song_url)}" target="_blank" rel="noopener noreferrer" style="color:#A8D2FF; text-decoration:underline;">View on Genius</a>' if song_url else ''
+                    msg = f'<div class="message">Could not automatically retrieve lyrics for <strong>{html_escape(effective_artist)}</strong> - <strong>{html_escape(effective_song)}</strong>.{genius_link}<br>You can paste or edit lyrics in the box below to run Gemini analysis.</div>'
+
                 self.render_page(
                     message=msg,
                     lyrics_text=lyrics,
@@ -7425,7 +7529,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                     song_value=html_escape(effective_song),
                     analysis_result=analysis,
                     selected_model=DEFAULT_GEMINI_MODEL,
-                    show_editor=bool(lyrics or analysis),
+                    show_editor=True,
                     track_tags=track_tags,
                     artist_metadata=artist_metadata,
                     theaudiodb_data=theaudiodb_data
@@ -8284,15 +8388,15 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             tags_chips.append(f'<a href="{t_url}" target="_blank" rel="noopener noreferrer" class="lastfm-tag-chip artist-tag">#{t_name}</a>')
         tags_html = " ".join(tags_chips)
 
-        # External Links
+        # External Links (compact badges)
         ext_links = []
         if setlist_data.get('url'):
-            ext_links.append(f'<a href="{html_escape(setlist_data["url"])}" target="_blank" rel="noopener noreferrer" class="pill-btn secondary" style="font-size: 0.78rem; padding: 4px 10px;">🎤 Setlist.fm Profile &rarr;</a>')
+            ext_links.append(f'<a href="{html_escape(setlist_data["url"])}" target="_blank" rel="noopener noreferrer" class="artist-site-link" title="Open Setlist.fm Profile">🎤 Setlist.fm</a>')
         if spotify_data.get('spotify_url'):
-            ext_links.append(f'<a href="{html_escape(spotify_data["spotify_url"])}" target="_blank" rel="noopener noreferrer" class="pill-btn secondary" style="font-size: 0.78rem; padding: 4px 10px;">🟢 Spotify Profile &rarr;</a>')
-        ext_links.append(f'<a href="https://www.last.fm/music/{artist_url_param}" target="_blank" rel="noopener noreferrer" class="pill-btn secondary" style="font-size: 0.78rem; padding: 4px 10px;">📻 Last.fm Profile &rarr;</a>')
-        ext_links.append(f'<a href="https://genius.com/search?q={artist_url_param}" target="_blank" rel="noopener noreferrer" class="pill-btn secondary" style="font-size: 0.78rem; padding: 4px 10px;">📝 Genius Catalog &rarr;</a>')
-        ext_links.append(f'<a href="/artist?artist={artist_url_param}&refresh=1" class="pill-btn secondary" style="font-size: 0.78rem; padding: 4px 10px;" title="Bypass cache and reload data from all APIs">↻ Refresh Data</a>')
+            ext_links.append(f'<a href="{html_escape(spotify_data["spotify_url"])}" target="_blank" rel="noopener noreferrer" class="artist-site-link" title="Open Spotify Profile">🟢 Spotify</a>')
+        ext_links.append(f'<a href="https://www.last.fm/music/{artist_url_param}" target="_blank" rel="noopener noreferrer" class="artist-site-link" title="Open Last.fm Profile">📻 Last.fm</a>')
+        ext_links.append(f'<a href="https://genius.com/search?q={artist_url_param}" target="_blank" rel="noopener noreferrer" class="artist-site-link" title="Open Genius Catalog">📝 Genius</a>')
+        ext_links.append(f'<a href="/artist?artist={artist_url_param}&refresh=1" class="artist-site-link refresh-link" title="Bypass cache and reload data from all APIs">↻ Refresh</a>')
         links_html = " ".join(ext_links)
 
         # Hero Card HTML
@@ -8924,6 +9028,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         </div>
 
         {hero_html}
+        {bio_card_html}
         {spotify_analytics_html}
         {top_bands_played_with_html}
         {nc_spotlight_html}
@@ -8931,7 +9036,6 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         {recent_setlists_html}
         {average_setlist_section_html}
         {songs_html}
-        {bio_card_html}
         '''
 
         content = ARTIST_PAGE_HTML.replace('{app_header}', build_app_header('artist', user=current_user))\

@@ -216,12 +216,51 @@ def fetch_co_performers_for_show(
             art = s.get("artist", {})
             name = art.get("name", "").strip()
             if name and name.lower() != target_norm and name not in co_performers:
-                co_performers.append(name)
+                if _is_valid_band_name(name):
+                    co_performers.append(name)
 
         return co_performers
     except Exception as e:
         print(f"Setlist.fm fetch_co_performers_for_show error for {event_date} / {venue_id}: {e}")
         return []
+
+
+def _is_valid_band_name(candidate: Optional[str]) -> bool:
+    """Validate that candidate string is a plausible band/artist name and not noise or instrument credit."""
+    if not candidate or not isinstance(candidate, str):
+        return False
+    clean = candidate.strip()
+    if len(clean) < 2 or len(clean) > 55:
+        return False
+    c_lower = clean.lower()
+
+    # Generic or non-artist terms
+    invalid_words = {
+        "more", "others", "tba", "tbd", "various artists", "special guests", "special guest",
+        "openers", "opener", "opening act", "support", "guest", "guests", "full band",
+        "acoustic set", "acoustic", "strings", "horns", "choir", "crowd", "interlude", "encore",
+        "soundcheck", "solo", "unknown", "various", "and more", "plus more", "rythm guitar",
+        "rhythm guitar", "lead guitar", "bass guitar", "keys", "drums", "tour", "live", "band"
+    }
+    if c_lower in invalid_words:
+        return False
+
+    # Instrument / performance clauses (e.g., "Robin Vining on keys", "rythm guitar")
+    instrument_patterns = [
+        r'\bon\s+(?:keys|keyboards?|guitar|bass|drums?|piano|horns?|sax|saxophone|trumpet|percussion|vocals?|harmonica|organ)\b',
+        r'\b(?:rhythm|rythm|lead|bass|acoustic|electric|pedal\s+steel)\s+guitar\b',
+        r'\b(?:backing\s+vocals?|guest\s+vocals?|lead\s+vocals?)\b',
+        r'\b(?:string\s+quartet|brass\s+section|horn\s+section|choir)\b',
+    ]
+    for pat in instrument_patterns:
+        if re.search(pat, c_lower):
+            return False
+
+    # Phrases starting with prepositions, verbs, or conjunctions
+    if re.match(r'^(?:playing|singing|performing|featuring|feat\.?|joined\s+by|supported\s+by|with|and|or)\b', c_lower):
+        return False
+
+    return True
 
 
 def _extract_coperformers_from_info(info_text: Optional[str], target_artist: str) -> List[str]:
@@ -232,9 +271,10 @@ def _extract_coperformers_from_info(info_text: Optional[str], target_artist: str
     target_norm = target_artist.strip().lower()
     patterns = [
         r"(?:co-headlin\w*\s+with|co-headlin\w*\s+tour\s+with|co-bill\w*\s+with)\s+([^.,;\n]+)",
-        r"(?:opening\s+act\s+for|opened\s+for|support\s+for|direct\s+support\s+for|supporting)\s+([^.,;\n]+)",
-        r"(?:with\s+special\s+guests?|special\s+guests?|with\s+support\s+from|joined\s+by|supported\s+by|support:\s*|with)\s+([^.,;\n]+)",
-        r"(?:alongside|sharing\s+the\s+stage\s+with|lineup:\s*|bill:\s*)\s+([^.,;\n]+)",
+        r"(?:opening\s+act\s+for|opened\s+for|openers?:\s*|support\s+for|direct\s+support\s+for|supporting)\s+([^.,;\n]+)",
+        r"(?:with\s+special\s+guests?|special\s+guests?:\s*|with\s+support\s+from|joined\s+by|supported\s+by|support:\s*)\s+([^.,;\n]+)",
+        r"(?:alongside|sharing\s+the\s+stage\s+with|tour\s+lineup:\s*|bill:\s*)\s+([^.,;\n]+)",
+        r"(?:\bwith)\s+([^.,;\n]+)",
     ]
     for pat in patterns:
         m = re.search(pat, info_text, flags=re.IGNORECASE)
@@ -244,10 +284,9 @@ def _extract_coperformers_from_info(info_text: Optional[str], target_artist: str
             parts = re.split(r",|\s+and\s+|\s+&\s+|\s*\+\s*", raw_match)
             for p in parts:
                 cleaned = re.sub(r'[\(\)\[\]]', '', p).strip()
-                if cleaned and cleaned.lower() != target_norm and target_norm not in cleaned.lower() and len(cleaned) < 50:
-                    if cleaned.lower() not in {"more", "others", "tba", "tbd", "various artists", "special guests", "special guest"}:
-                        if cleaned not in coperformers:
-                            coperformers.append(cleaned)
+                if cleaned and cleaned.lower() != target_norm and target_norm not in cleaned.lower():
+                    if _is_valid_band_name(cleaned) and cleaned not in coperformers:
+                        coperformers.append(cleaned)
     return coperformers
 
 
@@ -265,7 +304,7 @@ def _extract_coperformers_from_tour_name(tour_name: Optional[str], target_artist
         cand = with_match.group(1).strip()
         cand = re.sub(r'\s+(?:tour|live|anniversary|summer|spring|fall|winter|\d{4}).*$', '', cand, flags=re.IGNORECASE).strip()
         if cand and cand.lower() != target_clean and len(cand) > 1 and len(cand) < 50:
-            if cand not in coperformers:
+            if _is_valid_band_name(cand) and cand not in coperformers:
                 coperformers.append(cand)
 
     # Check for co-headline split: 'A & B', 'A / B', 'A and B', 'A + B'
@@ -277,7 +316,7 @@ def _extract_coperformers_from_tour_name(tour_name: Optional[str], target_artist
             for p in parts:
                 cleaned = re.sub(r'\s+(?:tour|live|co-headlin\w*|\d{4}).*$', '', p, flags=re.IGNORECASE).strip()
                 if cleaned and cleaned.lower() != target_clean and target_clean not in cleaned.lower() and len(cleaned) > 1 and len(cleaned) < 50:
-                    if cleaned not in coperformers:
+                    if _is_valid_band_name(cleaned) and cleaned not in coperformers:
                         coperformers.append(cleaned)
 
     return coperformers
@@ -550,7 +589,7 @@ def fetch_top_coperformers(
                         guest = sng.get("with")
                         if isinstance(guest, dict) and guest.get("name"):
                             g_name = guest.get("name", "").strip()
-                            if g_name and g_name.lower() != target_norm:
+                            if g_name and g_name.lower() != target_norm and _is_valid_band_name(g_name):
                                 current_show_co_performers[g_name] = "Stage Guest"
 
                 # 4. Sample venue co-performers
@@ -568,13 +607,13 @@ def fetch_top_coperformers(
                         venue_searches_run += 1
                         is_fest = "fest" in (tour_name + " " + venue_name + " " + info_note).lower()
                         for vb in venue_bands:
-                            if vb not in current_show_co_performers:
+                            if vb not in current_show_co_performers and _is_valid_band_name(vb):
                                 current_show_co_performers[vb] = "Festival Co-Bill" if is_fest else "Tour Mate"
 
                 # Record all co-performers for this show
                 for band_name, role in current_show_co_performers.items():
                     norm_k = band_name.strip().lower()
-                    if not norm_k or norm_k == target_norm:
+                    if not norm_k or norm_k == target_norm or not _is_valid_band_name(band_name):
                         continue
                     if norm_k not in band_stats:
                         band_stats[norm_k] = {
@@ -749,10 +788,12 @@ def get_or_fetch_artist_setlist_data(
             if isinstance(s_data, dict) and s_data.get("mbid"):
                 s_data["has_key"] = bool(key)
                 s_data["cached"] = True
-                if not s_data.get("most_played_with"):
-                    # Backfill from demo or tours if missing in older cache
-                    s_data["most_played_with"] = get_demo_top_coperformers(clean_artist)
-                return s_data
+                mpw = s_data.get("most_played_with") or []
+                demo_markers = {"foo fighters", "queens of the stone age", "turnstile", "the strokes"}
+                has_demo_contamination = bool(key) and any(b.get("band", "").lower() in demo_markers for b in mpw[:3]) and clean_artist.lower() not in demo_markers
+                has_noise = any(not _is_valid_band_name(b.get("band", "")) for b in mpw)
+                if not (has_demo_contamination or has_noise):
+                    return s_data
 
     if not key:
         return {
@@ -779,7 +820,7 @@ def get_or_fetch_artist_setlist_data(
             "last_nc_show": None,
             "last_3_tours": [],
             "recent_setlists": [],
-            "most_played_with": get_demo_top_coperformers(clean_artist),
+            "most_played_with": [],
             "total_concerts": 0,
             "url": None,
             "cached": False,
@@ -800,36 +841,50 @@ def get_or_fetch_artist_setlist_data(
 
     # 6. Fetch top 10 co-performers / bands played with most
     most_played_with = fetch_top_coperformers(mbid, official_name, api_key=key, max_pages=5)
-    if not most_played_with:
-        # Fallback to discover from tours or demo
-        tour_bands = []
-        for t in tours:
-            for b in t.get("played_with", []):
-                b_clean = b.replace(" (Guest)", "").strip()
-                if b_clean and b_clean not in tour_bands:
-                    tour_bands.append(b_clean)
-        if tour_bands:
-            most_played_with = [
-                {
-                    "rank": i + 1,
-                    "band": tb,
-                    "shows_shared": max(1, 12 - i * 2),
+
+    # Merge co-performers discovered across tours into most_played_with
+    existing_bands_lower = {b["band"].strip().lower(): b for b in most_played_with if b.get("band")}
+    for t in tours:
+        t_name = t.get("tour_name", "Concert Tour")
+        for b in t.get("played_with", []):
+            b_clean = b.replace(" (Guest)", "").strip()
+            if not _is_valid_band_name(b_clean) or b_clean.lower() == official_name.lower():
+                continue
+            b_lower = b_clean.lower()
+            if b_lower in existing_bands_lower:
+                entry = existing_bands_lower[b_lower]
+                if t_name and t_name not in entry.get("tours", []):
+                    entry.setdefault("tours", []).append(t_name)
+                    entry["tours_shared"] = len(entry["tours"])
+            else:
+                new_entry = {
+                    "rank": len(most_played_with) + 1,
+                    "band": b_clean,
+                    "shows_shared": 1,
                     "tours_shared": 1,
-                    "tours": [tours[0].get("tour_name", "Concert Tour")],
-                    "primary_role": "Tour Mate / Co-Performer",
-                    "years_active": "Recent Tours",
+                    "tours": [t_name],
+                    "primary_role": "Tour Mate" if "(Guest)" not in b else "Stage Guest",
+                    "years_active": t.get("sample_date_formatted", "")[-4:] if t.get("sample_date_formatted") else "Recent Tours",
                     "latest_show": {
-                        "date_formatted": tours[0].get("sample_date_formatted", ""),
-                        "venue_name": tours[0].get("venue_name", ""),
-                        "location": tours[0].get("location", ""),
-                        "tour_name": tours[0].get("tour_name", ""),
-                        "url": tours[0].get("setlist_url", ""),
+                        "date_formatted": t.get("sample_date_formatted", ""),
+                        "venue_name": t.get("venue_name", ""),
+                        "location": t.get("location", ""),
+                        "tour_name": t_name,
+                        "url": t.get("setlist_url", ""),
                     }
                 }
-                for i, tb in enumerate(tour_bands[:10])
-            ]
-        else:
-            most_played_with = get_demo_top_coperformers(official_name)
+                most_played_with.append(new_entry)
+                existing_bands_lower[b_lower] = new_entry
+
+    if most_played_with:
+        most_played_with.sort(key=lambda x: (x.get("shows_shared", 0), x.get("tours_shared", 0)), reverse=True)
+        for idx, b in enumerate(most_played_with[:10]):
+            b["rank"] = idx + 1
+        most_played_with = most_played_with[:10]
+    elif not key:
+        most_played_with = get_demo_top_coperformers(official_name)
+    else:
+        most_played_with = []
 
     # 7. Total recorded concerts
     total_concerts = 0
