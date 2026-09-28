@@ -15,6 +15,7 @@ import difflib
 from datetime import datetime, timezone
 from typing import Any, Optional, Dict, List
 import traceback
+import concurrent.futures
 
 import requests
 try:
@@ -4618,7 +4619,126 @@ ARTIST_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             background: rgba(165, 200, 255, 0.25);
             color: #FFFFFF;
             border-color: #A5C8FF;
-            transform: scale(1.03);
+        /* Dynamic Concert Location Explorer */
+        .location-selector-bar {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+            margin-top: 14px;
+            padding-top: 12px;
+            border-top: 1px solid rgba(165, 200, 255, 0.18);
+        }
+        .location-pill {
+            font-size: 0.76rem;
+            font-weight: 700;
+            padding: 3px 9px;
+            border-radius: 12px;
+            text-decoration: none;
+            color: #93C5FD;
+            background: rgba(147, 197, 253, 0.12);
+            border: 1px solid rgba(147, 197, 253, 0.25);
+            transition: all 0.18s ease;
+            white-space: nowrap;
+        }
+        .location-pill:hover {
+            background: rgba(147, 197, 253, 0.28);
+            color: #FFFFFF;
+            border-color: #93C5FD;
+            transform: translateY(-1px);
+        }
+        .location-pill.active {
+            background: linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%);
+            color: #FFFFFF;
+            border-color: #60A5FA;
+            box-shadow: 0 2px 8px rgba(37, 99, 235, 0.4);
+        }
+        .location-custom-form {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            margin-left: 4px;
+        }
+        .location-custom-input {
+            width: 54px;
+            padding: 2px 6px;
+            font-size: 0.76rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            text-align: center;
+            background: rgba(11, 30, 63, 0.85);
+            border: 1px solid rgba(165, 200, 255, 0.35);
+            border-radius: 6px;
+            color: #FFFFFF;
+            outline: none;
+        }
+        .location-custom-input:focus {
+            border-color: #60A5FA;
+        }
+        .location-custom-btn {
+            padding: 2px 8px;
+            font-size: 0.74rem;
+            font-weight: 700;
+            background: #2563EB;
+            color: #FFFFFF;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        /* Similar Artists Scene Explorer Grid */
+        .similar-artists-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+            gap: 12px;
+            margin-top: 14px;
+        }
+        .similar-artist-card {
+            background: rgba(14, 38, 80, 0.55);
+            border: 1px solid rgba(165, 200, 255, 0.2);
+            border-radius: 12px;
+            padding: 14px 16px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            gap: 10px;
+            transition: all 0.2s ease;
+        }
+        .similar-artist-card:hover {
+            background: rgba(20, 50, 105, 0.7);
+            border-color: rgba(165, 200, 255, 0.45);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+        }
+        .similar-artist-name {
+            font-family: 'Montserrat', sans-serif;
+            font-size: 1.05rem;
+            font-weight: 800;
+            color: #FFFFFF;
+            text-decoration: none;
+            line-height: 1.3;
+        }
+        .similar-artist-name:hover {
+            color: #93C5FD;
+            text-decoration: underline;
+        }
+        .similar-artist-badge-lib {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 0.74rem;
+            font-weight: 700;
+            color: #A7F3D0;
+            background: rgba(16, 185, 129, 0.2);
+            border: 1px solid rgba(16, 185, 129, 0.4);
+            padding: 2px 8px;
+            border-radius: 10px;
+            width: fit-content;
+        }
+        .similar-artist-actions {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+            margin-top: 4px;
         }
         /* Spotify Analytics Card Styles */
         .spotify-analytics-card {
@@ -7234,14 +7354,16 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             params = urllib.parse.parse_qs(parsed.query)
             selected_artist = params.get('artist', [''])[0].strip()
             refresh = params.get('refresh', ['0'])[0] == '1'
-            self.render_artist_page(selected_artist=selected_artist, refresh=refresh)
+            state_code = params.get('state', ['NC'])[0].strip().upper() or 'NC'
+            self.render_artist_page(selected_artist=selected_artist, refresh=refresh, state_code=state_code)
             return
 
         if parsed.path == '/api/setlistfm/artist':
             params = urllib.parse.parse_qs(parsed.query)
             artist = params.get('artist', [''])[0].strip()
             refresh = params.get('refresh', ['0'])[0] == '1'
-            data = setlistfm.get_or_fetch_artist_setlist_data(artist, api_key=SETLIST_FM_API_KEY, force_refresh=refresh) if artist else {}
+            state_code = params.get('state', ['NC'])[0].strip().upper() or 'NC'
+            data = setlistfm.get_or_fetch_artist_setlist_data(artist, api_key=SETLIST_FM_API_KEY, force_refresh=refresh, state_code=state_code) if artist else {}
             self.send_response(200)
             self.send_header('Content-Type', 'application/json; charset=utf-8')
             self.end_headers()
@@ -7265,15 +7387,53 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             params = urllib.parse.parse_qs(parsed.query)
             artist = params.get('artist', [''])[0].strip()
             refresh = params.get('refresh', ['0'])[0] == '1'
+            state_code = params.get('state', ['NC'])[0].strip().upper() or 'NC'
             current_user = self.get_current_user()
             user_email = current_user.get('email') if current_user else None
-            s_data = setlistfm.get_or_fetch_artist_setlist_data(artist, api_key=SETLIST_FM_API_KEY, force_refresh=refresh, db_path=DATABASE_PATH) if artist else {}
-            l_data = lastfm.get_or_fetch_artist_metadata(artist, api_key=LASTFM_API_KEY, force_refresh=refresh, db_path=DATABASE_PATH) if artist else {}
-            a_data = theaudiodb.get_or_fetch_artist_details(artist, api_key=THEAUDIODB_API_KEY, force_refresh=refresh, db_path=DATABASE_PATH) if artist else {}
-            sp_data = spotify.get_or_fetch_artist_spotify_data(artist, user_email=user_email, force_refresh=refresh, db_path=DATABASE_PATH) if artist else {}
-            db_s = database.get_songs_by_band(artist, db_path=DATABASE_PATH) if artist else []
+
+            if artist:
+                with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+                    f_setlist = executor.submit(setlistfm.get_or_fetch_artist_setlist_data, artist, api_key=SETLIST_FM_API_KEY, force_refresh=refresh, db_path=DATABASE_PATH, state_code=state_code)
+                    f_lastfm = executor.submit(lastfm.get_or_fetch_artist_metadata, artist, api_key=LASTFM_API_KEY, force_refresh=refresh, db_path=DATABASE_PATH)
+                    f_audiodb = executor.submit(theaudiodb.get_or_fetch_artist_details, artist, api_key=THEAUDIODB_API_KEY, force_refresh=refresh, db_path=DATABASE_PATH)
+                    f_spotify = executor.submit(spotify.get_or_fetch_artist_spotify_data, artist, user_email=user_email, force_refresh=refresh, db_path=DATABASE_PATH)
+                    f_songs = executor.submit(database.get_songs_by_band, artist, db_path=DATABASE_PATH)
+
+                    try:
+                        s_data = f_setlist.result() or {}
+                    except Exception as e:
+                        print(f"/api/artist setlist error: {e}")
+                        s_data = {}
+
+                    try:
+                        l_data = f_lastfm.result() or {}
+                    except Exception as e:
+                        print(f"/api/artist lastfm error: {e}")
+                        l_data = {}
+
+                    try:
+                        a_data = f_audiodb.result() or {}
+                    except Exception as e:
+                        print(f"/api/artist theaudiodb error: {e}")
+                        a_data = {}
+
+                    try:
+                        sp_data = f_spotify.result() or {}
+                    except Exception as e:
+                        print(f"/api/artist spotify error: {e}")
+                        sp_data = {}
+
+                    try:
+                        db_s = f_songs.result() or []
+                    except Exception as e:
+                        print(f"/api/artist db_songs error: {e}")
+                        db_s = []
+            else:
+                s_data, l_data, a_data, sp_data, db_s = {}, {}, {}, {}, []
+
             resp_payload = {
                 "artist": artist,
+                "requested_state": state_code,
                 "setlistfm": s_data,
                 "lastfm": l_data,
                 "theaudiodb": a_data,
@@ -7836,24 +7996,45 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                     track_tags = []
                     artist_metadata = None
                     theaudiodb_data = None
-                    try:
-                        track_tags = lastfm.get_or_fetch_track_tags(effective_artist, effective_song, api_key=LASTFM_API_KEY, force_refresh=force_refresh)
-                        if not track_tags and effective_artist != artist:
-                            track_tags = lastfm.get_or_fetch_track_tags(artist, song, api_key=LASTFM_API_KEY, force_refresh=force_refresh)
-                    except Exception as lfe:
-                        print(f"Last.fm track tags error on submit: {lfe}")
-                    try:
-                        theaudiodb_data = theaudiodb.get_or_fetch_track_metadata(effective_artist, effective_song, api_key=THEAUDIODB_API_KEY, force_refresh=force_refresh)
-                        if not theaudiodb_data and effective_artist != artist:
-                            theaudiodb_data = theaudiodb.get_or_fetch_track_metadata(artist, song, api_key=THEAUDIODB_API_KEY, force_refresh=force_refresh)
-                    except Exception as adbe:
-                        print(f"TheAudioDB track fetch error on submit: {adbe}")
-                    try:
-                        artist_metadata = lastfm.get_or_fetch_artist_metadata(effective_artist, api_key=LASTFM_API_KEY, force_refresh=force_refresh)
-                        if not artist_metadata and effective_artist != artist:
-                            artist_metadata = lastfm.get_or_fetch_artist_metadata(artist, api_key=LASTFM_API_KEY, force_refresh=force_refresh)
-                    except Exception as lfe:
-                        print(f"Last.fm artist metadata error on submit: {lfe}")
+
+                    def _fetch_tags():
+                        t = lastfm.get_or_fetch_track_tags(effective_artist, effective_song, api_key=LASTFM_API_KEY, force_refresh=force_refresh)
+                        if not t and effective_artist != artist:
+                            t = lastfm.get_or_fetch_track_tags(artist, song, api_key=LASTFM_API_KEY, force_refresh=force_refresh)
+                        return t
+
+                    def _fetch_audiodb():
+                        a = theaudiodb.get_or_fetch_track_metadata(effective_artist, effective_song, api_key=THEAUDIODB_API_KEY, force_refresh=force_refresh)
+                        if not a and effective_artist != artist:
+                            a = theaudiodb.get_or_fetch_track_metadata(artist, song, api_key=THEAUDIODB_API_KEY, force_refresh=force_refresh)
+                        return a
+
+                    def _fetch_meta():
+                        m = lastfm.get_or_fetch_artist_metadata(effective_artist, api_key=LASTFM_API_KEY, force_refresh=force_refresh)
+                        if not m and effective_artist != artist:
+                            m = lastfm.get_or_fetch_artist_metadata(artist, api_key=LASTFM_API_KEY, force_refresh=force_refresh)
+                        return m
+
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+                        f_tags = executor.submit(_fetch_tags) if LASTFM_API_KEY else None
+                        f_audio = executor.submit(_fetch_audiodb)
+                        f_meta = executor.submit(_fetch_meta) if LASTFM_API_KEY else None
+
+                        if f_tags:
+                            try:
+                                track_tags = f_tags.result() or []
+                            except Exception as lfe:
+                                print(f"Last.fm track tags error on submit: {lfe}")
+                        if f_audio:
+                            try:
+                                theaudiodb_data = f_audio.result()
+                            except Exception as adbe:
+                                print(f"TheAudioDB track fetch error on submit: {adbe}")
+                        if f_meta:
+                            try:
+                                artist_metadata = f_meta.result()
+                            except Exception as lfe:
+                                print(f"Last.fm artist metadata error on submit: {lfe}")
 
                     # 4. Save search result into database only if lyrics were found
                     if lyrics:
@@ -8072,21 +8253,31 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         analysis_result_display = 'display: none;' if not analysis_result else ''
         analysis_controls_display = 'display: flex;' if analysis_result else 'display: none;'
 
-        if artist_value and song_value and track_tags is None:
-            try:
-                track_tags = lastfm.get_or_fetch_track_tags(artist_value, song_value, api_key=LASTFM_API_KEY)
-            except Exception:
-                track_tags = []
-        if artist_value and artist_metadata is None:
-            try:
-                artist_metadata = lastfm.get_or_fetch_artist_metadata(artist_value, api_key=LASTFM_API_KEY)
-            except Exception:
-                artist_metadata = None
-        if artist_value and song_value and theaudiodb_data is None:
-            try:
-                theaudiodb_data = theaudiodb.get_or_fetch_track_metadata(artist_value, song_value, api_key=THEAUDIODB_API_KEY)
-            except Exception:
-                theaudiodb_data = None
+        need_tags = bool(artist_value and song_value and track_tags is None)
+        need_meta = bool(artist_value and artist_metadata is None)
+        need_audio = bool(artist_value and song_value and theaudiodb_data is None)
+
+        if need_tags or need_meta or need_audio:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+                f_tags = executor.submit(lastfm.get_or_fetch_track_tags, artist_value, song_value, api_key=LASTFM_API_KEY) if (need_tags and LASTFM_API_KEY) else None
+                f_meta = executor.submit(lastfm.get_or_fetch_artist_metadata, artist_value, api_key=LASTFM_API_KEY) if (need_meta and LASTFM_API_KEY) else None
+                f_audio = executor.submit(theaudiodb.get_or_fetch_track_metadata, artist_value, song_value, api_key=THEAUDIODB_API_KEY) if need_audio else None
+
+                if need_tags:
+                    try:
+                        track_tags = f_tags.result() if f_tags else []
+                    except Exception:
+                        track_tags = []
+                if need_meta:
+                    try:
+                        artist_metadata = f_meta.result() if f_meta else None
+                    except Exception:
+                        artist_metadata = None
+                if need_audio:
+                    try:
+                        theaudiodb_data = f_audio.result() if f_audio else None
+                    except Exception:
+                        theaudiodb_data = None
 
         theaudiodb_widget = build_theaudiodb_widget(
             artist=artist_value,
@@ -8274,9 +8465,10 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(content.encode('utf-8'))
 
-    def render_artist_page(self, selected_artist: str = '', refresh: bool = False):
+    def render_artist_page(self, selected_artist: str = '', refresh: bool = False, state_code: str = 'NC'):
         current_user = self.get_current_user()
         clean_artist = selected_artist.strip()
+        state_clean = (state_code or 'NC').strip().upper()
 
         if not clean_artist:
             # Render Artist Directory / Index
@@ -8335,58 +8527,76 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(content.encode('utf-8'))
             return
 
-        # Fetch intelligence across all APIs
+        # Fetch intelligence across all APIs concurrently
         artist_esc = html_escape(clean_artist)
         artist_url_param = urllib.parse.quote(clean_artist)
+        user_email = current_user.get('email') if current_user else None
 
-        # 1. Setlist.fm
-        setlist_data = {}
-        try:
-            setlist_data = setlistfm.get_or_fetch_artist_setlist_data(
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+            f_setlist = executor.submit(
+                setlistfm.get_or_fetch_artist_setlist_data,
                 clean_artist,
                 api_key=SETLIST_FM_API_KEY,
-                force_refresh=refresh
+                force_refresh=refresh,
+                db_path=DATABASE_PATH,
+                state_code=state_clean
             )
-        except Exception as se:
-            print(f"Setlist.fm load error for {clean_artist}: {se}")
-
-        # 2. TheAudioDB
-        audiodb_data = {}
-        try:
-            audiodb_data = theaudiodb.get_or_fetch_artist_details(
+            f_audiodb = executor.submit(
+                theaudiodb.get_or_fetch_artist_details,
                 clean_artist,
                 api_key=THEAUDIODB_API_KEY,
-                force_refresh=refresh
-            ) or {}
-        except Exception as ae:
-            print(f"TheAudioDB artist details error for {clean_artist}: {ae}")
-
-        # 3. Last.fm
-        lastfm_data = {}
-        try:
-            lastfm_data = lastfm.get_or_fetch_artist_metadata(
+                force_refresh=refresh,
+                db_path=DATABASE_PATH
+            )
+            f_lastfm = executor.submit(
+                lastfm.get_or_fetch_artist_metadata,
                 clean_artist,
                 api_key=LASTFM_API_KEY,
-                force_refresh=refresh
-            ) or {}
-        except Exception as le:
-            print(f"Last.fm artist metadata error for {clean_artist}: {le}")
-
-        # 4. Database songs
-        db_songs = database.get_songs_by_band(clean_artist, db_path=DATABASE_PATH) or []
-
-        # 5. Spotify Analytics
-        spotify_data = {}
-        user_email = current_user.get('email') if current_user else None
-        try:
-            spotify_data = spotify.get_or_fetch_artist_spotify_data(
+                force_refresh=refresh,
+                db_path=DATABASE_PATH
+            )
+            f_spotify = executor.submit(
+                spotify.get_or_fetch_artist_spotify_data,
                 clean_artist,
                 user_email=user_email,
                 force_refresh=refresh,
                 db_path=DATABASE_PATH
-            ) or {}
-        except Exception as spe:
-            print(f"Spotify artist data error for {clean_artist}: {spe}")
+            )
+            f_songs = executor.submit(
+                database.get_songs_by_band,
+                clean_artist,
+                db_path=DATABASE_PATH
+            )
+
+            try:
+                setlist_data = f_setlist.result() or {}
+            except Exception as se:
+                print(f"Setlist.fm load error for {clean_artist}: {se}")
+                setlist_data = {}
+
+            try:
+                audiodb_data = f_audiodb.result() or {}
+            except Exception as ae:
+                print(f"TheAudioDB artist details error for {clean_artist}: {ae}")
+                audiodb_data = {}
+
+            try:
+                lastfm_data = f_lastfm.result() or {}
+            except Exception as le:
+                print(f"Last.fm artist metadata error for {clean_artist}: {le}")
+                lastfm_data = {}
+
+            try:
+                spotify_data = f_spotify.result() or {}
+            except Exception as spe:
+                print(f"Spotify artist data error for {clean_artist}: {spe}")
+                spotify_data = {}
+
+            try:
+                db_songs = f_songs.result() or []
+            except Exception as dbe:
+                print(f"Database get_songs_by_band error for {clean_artist}: {dbe}")
+                db_songs = []
 
         # Build Hero Section
         banner_url = audiodb_data.get('banner_url') or audiodb_data.get('fanart_url')
@@ -8753,23 +8963,58 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         else:
             top_bands_played_with_html = ''
 
-        # North Carolina Spotlight Card (Setlist.fm)
-        has_setlist_key = setlist_data.get('has_key', bool(SETLIST_FM_API_KEY))
-        last_nc = setlist_data.get('last_nc_show')
-        if last_nc:
-            nc_date = html_escape(last_nc.get('date_formatted') or last_nc.get('event_date') or 'Unknown Date')
-            nc_venue = html_escape(last_nc.get('venue_name') or 'Unknown Venue')
-            nc_city = html_escape(last_nc.get('city') or '')
-            nc_state = html_escape(last_nc.get('state') or 'NC')
-            nc_tour = html_escape(last_nc.get('tour_name') or 'No tour assigned')
-            nc_url = html_escape(last_nc.get('url') or '')
-            nc_info = html_escape(last_nc.get('info') or '')
-            nc_songs_count = last_nc.get('song_count', 0)
-            nc_total = last_nc.get('total_nc_shows', 1)
+        # Live Concert Location Spotlight Card (Setlist.fm)
+        US_STATES = {
+            "NC": "North Carolina", "CA": "California", "NY": "New York", "TX": "Texas",
+            "IL": "Illinois", "PA": "Pennsylvania", "OH": "Ohio", "FL": "Florida",
+            "GA": "Georgia", "MA": "Massachusetts", "WA": "Washington", "CO": "Colorado",
+            "MI": "Michigan", "TN": "Tennessee", "OR": "Oregon", "VA": "Virginia",
+            "NJ": "New Jersey", "AZ": "Arizona", "MN": "Minnesota", "MO": "Missouri"
+        }
+        active_state = state_clean
+        state_display_name = US_STATES.get(active_state, active_state)
 
-            tour_badge = f'<span style="background: rgba(96, 165, 250, 0.2); border: 1px solid rgba(96, 165, 250, 0.4); color: #93C5FD; padding: 2px 10px; border-radius: 12px; font-size: 0.82rem;">Tour: {nc_tour}</span>'
-            songs_badge = f'<span style="background: rgba(165, 200, 255, 0.15); color: #E1E8F0; padding: 2px 10px; border-radius: 12px; font-size: 0.82rem;">🎵 {nc_songs_count} songs played</span>' if nc_songs_count > 0 else ''
-            notes_html = f'<div style="margin-top: 10px; font-size: 0.84rem; color: rgba(225, 232, 240, 0.75); font-style: italic;">Note: {nc_info}</div>' if nc_info else ''
+        location_pills = []
+        popular_states = ["NC", "CA", "NY", "IL", "TX", "PA", "MA", "FL", "GA", "CO", "WA", "OH"]
+        for st in popular_states:
+            act_cls = " active" if st == active_state else ""
+            location_pills.append(f'<a href="/artist?artist={artist_url_param}&state={st}" class="location-pill{act_cls}">{st}</a>')
+
+        location_form_html = f'''
+        <form action="/artist" method="get" class="location-custom-form">
+            <input type="hidden" name="artist" value="{artist_esc}">
+            <input type="text" name="state" class="location-custom-input" placeholder="State" maxlength="2" value="{active_state if active_state not in popular_states else ''}">
+            <button type="submit" class="location-custom-btn" title="Filter concert spotlight by state">&rarr;</button>
+        </form>
+        '''
+        location_selector_bar_html = f'''
+        <div class="location-selector-bar">
+            <span style="font-size: 0.76rem; color: #93C5FD; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;">📍 Concert Region:</span>
+            {" ".join(location_pills)}
+            {location_form_html}
+        </div>
+        '''
+
+        has_setlist_key = setlist_data.get('has_key', bool(SETLIST_FM_API_KEY))
+        last_loc_show = setlist_data.get('last_show_location') or setlist_data.get('last_nc_show')
+
+        if last_loc_show:
+            loc_date = html_escape(last_loc_show.get('date_formatted') or last_loc_show.get('event_date') or 'Unknown Date')
+            loc_venue = html_escape(last_loc_show.get('venue_name') or 'Unknown Venue')
+            loc_city = html_escape(last_loc_show.get('city') or '')
+            loc_state = html_escape(last_loc_show.get('state') or active_state)
+            loc_tour = html_escape(last_loc_show.get('tour_name') or 'No tour assigned')
+            loc_url = html_escape(last_loc_show.get('url') or '')
+            loc_info = html_escape(last_loc_show.get('info') or '')
+            loc_songs_count = last_loc_show.get('song_count', 0)
+            loc_total = last_loc_show.get('total_location_shows', last_loc_show.get('total_nc_shows', 1))
+
+            tour_badge = f'<span style="background: rgba(96, 165, 250, 0.2); border: 1px solid rgba(96, 165, 250, 0.4); color: #93C5FD; padding: 2px 10px; border-radius: 12px; font-size: 0.82rem;">Tour: {loc_tour}</span>'
+            songs_badge = f'<span style="background: rgba(165, 200, 255, 0.15); color: #E1E8F0; padding: 2px 10px; border-radius: 12px; font-size: 0.82rem;">🎵 {loc_songs_count} songs played</span>' if loc_songs_count > 0 else ''
+            notes_html = f'<div style="margin-top: 10px; font-size: 0.84rem; color: rgba(225, 232, 240, 0.75); font-style: italic;">Note: {loc_info}</div>' if loc_info else ''
+
+            spotlight_title = "North Carolina Show Spotlight" if active_state == "NC" else f"{state_display_name} Show Spotlight"
+            last_played_text = f"Last Played in NC: {loc_date}" if active_state == "NC" else f"Last Played in {state_display_name}: {loc_date}"
 
             nc_spotlight_html = f'''
             <div class="nc-spotlight-card">
@@ -8778,35 +9023,36 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                         <span style="font-size: 1.6rem;">📍</span>
                         <div>
                             <div style="display: flex; align-items: center; gap: 8px;">
-                                <span class="nc-badge">North Carolina Show Spotlight</span>
-                                <span style="font-size: 0.8rem; color: #93C5FD;">{nc_total} total recorded NC shows on Setlist.fm</span>
+                                <span class="nc-badge">{spotlight_title}</span>
+                                <span style="font-size: 0.8rem; color: #93C5FD;">{loc_total} recorded show{"s" if loc_total != 1 else ""} in {state_display_name} on Setlist.fm</span>
                             </div>
-                            <h2 style="font-family: 'Montserrat', sans-serif; font-size: 1.4rem; font-weight: 800; color: #FFFFFF; margin: 6px 0 0 0;">
-                                Last Played in NC: {nc_date}
+                            <h2 style="font-family: \'Montserrat\', sans-serif; font-size: 1.4rem; font-weight: 800; color: #FFFFFF; margin: 6px 0 0 0;">
+                                {last_played_text}
                             </h2>
                         </div>
                     </div>
-                    {f'<a href="{nc_url}" target="_blank" rel="noopener noreferrer" class="pill-btn primary" style="padding: 8px 16px; font-size: 0.86rem; text-decoration: none; white-space: nowrap;">View NC Setlist on Setlist.fm &rarr;</a>' if nc_url else ''}
+                    {f'<a href="{loc_url}" target="_blank" rel="noopener noreferrer" class="pill-btn primary" style="padding: 8px 16px; font-size: 0.86rem; text-decoration: none; white-space: nowrap;">View Setlist on Setlist.fm &rarr;</a>' if loc_url else ''}
                 </div>
                 <div style="margin-top: 14px; font-size: 1.05rem; color: #E1E8F0; line-height: 1.5;">
-                    🏟️ <strong>{nc_venue}</strong> &bull; {nc_city}, {nc_state}
+                    🏟️ <strong>{loc_venue}</strong> &bull; {loc_city}, {loc_state}
                 </div>
                 <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; align-items: center;">
                     {tour_badge}
                     {songs_badge}
                 </div>
                 {notes_html}
+                {location_selector_bar_html}
             </div>
             '''
         elif not has_setlist_key:
-            nc_spotlight_html = '''
+            nc_spotlight_html = f'''
             <div class="nc-spotlight-card" style="border-left-color: #F59E0B;">
                 <div style="display: flex; align-items: center; gap: 12px;">
                     <span style="font-size: 1.5rem;">📍</span>
                     <div>
                         <div style="font-weight: 700; color: #FCD34D;">Setlist.fm API Connection Required</div>
                         <div style="font-size: 0.85rem; color: rgba(225, 232, 240, 0.8); margin-top: 4px;">
-                            Configure <code>SETLIST_FM_API_KEY</code> in <code>calling_hours_secrets.py</code> to see North Carolina concert history and tour co-performers.
+                            Configure <code>SETLIST_FM_API_KEY</code> in <code>calling_hours_secrets.py</code> to see regional concert history and tour co-performers.
                         </div>
                     </div>
                 </div>
@@ -8818,12 +9064,13 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 <div style="display: flex; align-items: center; gap: 12px;">
                     <span style="font-size: 1.5rem;">📍</span>
                     <div>
-                        <div style="font-family: 'Montserrat', sans-serif; font-weight: 700; color: #E1E8F0;">North Carolina Concert History</div>
+                        <div style="font-family: \'Montserrat\', sans-serif; font-weight: 700; color: #E1E8F0;">{state_display_name} Concert History</div>
                         <div style="font-size: 0.88rem; color: rgba(225, 232, 240, 0.7); margin-top: 4px;">
-                            No recorded concerts in North Carolina found for <strong>{artist_esc}</strong> on Setlist.fm.
+                            No recorded concerts in {state_display_name} found for <strong>{artist_esc}</strong> on Setlist.fm.
                         </div>
                     </div>
                 </div>
+                {location_selector_bar_html}
             </div>
             '''
 
@@ -9065,25 +9312,71 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         </div>
         '''
 
-        # Biography & Similar Artists (TheAudioDB & Last.fm)
+        # Biography & Similar Artists / Scene Discovery (TheAudioDB & Last.fm)
         bio_text = audiodb_data.get('biography') or lastfm_data.get('bio') or ''
         similar_artists = lastfm_data.get('similar_artists') or []
+        library_bands_map = {b['artist'].strip().lower(): b.get('song_count', 0) for b in (database.get_distinct_bands() or [])}
 
-        similar_chips = []
-        for s in similar_artists[:10]:
+        similar_cards = []
+        for s in similar_artists[:12]:
             s_name = s.get('name') if isinstance(s, dict) else str(s)
-            if s_name:
-                similar_chips.append(f'<a href="/artist?artist={urllib.parse.quote(s_name)}" class="similar-chip">👥 {html_escape(s_name)}</a>')
+            if not s_name:
+                continue
+            s_esc = html_escape(s_name)
+            s_url = urllib.parse.quote(s_name)
+            s_lower = s_name.strip().lower()
+            in_lib_cnt = library_bands_map.get(s_lower, 0)
+            if in_lib_cnt > 0:
+                lib_text = f"★ In Library ({in_lib_cnt} {'song' if in_lib_cnt == 1 else 'songs'})"
+                lib_badge = f'<span class="similar-artist-badge-lib" title="You have analyzed songs from this artist in Calling Hours">{lib_text}</span>'
+            else:
+                lib_badge = ''
+
+            similar_cards.append(f'''
+            <div class="similar-artist-card">
+                <div>
+                    <a href="/artist?artist={s_url}" class="similar-artist-name" title="Explore {s_esc} profile">
+                        👥 {s_esc}
+                    </a>
+                    {f'<div style="margin-top: 6px;">{lib_badge}</div>' if lib_badge else ''}
+                </div>
+                <div class="similar-artist-actions">
+                    <a href="/artist?artist={s_url}" class="pill-btn primary" style="font-size: 0.74rem; padding: 3px 10px; text-decoration: none;" title="Explore Artist Intelligence">
+                        Explore &rarr;
+                    </a>
+                    <a href="/?artist={s_url}" class="pill-btn secondary" style="font-size: 0.74rem; padding: 3px 10px; text-decoration: none;" title="Search &amp; Analyze Songs">
+                        ⚡ Analyze
+                    </a>
+                </div>
+            </div>
+            ''')
 
         bio_card_html = ''
-        if bio_text or similar_chips:
+        if bio_text or similar_cards:
+            similar_grid_html = f'''
+                <div style="margin-top: 16px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 6px;">
+                        <span style="font-size: 0.82rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; color: #93C5FD;">
+                            Explore Similar Artists &amp; Scene
+                        </span>
+                        <span style="font-size: 0.78rem; color: rgba(225, 232, 240, 0.6);">Click to discover catalog &amp; tour history</span>
+                    </div>
+                    <div class="similar-artists-grid">
+                        {"".join(similar_cards)}
+                    </div>
+                </div>
+            ''' if similar_cards else ''
+
             bio_card_html = f'''
             <div class="tour-history-card">
                 <div class="section-header-row">
-                    <h2 class="section-title"><span>📖</span> Artist Biography &amp; Similar Bands</h2>
+                    <div>
+                        <h2 class="section-title"><span>📖</span> Artist Biography &amp; Scene Discovery</h2>
+                        <div style="font-size: 0.84rem; color: #A5C8FF; margin-top: 4px;">Background, musical roots, and similar artists in the scene</div>
+                    </div>
                 </div>
                 {f'<div style="font-size: 0.92rem; line-height: 1.65; color: #E1E8F0; max-height: 280px; overflow-y: auto; padding-right: 8px; margin-bottom: 20px; white-space: pre-wrap;">{html_escape(bio_text)}</div>' if bio_text else ''}
-                {f'<div><div style="font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #93C5FD; margin-bottom: 8px;">Similar Artists (Click to explore)</div><div style="display: flex; flex-wrap: wrap; gap: 8px;">{" ".join(similar_chips)}</div></div>' if similar_chips else ''}
+                {similar_grid_html}
             </div>
             '''
 

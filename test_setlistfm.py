@@ -99,6 +99,42 @@ class TestSetlistFm(unittest.TestCase):
         self.assertEqual(show["info"], "Supported by Turnstile")
 
     @patch("setlistfm.requests.get")
+    def test_fetch_last_show_in_location_california(self, mock_get):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "total": 35,
+            "setlist": [
+                {
+                    "id": "show-ca-1",
+                    "eventDate": "12-10-2023",
+                    "venue": {
+                        "name": "The Roxy",
+                        "city": {"name": "Los Angeles", "state": "California", "stateCode": "CA", "country": {"name": "United States"}}
+                    },
+                    "tour": {"name": "California Tour"},
+                    "url": "https://setlist.fm/show-ca",
+                    "info": "Sold out",
+                    "sets": {
+                        "set": [
+                            {"song": [{"name": "Song 1"}, {"name": "Song 2"}, {"name": "Song 3"}]}
+                        ]
+                    }
+                }
+            ]
+        }
+        mock_get.return_value = mock_resp
+
+        show = setlistfm.fetch_last_show_in_location("artist-mbid-ca", state_code="CA", api_key="dummy_key")
+        self.assertIsNotNone(show)
+        self.assertEqual(show["venue_name"], "The Roxy")
+        self.assertEqual(show["city"], "Los Angeles")
+        self.assertEqual(show["state"], "CA")
+        self.assertEqual(show["total_location_shows"], 35)
+        self.assertEqual(show["song_count"], 3)
+        self.assertEqual(show["requested_state"], "CA")
+
+    @patch("setlistfm.requests.get")
     def test_fetch_last_tours_and_co_performers(self, mock_get):
         # 1. Main artist setlists (2 shows from 2 different tours)
         artist_setlists = {

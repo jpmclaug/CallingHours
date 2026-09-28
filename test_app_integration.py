@@ -781,6 +781,73 @@ class TestAppIntegration(unittest.TestCase):
             self.assertIn("All The Small Things", html)
             self.assertIn("Late night, come home", html)
 
+    def test_24b_dynamic_concert_location_and_scene_discovery(self):
+        # 1. Ensure Jimmy Eat World is in library so the badge triggers
+        database.save_search(
+            artist="Jimmy Eat World",
+            song="The Middle",
+            lyrics="Hey, don't write yourself off yet",
+            source="Database",
+            db_path=self.db_path
+        )
+
+        mock_setlist_ca = {
+            "has_key": True,
+            "artist": "Paramore",
+            "mbid": "paramore-mbid",
+            "last_show_location": {
+                "venue_name": "Kia Forum",
+                "city": "Inglewood",
+                "state": "CA",
+                "date_formatted": "July 19, 2023",
+                "tour_name": "This Is Why Tour",
+                "song_count": 21,
+                "total_location_shows": 42
+            },
+            "last_nc_show": None,
+            "last_3_tours": [],
+            "recent_setlists": [],
+            "most_played_with": []
+        }
+        mock_lastfm_data = {
+            "name": "Paramore",
+            "similar_artists": [
+                {"name": "Jimmy Eat World"},
+                {"name": "Fall Out Boy"}
+            ],
+            "tags": [{"name": "emo", "url": "https://last.fm/tag/emo"}]
+        }
+
+        with patch("setlistfm.get_or_fetch_artist_setlist_data", return_value=mock_setlist_ca), \
+             patch("lastfm.get_or_fetch_artist_metadata", return_value=mock_lastfm_data):
+            # Test GET /artist with state=CA
+            url = "/artist?artist=" + urllib.parse.quote("Paramore") + "&state=CA"
+            with self.authed_get(url) as resp:
+                self.assertEqual(resp.status, 200)
+                html = resp.read().decode('utf-8')
+                self.assertIn("California Show Spotlight", html)
+                self.assertIn("Last Played in California: July 19, 2023", html)
+                self.assertIn("Kia Forum", html)
+                self.assertIn("Inglewood, CA", html)
+                # Location selector bar
+                self.assertIn("location-selector-bar", html)
+                self.assertIn("location-pill active", html)
+                # Similar Artists & Scene Explorer Grid
+                self.assertIn("similar-artists-grid", html)
+                self.assertIn("similar-artist-card", html)
+                self.assertIn("Jimmy Eat World", html)
+                self.assertIn("In Library", html)
+                self.assertIn("Fall Out Boy", html)
+
+            # Test GET /api/artist with state=CA
+            api_url = "/api/artist?artist=" + urllib.parse.quote("Paramore") + "&state=CA"
+            with self.authed_get(api_url) as resp:
+                self.assertEqual(resp.status, 200)
+                data = json.loads(resp.read().decode('utf-8'))
+                self.assertEqual(data["artist"], "Paramore")
+                self.assertEqual(data["requested_state"], "CA")
+                self.assertIn("setlistfm", data)
+                self.assertEqual(data["setlistfm"]["last_show_location"]["city"], "Inglewood")
 
     def test_25_mobile_touch_fixes(self):
         # 1. Verify Home Page DOM structure and touch fixes

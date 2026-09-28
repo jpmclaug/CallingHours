@@ -11,6 +11,7 @@ import json
 import urllib.parse
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
+import concurrent.futures
 import requests
 
 SETLIST_FM_API_BASE_URL = "https://api.setlist.fm/rest/1.0"
@@ -118,14 +119,16 @@ def search_artist(
         return None
 
 
-def fetch_last_nc_show(
+def fetch_last_show_in_location(
     mbid: str,
+    state_code: Optional[str] = "NC",
+    country_code: Optional[str] = None,
     api_key: Optional[str] = None,
     timeout: int = 8
 ) -> Optional[Dict[str, Any]]:
     """
-    Fetch the most recent show an artist played in North Carolina (stateCode='NC').
-    Returns structured info including venue, city, tour name, and setlist link.
+    Fetch the most recent show an artist played in a specified state (e.g. 'NC', 'CA', 'NY') or country.
+    Returns structured info including venue, city, state, tour name, and setlist link.
     """
     if not mbid:
         return None
@@ -136,10 +139,13 @@ def fetch_last_nc_show(
 
     url = f"{SETLIST_FM_API_BASE_URL}/search/setlists"
     headers = _get_headers(key)
-    params = {
-        "artistMbid": mbid,
-        "stateCode": "NC",
-    }
+    params = {"artistMbid": mbid}
+    clean_state = state_code.strip().upper() if state_code and state_code.strip() else None
+    clean_country = country_code.strip().upper() if country_code and country_code.strip() else None
+    if clean_state:
+        params["stateCode"] = clean_state
+    if clean_country:
+        params["countryCode"] = clean_country
 
     try:
         resp = requests.get(url, params=params, headers=headers, timeout=timeout)
@@ -153,6 +159,7 @@ def fetch_last_nc_show(
         latest = setlists[0]
         venue = latest.get("venue", {})
         city = venue.get("city", {})
+        country_obj = city.get("country", {})
         tour = latest.get("tour", {})
         raw_date = latest.get("eventDate")
 
@@ -162,6 +169,10 @@ def fetch_last_nc_show(
         for st in sets:
             song_count += len(st.get("song", []))
 
+        resolved_state = city.get("stateCode") or clean_state or ""
+        resolved_country = country_obj.get("name") or country_obj.get("code") or clean_country or ""
+        total_shows = data.get("total", len(setlists))
+
         return {
             "id": latest.get("id"),
             "event_date": raw_date,
@@ -169,16 +180,32 @@ def fetch_last_nc_show(
             "venue_name": venue.get("name"),
             "venue_id": venue.get("id"),
             "city": city.get("name"),
-            "state": city.get("stateCode") or "NC",
+            "state": resolved_state,
+            "country": resolved_country,
             "tour_name": tour.get("name") if tour else None,
             "url": latest.get("url"),
             "info": latest.get("info"),
             "song_count": song_count,
-            "total_nc_shows": data.get("total", len(setlists)),
+            "total_location_shows": total_shows,
+            "total_nc_shows": total_shows,  # alias for backward compatibility with NC callers/tests
+            "requested_state": clean_state,
+            "requested_country": clean_country,
         }
     except Exception as e:
-        print(f"Setlist.fm fetch_last_nc_show error for {mbid}: {e}")
+        print(f"Setlist.fm fetch_last_show_in_location error for {mbid} (state={clean_state}): {e}")
         return None
+
+
+def fetch_last_nc_show(
+    mbid: str,
+    api_key: Optional[str] = None,
+    timeout: int = 8
+) -> Optional[Dict[str, Any]]:
+    """
+    Fetch the most recent show an artist played in North Carolina (stateCode='NC').
+    Returns structured info including venue, city, tour name, and setlist link.
+    """
+    return fetch_last_show_in_location(mbid, state_code="NC", api_key=api_key, timeout=timeout)
 
 
 def fetch_co_performers_for_show(
@@ -754,7 +781,8 @@ def get_or_fetch_artist_setlist_data(
     artist: str,
     api_key: Optional[str] = None,
     force_refresh: bool = False,
-    db_path: Optional[str] = None
+    db_path: Optional[str] = None,
+    state_code: str = "NC"
 ) -> Dict[str, Any]:
     """
     Get aggregated Setlist.fm artist intelligence from database cache if available,
@@ -766,6 +794,7 @@ def get_or_fetch_artist_setlist_data(
             "artist": "",
             "mbid": None,
             "last_nc_show": None,
+            "last_show_location": None,
             "last_3_tours": [],
             "recent_setlists": [],
             "most_played_with": [],
@@ -777,6 +806,7 @@ def get_or_fetch_artist_setlist_data(
 
     clean_artist = artist.strip()
     key = api_key or get_setlistfm_api_key()
+    target_state = (state_code or "NC").strip().upper()
 
     # 1. Check database cache if not forced refresh
     if not force_refresh:
@@ -796,6 +826,18 @@ def get_or_fetch_artist_setlist_data(
                 has_demo_contamination = bool(key) and any(b.get("band", "").lower() in demo_markers for b in mpw[:3]) and clean_artist.lower() not in demo_markers
                 has_noise = any(not _is_valid_band_name(b.get("band", "")) for b in mpw)
                 if not (has_demo_contamination or has_noise):
+                    cached_show = s_data.get("last_show_location") or s_data.get("last_nc_show")
+                    cached_state = (cached_show.get("state") or cached_show.get("requested_state") or "NC") if cached_show else "NC"
+                    if target_state != cached_state.upper() and key:
+                        try:
+                            loc_show = fetch_last_show_in_location(s_data["mbid"], state_code=target_state, api_key=key)
+                            s_data["last_show_location"] = loc_show
+                            if target_state == "NC":
+                                s_data["last_nc_show"] = loc_show
+                        except Exception as e:
+                            print(f"Fetch location show error for {clean_artist} ({target_state}): {e}")
+                    elif "last_show_location" not in s_data:
+                        s_data["last_show_location"] = s_data.get("last_nc_show")
                     return s_data
 
     if not key:
@@ -804,6 +846,7 @@ def get_or_fetch_artist_setlist_data(
             "artist": clean_artist,
             "mbid": None,
             "last_nc_show": None,
+            "last_show_location": None,
             "last_3_tours": [],
             "recent_setlists": [],
             "most_played_with": get_demo_top_coperformers(clean_artist),
@@ -821,6 +864,7 @@ def get_or_fetch_artist_setlist_data(
             "artist": clean_artist,
             "mbid": None,
             "last_nc_show": None,
+            "last_show_location": None,
             "last_3_tours": [],
             "recent_setlists": [],
             "most_played_with": [],
@@ -833,17 +877,22 @@ def get_or_fetch_artist_setlist_data(
     official_name = art_info.get("name") or clean_artist
     setlist_url = art_info.get("url")
 
-    # 3. Fetch NC show
-    last_nc = fetch_last_nc_show(mbid, api_key=key)
+    # 3-6. Fetch show location, last 3 tours, recent setlists, top co-performers concurrently
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+        if target_state == "NC":
+            future_show = executor.submit(fetch_last_nc_show, mbid, api_key=key)
+        else:
+            future_show = executor.submit(fetch_last_show_in_location, mbid, state_code=target_state, api_key=key)
+        future_tours = executor.submit(fetch_last_tours, mbid, official_name, api_key=key, max_tours=3)
+        future_recent = executor.submit(fetch_recent_setlists, mbid, api_key=key, limit=6)
+        future_top_coperformers = executor.submit(fetch_top_coperformers, mbid, official_name, api_key=key, max_pages=5)
 
-    # 4. Fetch last 3 tours & co-performers
-    tours = fetch_last_tours(mbid, official_name, api_key=key, max_tours=3)
+        last_show = future_show.result()
+        tours = future_tours.result()
+        recent_setlists = future_recent.result()
+        most_played_with = future_top_coperformers.result()
 
-    # 5. Fetch recent setlists
-    recent_setlists = fetch_recent_setlists(mbid, api_key=key, limit=6)
-
-    # 6. Fetch top 10 co-performers / bands played with most
-    most_played_with = fetch_top_coperformers(mbid, official_name, api_key=key, max_pages=5)
+    last_nc = last_show if target_state == "NC" else fetch_last_nc_show(mbid, api_key=key)
 
     # Merge co-performers discovered across tours into most_played_with
     existing_bands_lower = {b["band"].strip().lower(): b for b in most_played_with if b.get("band")}
@@ -904,7 +953,9 @@ def get_or_fetch_artist_setlist_data(
         "artist": official_name,
         "mbid": mbid,
         "url": setlist_url,
-        "last_nc_show": last_nc,
+        "last_nc_show": last_nc or last_show,
+        "last_show_location": last_show,
+        "requested_state": target_state,
         "last_3_tours": tours,
         "recent_setlists": recent_setlists,
         "most_played_with": most_played_with,
