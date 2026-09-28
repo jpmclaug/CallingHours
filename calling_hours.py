@@ -2025,9 +2025,13 @@ PAGE_HTML = r'''<!DOCTYPE html>
         }
 
         .pill-btn {
-            background: rgba(165, 200, 255, 0.08);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            background: rgba(165, 200, 255, 0.1);
             color: #A5C8FF;
-            border: 1px solid rgba(165, 200, 255, 0.22);
+            border: 1px solid rgba(165, 200, 255, 0.25);
             padding: 6px 14px;
             border-radius: 20px;
             font-size: 0.78rem;
@@ -2041,13 +2045,36 @@ PAGE_HTML = r'''<!DOCTYPE html>
             box-shadow: none;
             width: auto;
             line-height: 1.2;
+            text-decoration: none;
+            vertical-align: middle;
+            box-sizing: border-box;
+            touch-action: manipulation;
         }
 
         .pill-btn:hover {
             background: rgba(165, 200, 255, 0.22);
             color: #FFFFFF;
-            transform: none;
+            border-color: #A5C8FF;
+            transform: translateY(-1px);
             box-shadow: 0 0 10px rgba(165, 200, 255, 0.2);
+            text-decoration: none;
+        }
+
+        .pill-btn.primary {
+            background: linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%);
+            color: #FFFFFF;
+            border-color: #60A5FA;
+            box-shadow: 0 2px 8px rgba(37, 99, 235, 0.35);
+            font-weight: 700;
+        }
+
+        .pill-btn.primary:hover {
+            background: linear-gradient(135deg, #3B82F6 0%, #2563EB 100%);
+            border-color: #93C5FD;
+            color: #FFFFFF;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 14px rgba(37, 99, 235, 0.55);
+            text-decoration: none;
         }
 
         .pill-btn.active {
@@ -2058,12 +2085,20 @@ PAGE_HTML = r'''<!DOCTYPE html>
         }
 
         .pill-btn.secondary {
-            font-weight: 400;
-            opacity: 0.85;
+            background: rgba(165, 200, 255, 0.08);
+            color: #C5D8F6;
+            border: 1px solid rgba(165, 200, 255, 0.25);
+            font-weight: 600;
+            opacity: 0.95;
         }
 
         .pill-btn.secondary:hover {
+            background: rgba(165, 200, 255, 0.18);
+            color: #FFFFFF;
+            border-color: #A5C8FF;
             opacity: 1;
+            transform: translateY(-1px);
+            text-decoration: none;
         }
 
         /* Lyrics Styling */
@@ -4364,8 +4399,9 @@ ARTIST_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             position: absolute;
             top: 0; left: 0; right: 0; bottom: 0;
             background-size: cover;
-            background-position: center;
-            opacity: 0.16;
+            background-position: center center;
+            background-repeat: no-repeat;
+            opacity: 0.18;
             filter: blur(5px);
             z-index: 0;
             pointer-events: none;
@@ -4378,11 +4414,20 @@ ARTIST_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             gap: 32px;
             flex-wrap: wrap;
         }
+        .artist-avatar-wrap {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
         .artist-avatar-img {
             width: 140px;
             height: 140px;
             border-radius: 50%;
             object-fit: cover;
+            object-position: center center;
+            display: block;
+            margin: 0 auto;
             border: 3px solid #A5C8FF;
             box-shadow: 0 0 24px rgba(165, 200, 255, 0.45);
             background: #0B1E3F;
@@ -4400,7 +4445,22 @@ ARTIST_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             background: rgba(11, 30, 63, 0.8);
             color: #A5C8FF;
             flex-shrink: 0;
+            margin: 0 auto;
             box-shadow: 0 0 24px rgba(165, 200, 255, 0.35);
+        }
+        .artist-logo-wrap {
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            margin-bottom: 8px;
+        }
+        .artist-logo-img {
+            max-height: 70px;
+            max-width: 320px;
+            object-fit: contain;
+            object-position: left center;
+            filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.8));
+            display: block;
         }
         .artist-info-col {
             flex: 1;
@@ -4619,6 +4679,7 @@ ARTIST_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             background: rgba(165, 200, 255, 0.25);
             color: #FFFFFF;
             border-color: #A5C8FF;
+        }
         /* Dynamic Concert Location Explorer */
         .location-selector-bar {
             display: flex;
@@ -4630,22 +4691,29 @@ ARTIST_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             border-top: 1px solid rgba(165, 200, 255, 0.18);
         }
         .location-pill {
-            font-size: 0.76rem;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            height: 28px;
+            padding: 0 10px;
+            font-size: 0.78rem;
             font-weight: 700;
-            padding: 3px 9px;
-            border-radius: 12px;
+            border-radius: 14px;
             text-decoration: none;
             color: #93C5FD;
             background: rgba(147, 197, 253, 0.12);
             border: 1px solid rgba(147, 197, 253, 0.25);
             transition: all 0.18s ease;
             white-space: nowrap;
+            box-sizing: border-box;
+            vertical-align: middle;
         }
         .location-pill:hover {
             background: rgba(147, 197, 253, 0.28);
             color: #FFFFFF;
             border-color: #93C5FD;
             transform: translateY(-1px);
+            text-decoration: none;
         }
         .location-pill.active {
             background: linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%);
@@ -4656,34 +4724,51 @@ ARTIST_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
         .location-custom-form {
             display: inline-flex;
             align-items: center;
-            gap: 4px;
+            gap: 5px;
             margin-left: 4px;
+            vertical-align: middle;
         }
         .location-custom-input {
-            width: 54px;
-            padding: 2px 6px;
-            font-size: 0.76rem;
+            width: 58px;
+            height: 28px;
+            padding: 0 6px;
+            font-size: 0.8rem;
             font-weight: 700;
             text-transform: uppercase;
             text-align: center;
             background: rgba(11, 30, 63, 0.85);
             border: 1px solid rgba(165, 200, 255, 0.35);
-            border-radius: 6px;
+            border-radius: 8px;
             color: #FFFFFF;
             outline: none;
+            box-sizing: border-box;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
         }
         .location-custom-input:focus {
             border-color: #60A5FA;
+            box-shadow: 0 0 8px rgba(96, 165, 250, 0.4);
         }
         .location-custom-btn {
-            padding: 2px 8px;
-            font-size: 0.74rem;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            height: 28px;
+            padding: 0 10px;
+            font-size: 0.84rem;
             font-weight: 700;
             background: #2563EB;
             color: #FFFFFF;
-            border: none;
-            border-radius: 6px;
+            border: 1px solid #60A5FA;
+            border-radius: 8px;
             cursor: pointer;
+            box-sizing: border-box;
+            transition: all 0.2s ease;
+        }
+        .location-custom-btn:hover {
+            background: #3B82F6;
+            border-color: #93C5FD;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 8px rgba(59, 130, 246, 0.5);
         }
         /* Similar Artists Scene Explorer Grid */
         .similar-artists-grid {
@@ -4700,7 +4785,7 @@ ARTIST_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             display: flex;
             flex-direction: column;
             justify-content: space-between;
-            gap: 10px;
+            gap: 12px;
             transition: all 0.2s ease;
         }
         .similar-artist-card:hover {
@@ -4736,9 +4821,19 @@ ARTIST_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
         }
         .similar-artist-actions {
             display: flex;
-            gap: 6px;
+            gap: 8px;
             align-items: center;
-            margin-top: 4px;
+            margin-top: 6px;
+        }
+        .similar-artist-actions .pill-btn {
+            flex: 1;
+            padding: 6px 10px;
+            font-size: 0.76rem;
+            border-radius: 8px;
+            text-transform: none;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+            white-space: nowrap;
         }
         /* Spotify Analytics Card Styles */
         .spotify-analytics-card {
@@ -4964,6 +5059,45 @@ ARTIST_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             align-items: center;
         }
 
+        @media (max-width: 992px) {
+            .artist-hero-card {
+                padding: 24px 20px;
+            }
+            .artist-hero-inner {
+                flex-direction: column;
+                align-items: center;
+                text-align: center;
+                gap: 20px;
+            }
+            .artist-avatar-wrap {
+                width: 100%;
+                justify-content: center;
+                margin: 0 auto;
+            }
+            .artist-avatar-img,
+            .artist-avatar-placeholder {
+                width: 120px;
+                height: 120px;
+                font-size: 3rem;
+                margin: 0 auto;
+            }
+            .artist-logo-wrap {
+                justify-content: center !important;
+                margin: 0 auto 8px auto !important;
+            }
+            .artist-logo-img {
+                margin: 0 auto !important;
+            }
+            .artist-heading {
+                font-size: 2.1rem !important;
+                text-align: center;
+            }
+            .artist-badges-row,
+            .artist-links-row {
+                justify-content: center;
+            }
+        }
+
         @media (max-width: 768px) {
             .artist-page-container {
                 width: 95vw;
@@ -4988,11 +5122,24 @@ ARTIST_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
                 text-align: center;
                 gap: 18px;
             }
+            .artist-avatar-wrap {
+                width: 100%;
+                justify-content: center;
+                margin: 0 auto;
+            }
             .artist-avatar-img,
             .artist-avatar-placeholder {
                 width: 100px;
                 height: 100px;
                 font-size: 2.5rem;
+                margin: 0 auto;
+            }
+            .artist-logo-wrap {
+                justify-content: center !important;
+                margin: 0 auto 8px auto !important;
+            }
+            .artist-logo-img {
+                margin: 0 auto !important;
             }
             .artist-heading {
                 font-size: 1.8rem !important;
@@ -8480,14 +8627,18 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 b_name = html_escape(b['artist'])
                 b_count = b['song_count']
                 b_last = html_escape(b.get('last_searched', '') or '')
+                b_initial = html_escape(b['artist'][:1].upper() if b.get('artist') else '?')
                 songs_text = f"{b_count} song" if b_count == 1 else f"{b_count} songs"
                 band_cards.append(f'''
-                <div style="background: rgba(14, 38, 80, 0.55); border: 1px solid rgba(165, 200, 255, 0.2); border-radius: 12px; padding: 20px; display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;">
-                    <div>
-                        <div style="font-size: 1.2rem; font-weight: 800; color: #FFFFFF; font-family: 'Montserrat', sans-serif;">{b_name}</div>
-                        <div style="font-size: 0.82rem; color: #A5C8FF; margin-top: 4px;">{songs_text} in library &bull; Last active: {b_last}</div>
+                <div style="background: rgba(14, 38, 80, 0.55); border: 1px solid rgba(165, 200, 255, 0.2); border-radius: 12px; padding: 18px 20px; display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;">
+                    <div style="display: flex; align-items: center; gap: 14px;">
+                        <div style="width: 44px; height: 44px; border-radius: 50%; background: linear-gradient(135deg, rgba(37, 99, 235, 0.4), rgba(11, 30, 63, 0.9)); border: 2px solid rgba(165, 200, 255, 0.4); display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 1.15rem; color: #A5C8FF; flex-shrink: 0; box-shadow: 0 2px 8px rgba(0,0,0,0.3);">{b_initial}</div>
+                        <div>
+                            <div style="font-size: 1.2rem; font-weight: 800; color: #FFFFFF; font-family: 'Montserrat', sans-serif;">{b_name}</div>
+                            <div style="font-size: 0.82rem; color: #A5C8FF; margin-top: 4px;">{songs_text} in library &bull; Last active: {b_last}</div>
+                        </div>
                     </div>
-                    <a href="/artist?artist={urllib.parse.quote(b['artist'])}" class="pill-btn primary" style="font-size: 0.84rem; padding: 6px 14px; text-decoration: none;">
+                    <a href="/artist?artist={urllib.parse.quote(b['artist'])}" class="pill-btn primary" style="font-size: 0.84rem; padding: 7px 16px;">
                         Explore Profile &rarr;
                     </a>
                 </div>
@@ -8637,8 +8788,8 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         # Logo or Title
         if logo_url:
             title_html = f'''
-            <div style="margin-bottom: 8px;">
-                <img src="{html_escape(logo_url)}" alt="{artist_esc}" style="max-height: 70px; max-width: 320px; object-fit: contain; filter: drop-shadow(0 2px 8px rgba(0,0,0,0.8));">
+            <div class="artist-logo-wrap">
+                <img src="{html_escape(logo_url)}" alt="{artist_esc}" class="artist-logo-img">
             </div>
             <h1 class="artist-heading" style="font-size: 2.2rem;">{artist_esc}</h1>
             '''
@@ -8687,7 +8838,9 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         <div class="artist-hero-card">
             {backdrop_html}
             <div class="artist-hero-inner">
-                {avatar_html}
+                <div class="artist-avatar-wrap">
+                    {avatar_html}
+                </div>
                 <div class="artist-info-col">
                     {title_html}
                     <div class="artist-badges-row">{badges_html}</div>
@@ -9341,10 +9494,10 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                     {f'<div style="margin-top: 6px;">{lib_badge}</div>' if lib_badge else ''}
                 </div>
                 <div class="similar-artist-actions">
-                    <a href="/artist?artist={s_url}" class="pill-btn primary" style="font-size: 0.74rem; padding: 3px 10px; text-decoration: none;" title="Explore Artist Intelligence">
+                    <a href="/artist?artist={s_url}" class="pill-btn primary" title="Explore Artist Intelligence">
                         Explore &rarr;
                     </a>
-                    <a href="/?artist={s_url}" class="pill-btn secondary" style="font-size: 0.74rem; padding: 3px 10px; text-decoration: none;" title="Search &amp; Analyze Songs">
+                    <a href="/?artist={s_url}" class="pill-btn secondary" title="Search &amp; Analyze Songs">
                         ⚡ Analyze
                     </a>
                 </div>
