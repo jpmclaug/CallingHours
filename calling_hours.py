@@ -8031,6 +8031,12 @@ RATINGS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             flex-direction: column;
             gap: 20px;
         }
+        @media (max-width: 1080px) {
+            .ratings-page-container {
+                margin-bottom: 120px !important;
+                padding-bottom: 40px !important;
+            }
+        }
         .ratings-top-bar {
             display: flex;
             justify-content: space-between;
@@ -8163,29 +8169,12 @@ RATINGS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             background: linear-gradient(145deg, rgba(14, 38, 80, 0.85) 0%, rgba(11, 30, 63, 0.96) 100%);
             border: 1.5px solid rgba(165, 200, 255, 0.35);
             border-radius: 18px;
-            padding: 26px 30px;
+            padding: 24px 28px;
             box-shadow: 0 12px 36px rgba(0, 0, 0, 0.45);
             display: flex;
             flex-direction: column;
-            gap: 22px;
+            gap: 20px;
             position: relative;
-            transform-origin: center;
-            animation: spotlightPopIn 0.18s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-        }
-        @keyframes spotlightPopIn {
-            from {
-                opacity: 0;
-                transform: translateY(12px) scale(0.97);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0) scale(1);
-            }
-        }
-        .spotlight-card.card-exit {
-            opacity: 0;
-            transform: translateY(-8px) scale(0.98);
-            transition: all 0.1s ease-out;
         }
         .spotlight-card-header {
             display: flex;
@@ -8254,13 +8243,13 @@ RATINGS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             background: rgba(11, 30, 63, 0.65);
             border: 1px solid rgba(165, 200, 255, 0.18);
             border-radius: 14px;
-            padding: 18px 20px;
+            padding: 16px 20px;
         }
         .spotlight-rating-prompt {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 14px;
+            margin-bottom: 12px;
             font-size: 0.88rem;
             font-weight: 700;
             color: #A5C8FF;
@@ -8275,15 +8264,17 @@ RATINGS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
         @media (max-width: 768px) {
             .spotlight-btn-grid {
                 grid-template-columns: repeat(3, 1fr);
+                gap: 8px;
             }
         }
         @media (max-width: 480px) {
             .spotlight-btn-grid {
-                grid-template-columns: repeat(2, 1fr);
+                grid-template-columns: repeat(3, 1fr);
+                gap: 6px;
             }
         }
         .spotlight-btn {
-            background: rgba(14, 38, 80, 0.7);
+            background: rgba(14, 38, 80, 0.75);
             border: 1.5px solid rgba(165, 200, 255, 0.25);
             border-radius: 12px;
             padding: 12px 6px;
@@ -8295,17 +8286,30 @@ RATINGS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             align-items: center;
             gap: 4px;
             position: relative;
-            transition: all 0.15s ease;
             user-select: none;
             touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
+            transition: transform 0.06s ease, background 0.1s ease, border-color 0.1s ease;
+            min-height: 56px;
         }
         .spotlight-btn:hover {
             transform: translateY(-2px);
             box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
         }
         .spotlight-btn:active {
-            transform: translateY(0);
+            transform: scale(0.92) !important;
         }
+        .spotlight-btn.active {
+            box-shadow: 0 0 16px rgba(165, 200, 255, 0.4);
+            border-color: #60A5FA;
+            transform: translateY(-2px);
+        }
+        .spotlight-btn.active.color-5 { border-color: #FBBF24; box-shadow: 0 0 18px rgba(245, 158, 11, 0.6); }
+        .spotlight-btn.active.color-4 { border-color: #A855F7; box-shadow: 0 0 18px rgba(168, 85, 247, 0.6); }
+        .spotlight-btn.active.color-3 { border-color: #38BDF8; box-shadow: 0 0 18px rgba(56, 189, 248, 0.6); }
+        .spotlight-btn.active.color-2 { border-color: #F59E0B; box-shadow: 0 0 18px rgba(245, 158, 11, 0.5); }
+        .spotlight-btn.active.color-1 { border-color: #EF4444; box-shadow: 0 0 18px rgba(239, 68, 68, 0.5); }
+        .spotlight-btn.active.color-0 { border-color: #94A3B8; box-shadow: 0 0 14px rgba(148, 163, 184, 0.4); }
         .spotlight-btn .btn-icon {
             font-size: 1.4rem;
             line-height: 1;
@@ -8339,25 +8343,60 @@ RATINGS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             color: #A5C8FF;
             font-family: monospace;
         }
-        .spotlight-card-footer {
+        .spotlight-nav-bottom-bar {
             display: flex;
             justify-content: space-between;
             align-items: center;
             gap: 12px;
-            flex-wrap: wrap;
+            padding-top: 14px;
+            margin-top: 4px;
+            border-top: 1px solid rgba(165, 200, 255, 0.14);
         }
-        .spotlight-links-group {
-            display: flex;
+        .spotlight-nav-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
             gap: 8px;
-        }
-        .spotlight-skip-btn {
-            background: rgba(165, 200, 255, 0.12) !important;
-            border-color: rgba(165, 200, 255, 0.3) !important;
-            color: #FFFFFF !important;
+            padding: 12px 22px;
+            border-radius: 12px;
+            font-size: 0.92rem;
             font-weight: 700;
+            font-family: inherit;
+            cursor: pointer;
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+            transition: transform 0.08s ease, background 0.12s ease, border-color 0.12s ease;
+            min-height: 48px;
         }
-        .spotlight-skip-btn:hover {
-            background: rgba(165, 200, 255, 0.25) !important;
+        .spotlight-nav-btn:active {
+            transform: scale(0.94);
+        }
+        .spotlight-nav-btn.prev-btn {
+            background: rgba(14, 38, 80, 0.7);
+            border: 1.5px solid rgba(165, 200, 255, 0.3);
+            color: #A5C8FF;
+        }
+        .spotlight-nav-btn.prev-btn:hover:not(:disabled) {
+            background: rgba(37, 99, 235, 0.35);
+            border-color: #60A5FA;
+            color: #FFFFFF;
+        }
+        .spotlight-nav-btn.prev-btn:disabled {
+            opacity: 0.35;
+            cursor: not-allowed;
+        }
+        .spotlight-nav-btn.skip-btn {
+            background: linear-gradient(135deg, rgba(37, 99, 235, 0.45), rgba(14, 38, 80, 0.85));
+            border: 1.5px solid rgba(165, 200, 255, 0.45);
+            color: #FFFFFF;
+            flex: 1;
+            max-width: 280px;
+        }
+        .spotlight-nav-btn.skip-btn:hover {
+            background: linear-gradient(135deg, rgba(37, 99, 235, 0.7), rgba(25, 70, 133, 0.95));
+            border-color: #93C5FD;
+            box-shadow: 0 4px 16px rgba(37, 99, 235, 0.45);
         }
         .key-badge-sm {
             background: rgba(0, 0, 0, 0.4);
@@ -8367,6 +8406,26 @@ RATINGS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             font-size: 0.7rem;
             margin-left: 4px;
             font-family: monospace;
+        }
+        @media (max-width: 640px) {
+            .spotlight-nav-bottom-bar {
+                flex-wrap: wrap;
+                gap: 10px;
+            }
+            .spotlight-nav-btn.prev-btn {
+                flex: 1;
+                min-width: 120px;
+            }
+            .spotlight-nav-btn.skip-btn {
+                flex: 1.5;
+                min-width: 140px;
+                max-width: none;
+            }
+            .spotlight-links-group {
+                width: 100%;
+                justify-content: center;
+                order: 3;
+            }
         }
         .spotlight-shortcuts-bar {
             text-align: center;
@@ -8583,27 +8642,14 @@ RATINGS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
                     this.fetchMoreRelated(artist);
                 }
 
-                const activeCard = document.getElementById('active-spotlight-card');
-                if (activeCard) {
-                    activeCard.classList.add('card-exit');
-                }
-
-                setTimeout(() => {
-                    this.currentIndex++;
-                    this.renderCurrentCard();
-                }, 50);
+                this.currentIndex++;
+                this.renderCurrentCard();
             },
 
             skip: function() {
                 if (this.currentIndex >= this.queue.length) return;
-                const activeCard = document.getElementById('active-spotlight-card');
-                if (activeCard) {
-                    activeCard.classList.add('card-exit');
-                }
-                setTimeout(() => {
-                    this.currentIndex++;
-                    this.renderCurrentCard();
-                }, 50);
+                this.currentIndex++;
+                this.renderCurrentCard();
             },
 
             prev: function() {
@@ -8797,6 +8843,99 @@ RATINGS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
                 }
             },
 
+            updateCardInPlace: function(item, currentRating) {
+                const card = document.getElementById('active-spotlight-card');
+                if (!card) return false;
+
+                const artist = item.artist || '';
+                const artistEsc = escapeHtml(artist);
+                const artistUrl = encodeURIComponent(artist);
+                card.setAttribute('data-artist', artistEsc);
+
+                const titleEl = document.getElementById('spotlight-artist-title');
+                if (titleEl) {
+                    titleEl.textContent = artist;
+                    titleEl.href = `/artist?artist=${artistUrl}`;
+                }
+
+                const avatarEl = document.getElementById('spotlight-avatar');
+                if (avatarEl) {
+                    const initial = (artist && artist.length > 0) ? escapeHtml(artist[0].toUpperCase()) : '?';
+                    if (item.image_url) {
+                        avatarEl.innerHTML = `<img src="${escapeHtml(item.image_url)}" alt="${artistEsc}">`;
+                    } else {
+                        avatarEl.innerHTML = initial;
+                    }
+                }
+
+                const inLibWrap = document.getElementById('spotlight-in-lib-wrap');
+                if (inLibWrap) {
+                    inLibWrap.innerHTML = item.in_library
+                        ? '<span class="artist-meta-badge" style="color: #6EE7B7; border-color: rgba(16, 185, 129, 0.4); font-size: 0.72rem; padding: 2px 8px;">✓ In Library</span>'
+                        : '';
+                }
+
+                const ratedWrap = document.getElementById('spotlight-rated-wrap');
+                if (ratedWrap) {
+                    if (currentRating !== null && currentRating !== undefined) {
+                        const scaleTitles = {
+                            5: '5★ Favorite',
+                            4: '4★ Really Enjoy',
+                            3: '3★ Likes',
+                            2: '2★ OK',
+                            1: '1★ Dislike',
+                            0: '0 Unknown'
+                        };
+                        ratedWrap.innerHTML = `<span class="rating-badge rating-${currentRating}" style="font-size: 0.74rem; padding: 2px 8px;">Currently: ${scaleTitles[currentRating] || currentRating}</span>`;
+                    } else {
+                        ratedWrap.innerHTML = '';
+                    }
+                }
+
+                const reasonEl = document.getElementById('spotlight-reason-val');
+                if (reasonEl) {
+                    reasonEl.textContent = item.reason || 'Recommended based on your ratings & analyzed library';
+                }
+
+                const tagsWrap = document.getElementById('spotlight-tags-wrap');
+                if (tagsWrap) {
+                    if (item.tags && item.tags.length > 0) {
+                        const tagChips = item.tags.slice(0, 3).map(t => 
+                            `<span class="lastfm-tag-chip" style="font-size: 0.7rem; padding: 2px 8px;">#${escapeHtml(t)}</span>`
+                        ).join('');
+                        tagsWrap.innerHTML = `<div class="spotlight-tags-row">${tagChips}</div>`;
+                    } else {
+                        tagsWrap.innerHTML = '';
+                    }
+                }
+
+                const btns = card.querySelectorAll('.spotlight-btn');
+                btns.forEach(btn => {
+                    const btnVal = parseInt(btn.getAttribute('data-val'), 10);
+                    if (btnVal === currentRating) {
+                        btn.classList.add('active');
+                    } else {
+                        btn.classList.remove('active');
+                    }
+                });
+
+                const prevBtn = document.getElementById('spotlight-btn-prev');
+                if (prevBtn) {
+                    prevBtn.disabled = (this.currentIndex === 0);
+                }
+
+                const profileLink = document.getElementById('spotlight-profile-link');
+                if (profileLink) {
+                    profileLink.href = `/artist?artist=${artistUrl}`;
+                }
+                const searchLink = document.getElementById('spotlight-search-link');
+                if (searchLink) {
+                    searchLink.href = `/?artist=${artistUrl}`;
+                }
+
+                return true;
+            },
+
             renderCurrentCard: function() {
                 const stage = document.getElementById('spotlight-card-stage');
                 if (!stage) return;
@@ -8814,6 +8953,12 @@ RATINGS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
                 const currentRating = (this.userRatedMap[artistKey] !== undefined)
                     ? this.userRatedMap[artistKey]
                     : item.current_rating;
+
+                const existingCard = document.getElementById('active-spotlight-card');
+                if (existingCard) {
+                    const updated = this.updateCardInPlace(item, currentRating);
+                    if (updated) return;
+                }
 
                 stage.innerHTML = this.buildCardHtml(item, currentRating);
             },
@@ -8856,18 +9001,18 @@ RATINGS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
                 return `
                 <div class="spotlight-card" id="active-spotlight-card" data-artist="${artistEsc}">
                     <div class="spotlight-card-header">
-                        <div class="spotlight-avatar">${avatarContent}</div>
+                        <div class="spotlight-avatar" id="spotlight-avatar">${avatarContent}</div>
                         <div class="spotlight-band-info">
                             <div class="spotlight-band-name-row">
-                                <a href="/artist?artist=${artistUrl}" class="spotlight-artist-title" title="Open artist profile">${artistEsc}</a>
-                                ${inLibBadge}
-                                ${ratedBadge}
+                                <a href="/artist?artist=${artistUrl}" class="spotlight-artist-title" id="spotlight-artist-title" title="Open artist profile">${artistEsc}</a>
+                                <span id="spotlight-in-lib-wrap">${inLibBadge}</span>
+                                <span id="spotlight-rated-wrap">${ratedBadge}</span>
                             </div>
                             <div class="spotlight-reason-text">
                                 <span>✨</span>
-                                <span>${escapeHtml(reason)}</span>
+                                <span id="spotlight-reason-val">${escapeHtml(reason)}</span>
                             </div>
-                            ${tagsHtml}
+                            <div id="spotlight-tags-wrap">${tagsHtml}</div>
                         </div>
                     </div>
 
@@ -8876,38 +9021,38 @@ RATINGS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
                             <span>Rank this band (0 to 5):</span>
                             <span style="font-size: 0.76rem; font-weight: 600; color: #DDD6FE; text-transform: none;">Click or tap key <kbd>0</kbd>–<kbd>5</kbd></span>
                         </div>
-                        <div class="spotlight-btn-grid">
-                            <button type="button" class="spotlight-btn color-5${currentRating === 5 ? ' active' : ''}" onclick="ratingsQueueController.rate(5)" title="5: One of your absolute favorites (Key 5)">
+                        <div class="spotlight-btn-grid" id="spotlight-btn-grid">
+                            <button type="button" class="spotlight-btn color-5${currentRating === 5 ? ' active' : ''}" data-val="5" onclick="ratingsQueueController.rate(5)" title="5: One of your absolute favorites (Key 5)">
                                 <span class="key-badge">5</span>
                                 <span class="btn-icon">🏆</span>
                                 <span class="btn-label-title">5</span>
                                 <span class="btn-label-sub">Favorite</span>
                             </button>
-                            <button type="button" class="spotlight-btn color-4${currentRating === 4 ? ' active' : ''}" onclick="ratingsQueueController.rate(4)" title="4: Really enjoy them (Key 4)">
+                            <button type="button" class="spotlight-btn color-4${currentRating === 4 ? ' active' : ''}" data-val="4" onclick="ratingsQueueController.rate(4)" title="4: Really enjoy them (Key 4)">
                                 <span class="key-badge">4</span>
                                 <span class="btn-icon">🔥</span>
                                 <span class="btn-label-title">4</span>
                                 <span class="btn-label-sub">Really Enjoy</span>
                             </button>
-                            <button type="button" class="spotlight-btn color-3${currentRating === 3 ? ' active' : ''}" onclick="ratingsQueueController.rate(3)" title="3: Likes them (Key 3)">
+                            <button type="button" class="spotlight-btn color-3${currentRating === 3 ? ' active' : ''}" data-val="3" onclick="ratingsQueueController.rate(3)" title="3: Likes them (Key 3)">
                                 <span class="key-badge">3</span>
                                 <span class="btn-icon">👍</span>
                                 <span class="btn-label-title">3</span>
                                 <span class="btn-label-sub">Likes</span>
                             </button>
-                            <button type="button" class="spotlight-btn color-2${currentRating === 2 ? ' active' : ''}" onclick="ratingsQueueController.rate(2)" title="2: Is OK (Key 2)">
+                            <button type="button" class="spotlight-btn color-2${currentRating === 2 ? ' active' : ''}" data-val="2" onclick="ratingsQueueController.rate(2)" title="2: Is OK (Key 2)">
                                 <span class="key-badge">2</span>
                                 <span class="btn-icon">😐</span>
                                 <span class="btn-label-title">2</span>
                                 <span class="btn-label-sub">Is OK</span>
                             </button>
-                            <button type="button" class="spotlight-btn color-1${currentRating === 1 ? ' active' : ''}" onclick="ratingsQueueController.rate(1)" title="1: Dislike (Key 1)">
+                            <button type="button" class="spotlight-btn color-1${currentRating === 1 ? ' active' : ''}" data-val="1" onclick="ratingsQueueController.rate(1)" title="1: Dislike (Key 1)">
                                 <span class="key-badge">1</span>
                                 <span class="btn-icon">👎</span>
                                 <span class="btn-label-title">1</span>
                                 <span class="btn-label-sub">Dislike</span>
                             </button>
-                            <button type="button" class="spotlight-btn color-0${currentRating === 0 ? ' active' : ''}" onclick="ratingsQueueController.rate(0)" title="0: Know nothing about them (Key 0)">
+                            <button type="button" class="spotlight-btn color-0${currentRating === 0 ? ' active' : ''}" data-val="0" onclick="ratingsQueueController.rate(0)" title="0: Know nothing about them (Key 0)">
                                 <span class="key-badge">0</span>
                                 <span class="btn-icon">⚪</span>
                                 <span class="btn-label-title">0</span>
@@ -8916,19 +9061,17 @@ RATINGS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
                         </div>
                     </div>
 
-                    <div class="spotlight-card-footer">
-                        <div class="spotlight-links-group">
-                            <a href="/artist?artist=${artistUrl}" class="pill-btn secondary" style="font-size: 0.78rem; padding: 4px 10px;">Artist Profile &rarr;</a>
-                            <a href="/?artist=${artistUrl}" class="pill-btn secondary" style="font-size: 0.78rem; padding: 4px 10px;">Search Songs &rarr;</a>
+                    <div class="spotlight-nav-bottom-bar">
+                        <button type="button" class="spotlight-nav-btn prev-btn" id="spotlight-btn-prev" onclick="ratingsQueueController.prev()" ${this.currentIndex === 0 ? 'disabled' : ''} title="Go back to previous band (Left Arrow)">
+                            <span>&larr;</span> <span>Prev Band</span>
+                        </button>
+                        <div class="spotlight-links-group" style="display: flex; gap: 8px;">
+                            <a href="/artist?artist=${artistUrl}" id="spotlight-profile-link" class="pill-btn secondary" style="font-size: 0.78rem; padding: 6px 12px;" title="Open artist profile">Artist Profile &rarr;</a>
+                            <a href="/?artist=${artistUrl}" id="spotlight-search-link" class="pill-btn secondary" style="font-size: 0.78rem; padding: 6px 12px;" title="Search songs by this artist">Search Songs &rarr;</a>
                         </div>
-                        <div style="display: flex; gap: 8px;">
-                            <button type="button" class="pill-btn secondary" onclick="ratingsQueueController.prev()" style="font-size: 0.8rem; padding: 6px 12px;" ${this.currentIndex === 0 ? 'disabled style="opacity: 0.4; cursor: not-allowed;"' : ''} title="Go back to previous band">
-                                &larr; Prev
-                            </button>
-                            <button type="button" class="pill-btn spotlight-skip-btn" onclick="ratingsQueueController.skip()" style="font-size: 0.8rem; padding: 6px 14px;" title="Skip to next band without rating">
-                                Skip &rarr; <span class="key-badge-sm">Space</span>
-                            </button>
-                        </div>
+                        <button type="button" class="spotlight-nav-btn skip-btn" id="spotlight-btn-skip" onclick="ratingsQueueController.skip()" title="Skip to next band without rating (Space or Right Arrow)">
+                            <span>Skip Band &rarr;</span> <span class="key-badge-sm">Space</span>
+                        </button>
                     </div>
                 </div>
                 `;
