@@ -29,6 +29,7 @@ import spotify
 import theaudiodb
 
 DEFAULT_GEMINI_MODEL = "gemini-3.8-flash"
+DEFAULT_GEMINI_IMAGE_MODEL = "gemini-3.1-flash-lite-image"
 DEFAULT_TIMEOUT = 8
 
 
@@ -895,12 +896,13 @@ def generate_playlist_cover_art(
     artists: List[str],
     themes: Optional[List[Dict[str, Any]]] = None,
     curator_notes: Optional[str] = None,
-    gemini_api_key: Optional[str] = None
+    gemini_api_key: Optional[str] = None,
+    model_name: Optional[str] = None
 ) -> Dict[str, Any]:
     """Generate custom 640x640 album cover artwork for Spotify.
     
-    Uses Gemini native image model (gemini-3.1-flash-image) when configured,
-    and falls back to procedural Pillow art.
+    Uses the least expensive Gemini native image model (gemini-3.1-flash-lite-image)
+    when configured, and falls back to procedural Pillow art.
     Guarantees valid JPEG <= 250 KB (Spotify limit is 256 KB).
     """
     clean_name = playlist_name.strip()
@@ -916,6 +918,7 @@ def generate_playlist_cover_art(
     if gemini_api_key and genai:
         try:
             client = genai.Client(api_key=gemini_api_key.strip())
+            chosen_image_model = model_name or DEFAULT_GEMINI_IMAGE_MODEL
             prompt = (
                 f"Square album cover art for a curated music playlist titled '{theme_label}' "
                 f"featuring bands: {artists_str}. "
@@ -926,7 +929,7 @@ def generate_playlist_cover_art(
                 f"Do not include watermarks or illegible text."
             )
             resp = client.models.generate_content(
-                model="gemini-3.1-flash-image",
+                model=chosen_image_model,
                 contents=[prompt],
             )
             raw_img = None

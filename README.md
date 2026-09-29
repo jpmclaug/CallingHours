@@ -25,12 +25,25 @@ Calling Hours is a web application that fetches song lyrics via the Genius API a
     - *Alternating Rotation*: Fair-share round-robin cycling across each artist track by track (`1st Artist A` &rarr; `1st Artist B` &rarr; `2nd Artist A` &rarr; `2nd Artist B`).
     - *Thematic Deep Analysis*: Powered by Google Gemini (`gemini-3.8-flash`) to detect emergent thematic synergies across disparate artists (narrative mood arcs, lyrical motifs, emotional release), grouping tracks into thematic movements with song-by-song connection rationale notes (with acoustic heuristic fallback).
   Provides interactive tracklist previews, direct one-click Spotify Playlist creation (with automatic Genius-to-Spotify track resolution), standard `.m3u8` and `.csv` downloads, quick clipboard export, and database-persisted playlist management.
+- **Band Rankings & Scene Discovery (`/ratings`)**:
+  - Rank bands on a clear **0 to 5** scale:
+    - `0`: Know nothing about them (*unranked / unknown marker for discovery*)
+    - `1`: Dislike (*excludes band from seeds and suppresses related recommendations*)
+    - `2`: Is ok (*minor recommendation affinity, 0.3x weight*)
+    - `3`: Likes (*positive recommendation driver, 1.2x weight*)
+    - `4`: Really enjoy them (*strong recommendation driver, 2.5x weight*)
+    - `5`: Absolute favorite (*primary recommendation driver, 3.5x weight*)
+  - **Rate Analyzed Bands**: Review and rate all artists that have lyrics analyzed with Gemini.
+  - **Related Bands Discovery Engine**: Surfaces tailored band recommendations based on positive seeds (ratings 3–5) with multi-seed synergy boosts and human-readable rationale (e.g. *"Related to Turnstile (5★) and Touché Amoré (4★)"*).
+  - **Quick Rate Bar**: Instantly rank any band to immediately seed recommendations.
+  - Interactive rating widget embedded on song search analysis, `/artist` deep dives, and history index.
 - **Search History Dashboard**: Dedicated `/history` view to browse, filter, quick-load, and manage previously searched songs and analyses, complete with Last.fm tag chips and artist intelligence links.
 - **Editable & Custom Lyrics**: An editable lyrics workspace allowing users to review, edit, or paste lyrics manually if needed.
 - **Gemini-Powered Analysis**: Deep lyric analysis analyzing themes, narrative, emotional tone, and poetic devices.
-- **Newest Gemini Free-Tier Models**:
-  - `gemini-3.8-flash`: Default flagship Flash model for high-intelligence, multimodal analysis on the free tier.
+- **Newest Gemini Models**:
+  - `gemini-3.8-flash`: Default flagship Flash model for high-intelligence, multimodal lyrics analysis.
   - `gemini-3.5-flash-lite`: Ultra-fast, lightweight model optimized for speed.
+  - `gemini-3.1-flash-lite-image`: Least expensive, ultra-fast Gemini image generation model for custom Spotify playlist cover artwork (with procedural Pillow fallback).
 - **Custom Prompts**: Manage and customize your own lyric analysis prompt templates.
 
 ## Setup

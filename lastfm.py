@@ -315,6 +315,84 @@ def fetch_artist_bio_and_stats(
         return {}
 
 
+def fetch_artist_similar(
+    artist: str,
+    api_key: Optional[str] = None,
+    limit: int = 30,
+    timeout: int = 8
+) -> List[Dict[str, Any]]:
+    """
+    Fetch similar artists using Last.fm artist.getSimilar.
+    Returns list of dicts: [{'name': '...', 'match': 0.85, 'url': '...', 'image_url': '...'}]
+    """
+    key = api_key or get_lastfm_api_key()
+    if not key or not artist:
+        return []
+
+    clean_artist = artist.strip()
+    params = {
+        "method": "artist.getsimilar",
+        "artist": clean_artist,
+        "api_key": key,
+        "format": "json",
+        "autocorrect": "1",
+        "limit": str(limit),
+    }
+    headers = {"User-Agent": DEFAULT_USER_AGENT}
+
+    try:
+        resp = requests.get(LASTFM_API_BASE_URL, params=params, headers=headers, timeout=timeout)
+        if resp.status_code != 200:
+            return []
+        data = resp.json()
+        if not isinstance(data, dict) or "error" in data:
+            return []
+
+        raw_similar = data.get("similarartists", {}).get("artist", [])
+        if isinstance(raw_similar, dict):
+            raw_similar = [raw_similar]
+        elif not isinstance(raw_similar, list):
+            return []
+
+        results = []
+        for item in raw_similar:
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get("name", "")).strip()
+            if not name:
+                continue
+
+            raw_match = item.get("match", 0)
+            try:
+                match_score = float(raw_match)
+            except (ValueError, TypeError):
+                match_score = 0.0
+
+            url = item.get("url", f"https://www.last.fm/music/{urllib.parse.quote_plus(name)}")
+
+            # Extract image url if present
+            image_url = ""
+            images = item.get("image", [])
+            if isinstance(images, list):
+                for img in reversed(images):
+                    if isinstance(img, dict) and img.get("#text"):
+                        image_url = img.get("#text", "")
+                        break
+
+            results.append({
+                "name": name,
+                "match": match_score,
+                "url": url,
+                "image_url": image_url,
+            })
+
+        results.sort(key=lambda x: x.get("match", 0.0), reverse=True)
+        return results[:limit]
+    except Exception as e:
+        print(f"Last.fm fetch_artist_similar error for {clean_artist}: {e}")
+        return []
+
+
 def get_or_fetch_artist_metadata(
     artist: str,
     api_key: Optional[str] = None,

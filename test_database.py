@@ -564,8 +564,124 @@ class TestDatabase(unittest.TestCase):
         self.assertIsNone(database.get_saved_playlist(pid, db_path=self.db_path))
         self.assertEqual(len(database.get_saved_playlists(db_path=self.db_path)), 0)
 
+    def test_band_ratings_crud_and_stats(self):
+        # 1. Save ratings (0 to 5)
+        # 5: Absolute Favorite
+        r5 = database.save_band_rating("Jimmy Eat World", 5, user_email="test@example.com", notes="All time favorite", db_path=self.db_path)
+        self.assertIsNotNone(r5)
+        self.assertEqual(r5["artist"], "Jimmy Eat World")
+        self.assertEqual(r5["rating"], 5)
+        self.assertEqual(r5["notes"], "All time favorite")
+
+        # 4: Really Enjoy
+        r4 = database.save_band_rating("The Starting Line", 4, user_email="test@example.com", db_path=self.db_path)
+        self.assertEqual(r4["rating"], 4)
+
+        # 3: Likes
+        r3 = database.save_band_rating("Taking Back Sunday", 3, user_email="test@example.com", db_path=self.db_path)
+        self.assertEqual(r3["rating"], 3)
+
+        # 2: Is ok
+        r2 = database.save_band_rating("Good Charlotte", 2, user_email="test@example.com", db_path=self.db_path)
+        self.assertEqual(r2["rating"], 2)
+
+        # 1: Dislike
+        r1 = database.save_band_rating("Nickelback", 1, user_email="test@example.com", db_path=self.db_path)
+        self.assertEqual(r1["rating"], 1)
+
+        # 0: Know nothing about them
+        r0 = database.save_band_rating("Unknown Indie Band", 0, user_email="test@example.com", db_path=self.db_path)
+        self.assertEqual(r0["rating"], 0)
+
+        # Rating clamp testing
+        r_clamped_high = database.save_band_rating("Overflow Band", 99, user_email="test@example.com", db_path=self.db_path)
+        self.assertEqual(r_clamped_high["rating"], 5)
+        r_clamped_low = database.save_band_rating("Underflow Band", -10, user_email="test@example.com", db_path=self.db_path)
+        self.assertEqual(r_clamped_low["rating"], 0)
+
+        # 2. Get single rating
+        retrieved = database.get_band_rating("jimmy eat world", user_email="test@example.com", db_path=self.db_path)
+        self.assertIsNotNone(retrieved)
+        self.assertEqual(retrieved["rating"], 5)
+        self.assertEqual(retrieved["artist"], "Jimmy Eat World")
+
+        # 3. Update existing rating (UPSERT)
+        updated = database.save_band_rating("Good Charlotte", 3, user_email="test@example.com", notes="Growing on me", db_path=self.db_path)
+        self.assertEqual(updated["rating"], 3)
+        self.assertEqual(updated["notes"], "Growing on me")
+        check_updated = database.get_band_rating("Good Charlotte", user_email="test@example.com", db_path=self.db_path)
+        self.assertEqual(check_updated["rating"], 3)
+
+        # 4. Filter ratings
+        fives = database.get_band_ratings(user_email="test@example.com", rating_filter=5, db_path=self.db_path)
+        self.assertEqual(len(fives), 2)  # Jimmy Eat World + Overflow Band clamped to 5
+
+        min_fours = database.get_band_ratings(user_email="test@example.com", min_rating=4, db_path=self.db_path)
+        self.assertEqual(len(min_fours), 3)  # 2 fives + 1 four
+
+        # 5. Rated map
+        rated_map = database.get_rated_artists_map(user_email="test@example.com", db_path=self.db_path)
+        self.assertIn("jimmy eat world", rated_map)
+        self.assertEqual(rated_map["jimmy eat world"], 5)
+        self.assertEqual(rated_map["nickelback"], 1)
+
+        # 6. Analyzed artists with ratings
+        # Seed an analyzed song in searches
+        database.save_search(
+            artist="Jimmy Eat World",
+            song="Sweetness",
+            lyrics="Are you listening?",
+            source="Genius",
+            db_path=self.db_path
+        )
+        database.save_analysis(
+            artist="Jimmy Eat World",
+            song="Sweetness",
+            analysis="Deep analysis...",
+            db_path=self.db_path
+        )
+        database.save_search(
+            artist="Unrated Band",
+            song="Sample Song",
+            lyrics="Sample lyrics",
+            source="LRCLIB",
+            db_path=self.db_path
+        )
+        database.save_analysis(
+            artist="Unrated Band",
+            song="Sample Song",
+            analysis="Another analysis...",
+            db_path=self.db_path
+        )
+
+        analyzed_with_ratings = database.get_analyzed_artists_with_ratings(user_email="test@example.com", db_path=self.db_path)
+        jew = next((a for a in analyzed_with_ratings if a["artist"] == "Jimmy Eat World"), None)
+        unrated = next((a for a in analyzed_with_ratings if a["artist"] == "Unrated Band"), None)
+
+        self.assertIsNotNone(jew)
+        self.assertEqual(jew["rating"], 5)
+        self.assertTrue(jew["has_rating"])
+
+        self.assertIsNotNone(unrated)
+        self.assertIsNone(unrated["rating"])
+        self.assertFalse(unrated["has_rating"])
+
+        # 7. Rating statistics
+        stats = database.get_band_rating_stats(user_email="test@example.com", db_path=self.db_path)
+        self.assertGreater(stats["total_rated"], 0)
+        self.assertGreater(stats["total_ranked"], 0)
+        self.assertEqual(stats["by_rating"][5], 2)
+        self.assertEqual(stats["by_rating"][1], 1)
+        self.assertGreater(stats["average_ranked_rating"], 0.0)
+
+        # 8. Delete rating
+        deleted = database.delete_band_rating("Nickelback", user_email="test@example.com", db_path=self.db_path)
+        self.assertTrue(deleted)
+        self.assertIsNone(database.get_band_rating("Nickelback", user_email="test@example.com", db_path=self.db_path))
+
 
 if __name__ == "__main__":
     unittest.main()
+
 
 

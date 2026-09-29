@@ -299,6 +299,13 @@ class TestMultiArtistPlaylistCurator(unittest.TestCase):
         self.assertEqual(out_img.size, (640, 640))
         self.assertEqual(out_img.format, "JPEG")
 
+        # Verify the least expensive image model (gemini-3.1-flash-lite-image) was used
+        mock_client.models.generate_content.assert_called_once()
+        self.assertEqual(
+            mock_client.models.generate_content.call_args.kwargs.get("model"),
+            "gemini-3.1-flash-lite-image"
+        )
+
     @patch("requests.put")
     def test_spotify_upload_playlist_cover_image(self, mock_put):
         import spotify

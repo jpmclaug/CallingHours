@@ -41,6 +41,7 @@ import theaudiodb
 import setlistfm
 import spotify
 import playlist_curator
+import band_recommender
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPT_DIR)
@@ -464,6 +465,83 @@ def build_similar_songs_widget(artist: str, song: str) -> str:
     '''
 
 
+def build_band_rating_widget(
+    artist: str,
+    current_rating: Optional[int] = None,
+    user_email: Optional[str] = None,
+    compact: bool = False,
+    show_header: bool = True
+) -> str:
+    """
+    Render an interactive 0 to 5 band rating widget.
+    Rating scale:
+      0: Know nothing about them (Unranked / Unknown marker)
+      1: Dislike
+      2: Is ok
+      3: Likes
+      4: Really enjoy them
+      5: One of your absolute favorites
+    """
+    if not artist or not str(artist).strip():
+        return ""
+
+    clean_artist = str(artist).strip()
+    artist_esc = html_escape(clean_artist)
+    artist_attr = html.escape(clean_artist, quote=True)
+
+    if current_rating is None:
+        rec = database.get_band_rating(clean_artist, user_email=user_email)
+        current_rating = rec.get("rating") if rec else None
+
+    # Rating button definitions: (value, short_label, full_label, icon, color)
+    scale_items = [
+        (0, "0", "Know nothing about them", "⚪", "color-0"),
+        (1, "1★", "Dislike", "👎", "color-1"),
+        (2, "2★", "Is ok", "😐", "color-2"),
+        (3, "3★", "Likes", "👍", "color-3"),
+        (4, "4★", "Really enjoy them", "🔥", "color-4"),
+        (5, "5★", "Absolute favorite", "🏆", "color-5"),
+    ]
+
+    current_val = current_rating if current_rating is not None else None
+
+    # Active label description text
+    active_desc = ""
+    if current_val is not None:
+        for val, s_lbl, f_lbl, icon, _ in scale_items:
+            if val == current_val:
+                if val == 0:
+                    active_desc = f'<span class="rating-badge rating-0">⚪ 0: Know nothing about them (Unranked)</span>'
+                elif val == 5:
+                    active_desc = f'<span class="rating-badge rating-5">🏆 5★ Absolute favorite</span>'
+                elif val == 4:
+                    active_desc = f'<span class="rating-badge rating-4">🔥 4★ Really enjoy them</span>'
+                elif val == 3:
+                    active_desc = f'<span class="rating-badge rating-3">👍 3★ Likes</span>'
+                elif val == 2:
+                    active_desc = f'<span class="rating-badge rating-2">😐 2★ Is ok</span>'
+                elif val == 1:
+                    active_desc = f'<span class="rating-badge rating-1">👎 1★ Dislike</span>'
+                break
+    else:
+        active_desc = '<span class="rating-badge rating-none">Not yet rated</span>'
+
+    buttons_html = []
+    for val, s_lbl, f_lbl, icon, col_cls in scale_items:
+        is_active = (current_val == val)
+        active_cls = " active" if is_active else ""
+        compact_style = "padding: 3px 8px; font-size: 0.76rem;" if compact else "padding: 6px 12px; font-size: 0.84rem;"
+        title_text = f"{val}: {f_lbl}"
+        buttons_html.append(f'''<button type="button" class="band-rating-btn {col_cls}{active_cls}" data-rating="{val}" data-artist="{artist_attr}" onclick="submitBandRating(this, this.dataset.artist, {val})" style="{compact_style}" title="{html_escape(title_text)}"><span class="rating-btn-icon">{icon}</span><span class="rating-btn-text">{html_escape(s_lbl)}</span></button>''')
+
+    if compact:
+        return f'''<div class="band-rating-widget compact-widget" data-artist="{artist_attr}" style="display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap;"><div class="band-rating-btn-group" style="display: inline-flex; gap: 4px; align-items: center;">{"".join(buttons_html)}</div><span class="band-rating-status">{active_desc}</span></div>'''
+
+    header_block = f'''<div class="band-rating-widget-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 8px;"><div style="display: flex; align-items: center; gap: 8px;"><span style="font-size: 1.25rem;">⭐</span><span style="font-family: 'Montserrat', sans-serif; font-weight: 800; font-size: 1rem; color: #FFFFFF;">Rate Band: <span style="color: #DDD6FE;">{artist_esc}</span></span></div><div class="band-rating-status">{active_desc}</div></div>''' if show_header else f'''<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 6px;"><span style="font-size: 0.85rem; color: #A5C8FF; font-weight: 700;">Rate this Band (0 to 5):</span><div class="band-rating-status">{active_desc}</div></div>'''
+
+    return f'''<div class="band-rating-card" data-artist="{artist_attr}">{header_block}<div class="band-rating-btn-group">{"".join(buttons_html)}</div><div style="font-size: 0.74rem; color: rgba(165, 200, 255, 0.7); margin-top: 8px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px;"><span>0 (Unknown) &bull; 1 (Dislike) &bull; 2 (OK) &bull; 3 (Likes) &bull; 4 (Really enjoy) &bull; 5 (Absolute favorite)</span><a href="/ratings" style="color: #A5C8FF; text-decoration: underline; font-weight: 500;">View Band Rankings &amp; Discovery &rarr;</a></div></div>'''
+
+
 ACCESS_TOKEN = GENIUS_ACCESS_TOKEN
 SERVER_PORT = None
 
@@ -562,6 +640,7 @@ def build_loading_overlay_html() -> str:
 def build_app_header(active_page: str = 'song', user: Optional[Dict[str, Any]] = None) -> str:
     song_active = ' active' if active_page == 'song' else ''
     artist_active = ' active' if active_page == 'artist' else ''
+    ratings_active = ' active' if active_page in ('ratings', 'rating') else ''
     spotify_active = ' active' if active_page == 'spotify' else ''
     playlists_active = ' active' if active_page in ('playlist', 'playlists') else ''
     history_active = ' active' if active_page == 'history' else ''
@@ -637,6 +716,10 @@ def build_app_header(active_page: str = 'song', user: Optional[Dict[str, Any]] =
                     <span class="nav-icon">👤</span>
                     <span class="nav-text">Artists</span>
                 </a>
+                <a href="/ratings" class="app-nav-link{ratings_active}" id="nav-link-ratings">
+                    <span class="nav-icon">⭐</span>
+                    <span class="nav-text">Ratings</span>
+                </a>
                 <a href="/spotify" class="app-nav-link{spotify_active}" id="nav-link-spotify">
                     <span class="nav-icon">🎧</span>
                     <span class="nav-text">Spotify</span>
@@ -665,6 +748,10 @@ def build_app_header(active_page: str = 'song', user: Optional[Dict[str, Any]] =
         <a href="/artist" class="app-bottom-nav-link{artist_active}" id="mobile-nav-link-artist">
             <span class="nav-icon">👤</span>
             <span class="nav-text">Artists</span>
+        </a>
+        <a href="/ratings" class="app-bottom-nav-link{ratings_active}" id="mobile-nav-link-ratings">
+            <span class="nav-icon">⭐</span>
+            <span class="nav-text">Ratings</span>
         </a>
         <a href="/spotify" class="app-bottom-nav-link{spotify_active}" id="mobile-nav-link-spotify">
             <span class="nav-icon">🎧</span>
@@ -1306,6 +1393,101 @@ PAGE_HTML = r'''<!DOCTYPE html>
                 } catch (err) {}
             }
         }, false);
+
+        // Global Band Rating Submission Handler
+        function submitBandRating(btnEl, artist, rating) {
+            if (!artist) return;
+            const parent = btnEl.closest('.band-rating-widget, .band-rating-card, [data-artist]');
+
+            // Optimistic UI updates on clicked container
+            if (parent) {
+                const btns = parent.querySelectorAll('.band-rating-btn');
+                btns.forEach(b => b.classList.remove('active'));
+                btnEl.classList.add('active');
+
+                const statusEl = parent.querySelector('.band-rating-status');
+                const badgeMap = {
+                    0: '<span class="rating-badge rating-0">⚪ 0: Know nothing about them</span>',
+                    1: '<span class="rating-badge rating-1">👎 1★ Dislike</span>',
+                    2: '<span class="rating-badge rating-2">😐 2★ Is ok</span>',
+                    3: '<span class="rating-badge rating-3">👍 3★ Likes</span>',
+                    4: '<span class="rating-badge rating-4">🔥 4★ Really enjoy them</span>',
+                    5: '<span class="rating-badge rating-5">🏆 5★ Absolute favorite</span>'
+                };
+                if (statusEl && badgeMap[rating] !== undefined) {
+                    statusEl.innerHTML = badgeMap[rating];
+                }
+            }
+
+            // Sync other cards on the same page for this artist
+            try {
+                const safeArtist = (artist || '').replace(/"/g, '\\"');
+                document.querySelectorAll(`[data-artist="${safeArtist}"]`).forEach(container => {
+                    if (container === parent) return;
+                    const b = container.querySelector(`.band-rating-btn[data-rating="${rating}"]`);
+                    if (b) {
+                        container.querySelectorAll('.band-rating-btn').forEach(btn => btn.classList.remove('active'));
+                        b.classList.add('active');
+                    }
+                    const s = container.querySelector('.band-rating-status');
+                    const badgeMap = {
+                        0: '<span class="rating-badge rating-0">⚪ 0</span>',
+                        1: '<span class="rating-badge rating-1">👎 1★</span>',
+                        2: '<span class="rating-badge rating-2">😐 2★</span>',
+                        3: '<span class="rating-badge rating-3">👍 3★</span>',
+                        4: '<span class="rating-badge rating-4">🔥 4★</span>',
+                        5: '<span class="rating-badge rating-5">🏆 5★</span>'
+                    };
+                    if (s && badgeMap[rating]) s.innerHTML = badgeMap[rating];
+                });
+            } catch (err) {}
+
+            fetch('/api/band-rating', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({artist: artist, rating: rating})
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    const shortTitles = {
+                        0: '0: Know nothing about them',
+                        1: '1★: Dislike',
+                        2: '2★: Is ok',
+                        3: '3★: Likes',
+                        4: '4★: Really enjoy them',
+                        5: '5★: Absolute favorite'
+                    };
+                    const msg = `Saved rating for ${artist}: ${shortTitles[rating] || rating}`;
+                    if (typeof showToast === 'function') {
+                        showToast(msg);
+                    } else {
+                        showGlobalToast(msg);
+                    }
+                }
+            })
+            .catch(err => {
+                console.error('Band rating save error:', err);
+            });
+        }
+
+        function showGlobalToast(msg) {
+            let toast = document.getElementById('global-band-toast');
+            if (!toast) {
+                toast = document.createElement('div');
+                toast.id = 'global-band-toast';
+                toast.style.cssText = 'position:fixed; bottom:24px; right:24px; background:linear-gradient(135deg, #194685, #0B1E3F); color:#fff; padding:12px 20px; border-radius:10px; border:1px solid rgba(165,200,255,0.4); box-shadow:0 8px 24px rgba(0,0,0,0.5); z-index:99999; font-weight:600; font-size:0.9rem; transition:opacity 0.3s ease, transform 0.3s ease; opacity:0; transform:translateY(10px); pointer-events:none;';
+                document.body.appendChild(toast);
+            }
+            toast.textContent = msg;
+            toast.style.opacity = '1';
+            toast.style.transform = 'translateY(0)';
+            clearTimeout(toast._timeout);
+            toast._timeout = setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateY(10px)';
+            }, 3000);
+        }
     </script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@700;800;900&family=Roboto+Condensed:wght@300;400;700&display=swap');
@@ -3450,6 +3632,139 @@ PAGE_HTML = r'''<!DOCTYPE html>
             background: transparent;
             box-shadow: none;
         }
+
+        /* Band Rating Component Styles */
+        .band-rating-card {
+            background: rgba(14, 38, 80, 0.55);
+            border: 1px solid rgba(165, 200, 255, 0.2);
+            border-radius: 12px;
+            padding: 16px 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        .band-rating-card:hover {
+            border-color: rgba(165, 200, 255, 0.35);
+        }
+        .band-rating-btn-group {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .band-rating-btn {
+            background: rgba(11, 30, 63, 0.8);
+            border: 1px solid rgba(165, 200, 255, 0.25);
+            color: #C4DFFF;
+            border-radius: 8px;
+            cursor: pointer;
+            font-family: inherit;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.18s ease;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+            user-select: none;
+            touch-action: manipulation;
+        }
+        .band-rating-btn:hover {
+            transform: translateY(-1px);
+            border-color: #A5C8FF;
+            color: #FFFFFF;
+            box-shadow: 0 4px 12px rgba(165, 200, 255, 0.2);
+        }
+        .band-rating-btn:active {
+            transform: translateY(0);
+        }
+        .band-rating-btn .rating-btn-icon {
+            font-size: 1.05em;
+            line-height: 1;
+        }
+        .band-rating-btn.color-0.active {
+            background: rgba(100, 116, 139, 0.35);
+            border-color: #94A3B8;
+            color: #F8FAFC;
+            box-shadow: 0 0 10px rgba(148, 163, 184, 0.4);
+        }
+        .band-rating-btn.color-1.active {
+            background: rgba(220, 38, 38, 0.35);
+            border-color: #EF4444;
+            color: #FEE2E2;
+            box-shadow: 0 0 12px rgba(239, 68, 68, 0.45);
+        }
+        .band-rating-btn.color-2.active {
+            background: rgba(217, 119, 6, 0.35);
+            border-color: #F59E0B;
+            color: #FEF3C7;
+            box-shadow: 0 0 12px rgba(245, 158, 11, 0.45);
+        }
+        .band-rating-btn.color-3.active {
+            background: rgba(2, 132, 199, 0.38);
+            border-color: #38BDF8;
+            color: #F0F9FF;
+            box-shadow: 0 0 12px rgba(56, 189, 248, 0.45);
+        }
+        .band-rating-btn.color-4.active {
+            background: rgba(124, 58, 237, 0.4);
+            border-color: #A855F7;
+            color: #FAF5FF;
+            box-shadow: 0 0 14px rgba(168, 85, 247, 0.5);
+        }
+        .band-rating-btn.color-5.active {
+            background: linear-gradient(135deg, rgba(217, 119, 6, 0.5), rgba(180, 83, 9, 0.6));
+            border-color: #F59E0B;
+            color: #FFFBEB;
+            box-shadow: 0 0 16px rgba(245, 158, 11, 0.6);
+        }
+
+        .rating-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 3px 10px;
+            border-radius: 999px;
+            font-size: 0.76rem;
+            font-weight: 700;
+            line-height: 1.3;
+            letter-spacing: 0.02em;
+            white-space: nowrap;
+        }
+        .rating-badge.rating-5 {
+            background: rgba(245, 158, 11, 0.22);
+            border: 1px solid rgba(245, 158, 11, 0.6);
+            color: #FDE68A;
+        }
+        .rating-badge.rating-4 {
+            background: rgba(168, 85, 247, 0.22);
+            border: 1px solid rgba(168, 85, 247, 0.6);
+            color: #DDD6FE;
+        }
+        .rating-badge.rating-3 {
+            background: rgba(56, 189, 248, 0.2);
+            border: 1px solid rgba(56, 189, 248, 0.55);
+            color: #BAE6FD;
+        }
+        .rating-badge.rating-2 {
+            background: rgba(234, 179, 8, 0.18);
+            border: 1px solid rgba(234, 179, 8, 0.5);
+            color: #FEF08A;
+        }
+        .rating-badge.rating-1 {
+            background: rgba(239, 68, 68, 0.18);
+            border: 1px solid rgba(239, 68, 68, 0.5);
+            color: #FCA5A5;
+        }
+        .rating-badge.rating-0 {
+            background: rgba(148, 163, 184, 0.16);
+            border: 1px solid rgba(148, 163, 184, 0.4);
+            color: #CBD5E1;
+        }
+        .rating-badge.rating-none {
+            background: rgba(165, 200, 255, 0.08);
+            border: 1px dashed rgba(165, 200, 255, 0.3);
+            color: rgba(165, 200, 255, 0.65);
+        }
     </style>
 </head>
 <body>
@@ -3573,6 +3888,7 @@ PAGE_HTML = r'''<!DOCTYPE html>
             
             {theaudiodb_widget}
             {lastfm_widget}
+            {band_rating_widget}
 
             <div class="analysis-form" style="{analysis_form_display}">
                 <form id="analyze-form" method="post" action="/analyze" onsubmit="return startAnalysisSubmit(event);">
@@ -7183,6 +7499,273 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
 </body>
 </html>'''
 
+RATINGS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
+    <div class="stars"></div>
+    <div class="horizon"></div>
+    {app_header}
+    <style>
+        .ratings-page-container {
+            position: relative;
+            z-index: 2;
+            width: min(1160px, 94vw);
+            margin: 0 auto 60px auto;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .ratings-top-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+        .ratings-stats-bar {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            align-items: center;
+            background: rgba(11, 30, 63, 0.65);
+            border: 1px solid rgba(165, 200, 255, 0.18);
+            border-radius: 12px;
+            padding: 12px 18px;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+        }
+        .ratings-nav-tabs {
+            display: flex;
+            gap: 8px;
+            border-bottom: 2px solid rgba(165, 200, 255, 0.15);
+            padding-bottom: 8px;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        .ratings-tab-btn {
+            background: rgba(11, 30, 63, 0.6);
+            border: 1px solid rgba(165, 200, 255, 0.2);
+            color: #A5C8FF;
+            padding: 9px 18px;
+            border-radius: 8px;
+            font-size: 0.92rem;
+            font-weight: 700;
+            font-family: inherit;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.2s ease;
+            white-space: nowrap;
+        }
+        .ratings-tab-btn:hover {
+            border-color: #A5C8FF;
+            color: #FFFFFF;
+            background: rgba(25, 70, 133, 0.4);
+        }
+        .ratings-tab-btn.active {
+            background: linear-gradient(135deg, #194685, #2563EB);
+            border-color: #60A5FA;
+            color: #FFFFFF;
+            box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35);
+        }
+        .rec-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 16px;
+        }
+        .rec-card {
+            background: rgba(14, 38, 80, 0.6);
+            border: 1px solid rgba(165, 200, 255, 0.22);
+            border-radius: 14px;
+            padding: 18px 20px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            gap: 14px;
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
+            transition: border-color 0.2s ease, transform 0.18s ease;
+        }
+        .rec-card:hover {
+            border-color: rgba(165, 200, 255, 0.45);
+            transform: translateY(-2px);
+        }
+        .rec-header {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+        .rec-avatar {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, rgba(37, 99, 235, 0.45), rgba(11, 30, 63, 0.9));
+            border: 2px solid rgba(165, 200, 255, 0.4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+            font-size: 1.25rem;
+            color: #A5C8FF;
+            flex-shrink: 0;
+            overflow: hidden;
+        }
+        .rec-avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .rec-title-wrap {
+            flex: 1;
+            min-width: 0;
+        }
+        .rec-band-name {
+            font-family: 'Montserrat', sans-serif;
+            font-size: 1.12rem;
+            font-weight: 800;
+            color: #FFFFFF;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .rec-reason {
+            font-size: 0.78rem;
+            color: #DDD6FE;
+            margin-top: 3px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .quick-rate-box {
+            background: linear-gradient(135deg, rgba(25, 70, 133, 0.3) 0%, rgba(11, 30, 63, 0.7) 100%);
+            border: 1px solid rgba(165, 200, 255, 0.25);
+            border-radius: 14px;
+            padding: 20px 24px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+        }
+        .filter-chip-link {
+            background: rgba(11, 30, 63, 0.6);
+            border: 1px solid rgba(165, 200, 255, 0.2);
+            color: #A5C8FF;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.82rem;
+            text-decoration: none;
+            cursor: pointer;
+            transition: all 0.18s ease;
+            white-space: nowrap;
+        }
+        .filter-chip-link:hover, .filter-chip-link.active {
+            background: rgba(165, 200, 255, 0.3);
+            border-color: #A5C8FF;
+            color: #FFFFFF;
+        }
+    </style>
+    <main class="ratings-page-container">
+        {message_block}
+        <div class="ratings-top-bar">
+            <div>
+                <h1 style="font-family: 'Montserrat', sans-serif; font-size: 2.1rem; font-weight: 900; margin: 0; color: #FFFFFF;">
+                    ⭐ Band Rankings &amp; Discovery
+                </h1>
+                <div style="font-size: 0.9rem; color: #A5C8FF; margin-top: 4px;">
+                    Rank bands from 0 to 5, curate your analyzed catalog, and uncover bands related to your favorites
+                </div>
+            </div>
+            <a href="/" class="pill-btn secondary" style="font-size: 0.88rem; padding: 8px 16px;">
+                &larr; Back to Song Search
+            </a>
+        </div>
+
+        <div class="ratings-stats-bar">
+            <span style="font-size: 0.82rem; font-weight: 700; color: #A5C8FF; margin-right: 6px;">Rank Stats:</span>
+            {stats_badges_html}
+        </div>
+
+        <div class="ratings-nav-tabs">
+            <a href="/ratings?tab=discover" class="ratings-tab-btn{tab_discover_active}">
+                <span>✨ Related &amp; Discover</span>
+            </a>
+            <a href="/ratings?tab=analyzed" class="ratings-tab-btn{tab_analyzed_active}">
+                <span>🎯 Rate Analyzed Bands ({total_analyzed_count})</span>
+            </a>
+            <a href="/ratings?tab=my_ratings" class="ratings-tab-btn{tab_my_ratings_active}">
+                <span>⭐ My Ranked Bands ({total_rated_count})</span>
+            </a>
+        </div>
+
+        {tab_content_html}
+    </main>
+
+    <script>
+        function handleQuickRateSubmit(e) {
+            e.preventDefault();
+            const artist = document.getElementById('quick-artist-input').value.trim();
+            const rating = parseInt(document.getElementById('quick-rating-select').value, 10);
+            if (!artist) return;
+            
+            fetch('/api/band-rating', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({artist: artist, rating: rating})
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    window.location.href = '/ratings?tab=discover&msg=' + encodeURIComponent('Rated ' + artist + ' ' + rating + '★! Recommendations updated.');
+                }
+            })
+            .catch(err => {
+                console.error('Quick rate error:', err);
+            });
+        }
+
+        function filterAnalyzedBands(query) {
+            const q = (query || '').toLowerCase().trim();
+            const cards = document.querySelectorAll('.analyzed-band-card');
+            let visibleCount = 0;
+            cards.forEach(card => {
+                const art = (card.getAttribute('data-artist') || '').toLowerCase();
+                const matches = !q || art.includes(q);
+                card.style.display = matches ? 'flex' : 'none';
+                if (matches) visibleCount++;
+            });
+            const noMatch = document.getElementById('no-analyzed-matches');
+            if (noMatch) noMatch.style.display = (visibleCount === 0 && cards.length > 0) ? 'block' : 'none';
+        }
+
+        function filterRatedBands(query) {
+            const q = (query || '').toLowerCase().trim();
+            const cards = document.querySelectorAll('.my-rated-band-card');
+            let visibleCount = 0;
+            cards.forEach(card => {
+                const art = (card.getAttribute('data-artist') || '').toLowerCase();
+                const matches = !q || art.includes(q);
+                card.style.display = matches ? 'flex' : 'none';
+                if (matches) visibleCount++;
+            });
+            const noMatch = document.getElementById('no-rated-matches');
+            if (noMatch) noMatch.style.display = (visibleCount === 0 && cards.length > 0) ? 'block' : 'none';
+        }
+
+        async function deleteRating(artist) {
+            if (!confirm(`Remove rating for ${artist}?`)) return;
+            try {
+                const resp = await fetch('/api/band-rating/delete', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({artist: artist})
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    window.location.reload();
+                }
+            } catch (err) {
+                console.error('Delete rating error:', err);
+            }
+        }
+    </script>
+</body>
+</html>'''
+
 LOGIN_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
     <div class="stars"></div>
     <div class="horizon"></div>
@@ -7956,6 +8539,59 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(json.dumps({'playlists': playlists}).encode('utf-8'))
             return
 
+        if parsed.path in ('/ratings', '/band-rankings'):
+            self.render_ratings_page(parsed.query)
+            return
+
+        if parsed.path == '/api/band-rating':
+            params = urllib.parse.parse_qs(parsed.query)
+            artist = params.get('artist', [''])[0].strip()
+            if not artist:
+                self._send_json({'error': 'Artist parameter is required'}, status_code=400)
+                return
+            current_user = self.get_current_user()
+            user_email = current_user.get('email') if current_user else None
+            record = database.get_band_rating(artist, user_email=user_email, db_path=DATABASE_PATH)
+            self._send_json({'artist': artist, 'rating': record['rating'] if record else None, 'record': record})
+            return
+
+        if parsed.path == '/api/band-ratings':
+            params = urllib.parse.parse_qs(parsed.query)
+            min_r_str = params.get('min_rating', [''])[0].strip()
+            min_rating = int(min_r_str) if min_r_str.isdigit() else None
+            limit_str = params.get('limit', [''])[0].strip()
+            limit = int(limit_str) if limit_str.isdigit() else None
+            current_user = self.get_current_user()
+            user_email = current_user.get('email') if current_user else None
+            ratings = database.get_band_ratings(user_email=user_email, min_rating=min_rating, limit=limit, db_path=DATABASE_PATH)
+            stats = database.get_band_rating_stats(user_email=user_email, db_path=DATABASE_PATH)
+            self._send_json({'ratings': ratings, 'count': len(ratings), 'stats': stats})
+            return
+
+        if parsed.path == '/api/band-recommendations':
+            params = urllib.parse.parse_qs(parsed.query)
+            limit_str = params.get('limit', ['24'])[0].strip()
+            limit = int(limit_str) if limit_str.isdigit() else 24
+            single_artist = params.get('artist', [''])[0].strip()
+            current_user = self.get_current_user()
+            user_email = current_user.get('email') if current_user else None
+            if single_artist:
+                data = band_recommender.get_recommendations_for_single_artist(
+                    artist=single_artist,
+                    user_email=user_email,
+                    limit=limit,
+                    db_path=DATABASE_PATH
+                )
+                self._send_json(data)
+            else:
+                data = band_recommender.get_related_band_recommendations(
+                    user_email=user_email,
+                    limit=limit,
+                    db_path=DATABASE_PATH
+                )
+                self._send_json(data)
+            return
+
         if parsed.path == '/history':
             params = urllib.parse.parse_qs(parsed.query)
             selected_artist = params.get('artist', [''])[0].strip()
@@ -8658,6 +9294,28 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             self.handle_api_playlists_export_spotify(data)
             return
 
+        if self.path == '/api/band-rating':
+            content_length = int(self.headers.get('Content-Length', 0))
+            body = self.rfile.read(content_length).decode('utf-8')
+            try:
+                data = json.loads(body)
+            except Exception:
+                data = urllib.parse.parse_qs(body)
+                data = {k: v[0] if isinstance(v, list) and len(v) == 1 else v for k, v in data.items()}
+            self.handle_api_save_band_rating(data)
+            return
+
+        if self.path == '/api/band-rating/delete':
+            content_length = int(self.headers.get('Content-Length', 0))
+            body = self.rfile.read(content_length).decode('utf-8')
+            try:
+                data = json.loads(body)
+            except Exception:
+                data = urllib.parse.parse_qs(body)
+                data = {k: v[0] if isinstance(v, list) and len(v) == 1 else v for k, v in data.items()}
+            self.handle_api_delete_band_rating(data)
+            return
+
         if self.path not in ('/submit', '/analyze', '/prompts/save'):
             self.send_error(404, 'Not Found')
             return
@@ -9059,6 +9717,15 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             song=song_value
         )
 
+        current_user = self.get_current_user()
+        user_email = current_user.get('email') if current_user else None
+        band_rating_widget = build_band_rating_widget(
+            artist=artist_value,
+            user_email=user_email,
+            compact=False,
+            show_header=True
+        ) if artist_value else ""
+
         artist_info_btn_display = '' if artist_value else 'display: none;'
         
         model_options = ''
@@ -9104,6 +9771,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                            .replace('{analysis_result}', html_escape(analysis_result))\
                            .replace('{theaudiodb_widget}', theaudiodb_widget)\
                            .replace('{lastfm_widget}', lastfm_widget)\
+                           .replace('{band_rating_widget}', band_rating_widget)\
                            .replace('{similar_songs_widget}', similar_songs_widget)\
                            .replace('{artist_info_btn_display}', artist_info_btn_display)\
                            .replace('{model_options}', model_options)\
@@ -9161,10 +9829,15 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         artist_chips_display = '' if bands else 'display: none;'
         all_chip_active_style = 'background: rgba(165, 200, 255, 0.35); border-color: #A5C8FF; color: #FFFFFF;' if not artist_norm_target else 'background: rgba(11, 30, 63, 0.6); border-color: rgba(165, 200, 255, 0.2); color: #A5C8FF;'
 
+        current_user = self.get_current_user()
+        user_email = current_user.get('email') if current_user else None
+        rated_map = database.get_rated_artists_map(user_email=user_email)
+
         if not searches:
             history_list_html = '<p style="text-align: center; color: #A5C8FF; padding: 40px; font-style: italic;">No search history yet. Search for songs to build your collection!</p>'
         else:
             cards = []
+            badge_labels = {0: "⚪ 0 Unknown", 1: "👎 1★ Dislike", 2: "😐 2★ OK", 3: "👍 3★ Like", 4: "🔥 4★ Enjoy", 5: "🏆 5★ Favorite"}
             for s in searches:
                 artist_esc = html_escape(s['artist'])
                 song_esc = html_escape(s['song'])
@@ -9173,6 +9846,9 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 lyrics_badge = '<span style="color: #5af0a5; font-size: 0.78rem;">● Lyrics</span>' if s['has_lyrics'] else '<span style="color: #f08c5a; font-size: 0.78rem;">○ No lyrics</span>'
                 analysis_badge = '<span style="background: rgba(120, 90, 255, 0.3); color: #C5B8FF; padding: 2px 8px; border-radius: 6px; font-size: 0.78rem;">✦ Analyzed</span>' if s['has_analysis'] else ''
                 date_str = html_escape(s['updated_at'] or '')
+
+                r_val = rated_map.get(database.normalize_text(s['artist']))
+                rating_badge = f'<span class="rating-badge rating-{r_val}" style="font-size: 0.70rem; padding: 1px 7px;">{badge_labels.get(r_val, "")}</span>' if r_val is not None else ''
 
                 tags_list = s.get('track_tags') or []
                 tags_chips_html = ''
@@ -9190,6 +9866,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                     <div style="flex: 1; min-width: 220px;">
                         <div style="font-size: 1.1rem; font-weight: 700; color: #E1E8F0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
                             <button type="button" data-artist="{artist_esc}" onclick="filterByArtist(this.dataset.artist)" style="background: none; border: none; padding: 0; font: inherit; color: inherit; cursor: pointer; border-bottom: 1px dotted rgba(165, 200, 255, 0.4); text-align: left;" title="Filter history by {artist_esc}">{artist_esc}</button>
+                            {rating_badge}
                             <button type="button" class="pill-btn secondary" style="font-size: 0.68rem; padding: 1px 6px; line-height: 1.3;" data-artist="{artist_esc}" onclick="openArtistModal(this.dataset.artist)" title="View Last.fm info for {artist_esc}">👤 Info</button>
                             <span style="font-weight: 300; color: #A5C8FF;">&mdash;</span> {song_esc}
                         </div>
@@ -9230,6 +9907,9 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             # Render Artist Directory / Index
             bands = get_distinct_bands_cached()
             bands_count = len(bands)
+            user_email = current_user.get('email') if current_user else None
+            rated_map = database.get_rated_artists_map(user_email=user_email, db_path=DATABASE_PATH)
+            badge_labels = {0: "⚪ 0 Unknown", 1: "👎 1★", 2: "😐 2★", 3: "👍 3★", 4: "🔥 4★", 5: "🏆 5★"}
 
             band_cards = []
             for b in bands:
@@ -9238,12 +9918,18 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 b_last = html_escape(b.get('last_searched', '') or '')
                 b_initial = html_escape(b['artist'][:1].upper() if b.get('artist') else '?')
                 songs_text = f"{b_count} song" if b_count == 1 else f"{b_count} songs"
+                r_val = rated_map.get(database.normalize_text(b['artist']))
+                rating_badge = f'<span class="rating-badge rating-{r_val}" style="font-size: 0.72rem; padding: 2px 7px;">{badge_labels.get(r_val, "")}</span>' if r_val is not None else ''
+
                 band_cards.append(f'''
                 <div style="background: rgba(14, 38, 80, 0.55); border: 1px solid rgba(165, 200, 255, 0.2); border-radius: 12px; padding: 18px 20px; display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;">
                     <div style="display: flex; align-items: center; gap: 14px;">
                         <div style="width: 44px; height: 44px; border-radius: 50%; background: linear-gradient(135deg, rgba(37, 99, 235, 0.4), rgba(11, 30, 63, 0.9)); border: 2px solid rgba(165, 200, 255, 0.4); display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 1.15rem; color: #A5C8FF; flex-shrink: 0; box-shadow: 0 2px 8px rgba(0,0,0,0.3);">{b_initial}</div>
                         <div>
-                            <div style="font-size: 1.2rem; font-weight: 800; color: #FFFFFF; font-family: 'Montserrat', sans-serif;">{b_name}</div>
+                            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                                <span style="font-size: 1.2rem; font-weight: 800; color: #FFFFFF; font-family: 'Montserrat', sans-serif;">{b_name}</span>
+                                {rating_badge}
+                            </div>
                             <div style="font-size: 0.82rem; color: #A5C8FF; margin-top: 4px;">{songs_text} in library &bull; Last active: {b_last}</div>
                         </div>
                     </div>
@@ -9520,6 +10206,13 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         ext_links.append(f'<a href="/artist?artist={artist_url_param}&refresh=1" class="artist-site-link refresh-link" title="Bypass cache and reload data from all APIs">↻ Refresh</a>')
         links_html = " ".join(ext_links)
 
+        artist_rating_widget = build_band_rating_widget(
+            artist=clean_artist,
+            user_email=user_email,
+            compact=False,
+            show_header=False
+        )
+
         # Hero Card HTML
         hero_html = f'''
         <div class="artist-hero-card">
@@ -9533,6 +10226,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                     <div class="artist-badges-row">{badges_html}</div>
                     {f'<div style="margin-top: 8px;">{tags_html}</div>' if tags_html else ''}
                     <div class="artist-links-row">{links_html}</div>
+                    <div style="margin-top: 14px;">{artist_rating_widget}</div>
                 </div>
             </div>
         </div>
@@ -12652,6 +13346,407 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 'auth_url': '/auth/spotify?next=/playlists',
                 'message': msg
             }).encode('utf-8'))
+
+    def handle_api_save_band_rating(self, data: Dict[str, Any]):
+        current_user = self.get_current_user()
+        user_email = current_user.get('email') if current_user else None
+        artist = (data.get('artist') or '').strip()
+        rating_raw = data.get('rating')
+        notes = (data.get('notes') or '').strip() or None
+
+        if not artist:
+            self._send_json({'success': False, 'error': 'Artist is required'}, status_code=400)
+            return
+
+        try:
+            rating = int(rating_raw)
+            if rating < 0 or rating > 5:
+                raise ValueError()
+        except (TypeError, ValueError):
+            self._send_json({'success': False, 'error': 'Rating must be an integer between 0 and 5'}, status_code=400)
+            return
+
+        record = database.save_band_rating(
+            artist=artist,
+            rating=rating,
+            user_email=user_email,
+            notes=notes,
+            db_path=DATABASE_PATH
+        )
+        self._send_json({'success': True, 'record': record, 'rating': rating, 'artist': artist})
+
+    def handle_api_delete_band_rating(self, data: Dict[str, Any]):
+        current_user = self.get_current_user()
+        user_email = current_user.get('email') if current_user else None
+        artist = (data.get('artist') or '').strip()
+
+        if not artist:
+            self._send_json({'success': False, 'error': 'Artist is required'}, status_code=400)
+            return
+
+        success = database.delete_band_rating(
+            artist=artist,
+            user_email=user_email,
+            db_path=DATABASE_PATH
+        )
+        self._send_json({'success': success, 'artist': artist})
+
+    def render_ratings_page(self, query: str = ''):
+        current_user = self.get_current_user()
+        user_email = current_user.get('email') if current_user else None
+
+        params = urllib.parse.parse_qs(query)
+        active_tab = params.get('tab', ['discover'])[0].strip().lower()
+        if active_tab not in ('discover', 'analyzed', 'my_ratings'):
+            active_tab = 'discover'
+
+        msg = params.get('msg', [''])[0].strip()
+        rating_filter_str = params.get('rating', [''])[0].strip()
+        rating_filter = int(rating_filter_str) if rating_filter_str.isdigit() and 0 <= int(rating_filter_str) <= 5 else None
+
+        stats = database.get_band_rating_stats(user_email=user_email, db_path=DATABASE_PATH)
+        counts = stats.get('by_rating') or stats.get('counts_by_rating') or {}
+        total_rated = stats.get('total_rated', 0)
+
+        badge_defs = [
+            (5, "🏆 5★ Favorites", counts.get(5, 0), "color: #FBBF24; background: rgba(245, 158, 11, 0.2); border: 1px solid rgba(245, 158, 11, 0.4);"),
+            (4, "🔥 4★ Enjoy", counts.get(4, 0), "color: #34D399; background: rgba(16, 185, 129, 0.2); border: 1px solid rgba(16, 185, 129, 0.4);"),
+            (3, "👍 3★ Likes", counts.get(3, 0), "color: #60A5FA; background: rgba(37, 99, 235, 0.2); border: 1px solid rgba(37, 99, 235, 0.4);"),
+            (2, "😐 2★ OK", counts.get(2, 0), "color: #CBD5E1; background: rgba(148, 163, 184, 0.2); border: 1px solid rgba(148, 163, 184, 0.4);"),
+            (1, "👎 1★ Dislike", counts.get(1, 0), "color: #F87171; background: rgba(239, 68, 68, 0.2); border: 1px solid rgba(239, 68, 68, 0.4);"),
+            (0, "⚪ 0 Unknown", counts.get(0, 0), "color: #94A3B8; background: rgba(100, 116, 139, 0.2); border: 1px solid rgba(100, 116, 139, 0.4);"),
+        ]
+        stats_badges = [
+            f'<span style="font-size: 0.8rem; font-weight: 700; color: #FFFFFF; background: rgba(37, 99, 235, 0.35); border: 1px solid #60A5FA; padding: 4px 10px; border-radius: 8px;">Total Ranked: <strong>{total_rated}</strong></span>'
+        ]
+        for r_val, r_label, r_count, r_style in badge_defs:
+            stats_badges.append(
+                f'<a href="/ratings?tab=my_ratings&rating={r_val}" style="{r_style} padding: 4px 10px; border-radius: 8px; font-size: 0.78rem; font-weight: 600; text-decoration: none; display: inline-flex; align-items: center; gap: 5px;" title="View {r_label}">'
+                f'<span>{r_label}:</span> <strong>{r_count}</strong>'
+                f'</a>'
+            )
+        stats_badges_html = " ".join(stats_badges)
+
+        analyzed_artists = database.get_analyzed_artists_with_ratings(user_email=user_email, db_path=DATABASE_PATH)
+        total_analyzed_count = len(analyzed_artists)
+
+        all_my_ratings = database.get_band_ratings(user_email=user_email, min_rating=None, db_path=DATABASE_PATH)
+        total_rated_count = len(all_my_ratings)
+
+        message_block = f'<div class="message" style="margin-bottom: 16px; background: rgba(16, 185, 129, 0.2); border: 1px solid #34D399; color: #E1E8F0; padding: 12px 18px; border-radius: 10px;">{html_escape(msg)}</div>' if msg else ''
+
+        tab_discover_active = ' active' if active_tab == 'discover' else ''
+        tab_analyzed_active = ' active' if active_tab == 'analyzed' else ''
+        tab_my_ratings_active = ' active' if active_tab == 'my_ratings' else ''
+
+        tab_content_html = ''
+
+        if active_tab == 'discover':
+            quick_rate_html = '''
+            <div class="quick-rate-box">
+                <div style="font-size: 1.15rem; font-weight: 800; color: #FFFFFF; font-family: 'Montserrat', sans-serif;">
+                    ⚡ Quick Rate Any Band
+                </div>
+                <div style="font-size: 0.84rem; color: #A5C8FF; margin-top: 4px; margin-bottom: 14px;">
+                    Search or enter any band name to give them a 0–5 rating and immediately boost your discovery feed
+                </div>
+                <form onsubmit="handleQuickRateSubmit(event)" style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+                    <input type="text" id="quick-artist-input" placeholder="Enter band name (e.g. Turnstile, Deftones, Touché Amoré)..." required
+                           style="flex: 1; min-width: 260px; background: rgba(11, 30, 63, 0.8); border: 1px solid rgba(165, 200, 255, 0.3); border-radius: 8px; padding: 10px 14px; color: #FFFFFF; font-size: 0.95rem; font-family: inherit;">
+                    <select id="quick-rating-select" style="background: rgba(11, 30, 63, 0.9); border: 1px solid rgba(165, 200, 255, 0.3); border-radius: 8px; padding: 10px 14px; color: #FFFFFF; font-size: 0.92rem; font-family: inherit; font-weight: 600;">
+                        <option value="5" selected>🏆 5 - Absolute Favorite (3.5x Weight)</option>
+                        <option value="4">🔥 4 - Really Enjoy (2.5x Weight)</option>
+                        <option value="3">👍 3 - Likes (1.2x Weight)</option>
+                        <option value="2">😐 2 - Is OK (0.3x Weight)</option>
+                        <option value="1">👎 1 - Dislike (Suppress &amp; Filter)</option>
+                        <option value="0">⚪ 0 - Know nothing (Candidate)</option>
+                    </select>
+                    <button type="submit" class="pill-btn primary" style="padding: 10px 20px; font-size: 0.92rem; font-weight: 700; white-space: nowrap;">
+                        Rate &amp; Update Recommendations &rarr;
+                    </button>
+                </form>
+            </div>
+            '''
+
+            rec_data = band_recommender.get_related_band_recommendations(
+                user_email=user_email,
+                limit=30,
+                include_already_rated=False,
+                db_path=DATABASE_PATH
+            )
+            recs = rec_data.get('recommendations', [])
+            seed_artists = rec_data.get('seed_artists', [])
+            fallback_used = rec_data.get('fallback_used', False)
+
+            seeds_chips = []
+            for s in seed_artists:
+                s_name = html_escape(s['artist'])
+                s_rating = s['rating']
+                r_badge = f'<span class="rating-badge rating-{s_rating}" style="font-size: 0.72rem; padding: 1px 6px;">{s_rating}★</span>'
+                seeds_chips.append(f'<span style="background: rgba(11, 30, 63, 0.7); border: 1px solid rgba(165, 200, 255, 0.25); padding: 4px 10px; border-radius: 16px; font-size: 0.8rem; color: #E1E8F0; display: inline-flex; align-items: center; gap: 6px;"><strong>{s_name}</strong> {r_badge}</span>')
+
+            seeds_html = f'''
+            <div style="background: rgba(14, 38, 80, 0.45); border: 1px solid rgba(165, 200, 255, 0.15); border-radius: 12px; padding: 14px 18px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                <span style="font-size: 0.82rem; font-weight: 700; color: #A5C8FF; display: flex; align-items: center; gap: 6px;">
+                    <span>🌱</span> Active Recommendation Seeds:
+                </span>
+                {"".join(seeds_chips)}
+            </div>
+            ''' if seeds_chips else '''
+            <div style="background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.35); border-radius: 12px; padding: 14px 18px; color: #FDE68A; font-size: 0.88rem; display: flex; align-items: center; gap: 10px;">
+                <span>💡</span>
+                <span>You haven't rated any bands 3★, 4★, or 5★ yet! Rate bands using the quick box above or on the <a href="/ratings?tab=analyzed" style="color: #60A5FA; font-weight: 700;">Analyzed Bands tab</a> to get personalized recommendations tailored to your exact taste.</span>
+            </div>
+            '''
+
+            fallback_notice = '''
+            <div style="background: rgba(37, 99, 235, 0.15); border: 1px solid rgba(37, 99, 235, 0.3); border-radius: 10px; padding: 10px 16px; color: #A5C8FF; font-size: 0.82rem; margin-top: 10px;">
+                ℹ️ <em>Showing starter recommendations based on analyzed bands in your library. Rate more bands to make these recommendations uniquely yours!</em>
+            </div>
+            ''' if fallback_used else ''
+
+            if not recs:
+                recs_grid_html = '''
+                <div style="text-align: center; padding: 50px 20px; background: rgba(11, 30, 63, 0.5); border-radius: 14px; border: 1px dashed rgba(165, 200, 255, 0.2); color: #A5C8FF;">
+                    <div style="font-size: 2.2rem; margin-bottom: 10px;">🎵</div>
+                    <div style="font-size: 1.15rem; font-weight: 700; color: #FFFFFF;">No recommendations found yet</div>
+                    <p style="font-size: 0.88rem; margin: 8px 0 16px 0; max-width: 480px; margin-inline: auto;">
+                        Rate a few bands with 4★ or 5★ in the quick rate bar above or analyze more songs to unlock scene discovery!
+                    </p>
+                </div>
+                '''
+            else:
+                card_items = []
+                for r in recs:
+                    r_artist = r['artist']
+                    r_artist_esc = html_escape(r_artist)
+                    r_artist_url = urllib.parse.quote(r_artist)
+                    r_initial = html_escape(r_artist[:1].upper() if r_artist else '?')
+                    r_img = r.get('image_url') or ''
+                    avatar_content = f'<img src="{html_escape(r_img)}" alt="{r_artist_esc}">' if r_img else r_initial
+
+                    in_lib_badge = '<span class="artist-meta-badge" style="color: #6EE7B7; border-color: rgba(16, 185, 129, 0.4); font-size: 0.72rem; padding: 1px 7px;">✓ In Library</span>' if r.get('in_library') else ''
+                    
+                    reason_esc = html_escape(r.get('reason') or 'Recommended based on your ratings')
+                    
+                    tag_chips = []
+                    for t in (r.get('tags') or [])[:2]:
+                        tag_chips.append(f'<span class="lastfm-tag-chip" style="font-size: 0.68rem; padding: 1px 6px;">#{html_escape(t)}</span>')
+                    tags_html = f'<div style="display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px;">{"".join(tag_chips)}</div>' if tag_chips else ''
+
+                    inline_rating_widget = build_band_rating_widget(
+                        artist=r_artist,
+                        user_email=user_email,
+                        current_rating=r.get('user_rating'),
+                        compact=True,
+                        show_header=False
+                    )
+
+                    card_items.append(f'''
+                    <div class="rec-card">
+                        <div>
+                            <div class="rec-header">
+                                <div class="rec-avatar">{avatar_content}</div>
+                                <div class="rec-title-wrap">
+                                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                                        <a href="/artist?artist={r_artist_url}" class="rec-band-name" title="View artist profile">{r_artist_esc}</a>
+                                        {in_lib_badge}
+                                    </div>
+                                    <div class="rec-reason">✨ {reason_esc}</div>
+                                    {tags_html}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                <span style="font-size: 0.75rem; font-weight: 700; color: #A5C8FF; text-transform: uppercase;">Rate this band:</span>
+                                <div style="display: flex; gap: 6px;">
+                                    <a href="/artist?artist={r_artist_url}" class="pill-btn secondary" style="font-size: 0.72rem; padding: 2px 8px;">Profile &rarr;</a>
+                                    <a href="/?artist={r_artist_url}" class="pill-btn secondary" style="font-size: 0.72rem; padding: 2px 8px;">Songs &rarr;</a>
+                                </div>
+                            </div>
+                            {inline_rating_widget}
+                        </div>
+                    </div>
+                    ''')
+                recs_grid_html = f'<div class="rec-grid">{"".join(card_items)}</div>'
+
+            tab_content_html = f'''
+            <div style="display: flex; flex-direction: column; gap: 18px;">
+                {quick_rate_html}
+                {seeds_html}
+                {fallback_notice}
+                <div>
+                    <div style="font-size: 1.25rem; font-weight: 800; color: #FFFFFF; font-family: 'Montserrat', sans-serif; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+                        <span>✨</span> Recommended Bands for You
+                    </div>
+                    {recs_grid_html}
+                </div>
+            </div>
+            '''
+
+        elif active_tab == 'analyzed':
+            cards = []
+            for item in analyzed_artists:
+                artist_name = item['artist']
+                artist_esc = html_escape(artist_name)
+                artist_url = urllib.parse.quote(artist_name)
+                rating = item.get('rating')
+                song_count = item.get('song_count', 0)
+                songs_text = f"{song_count} analyzed song" if song_count == 1 else f"{song_count} analyzed songs"
+
+                inline_widget = build_band_rating_widget(
+                    artist=artist_name,
+                    user_email=user_email,
+                    current_rating=rating,
+                    compact=True,
+                    show_header=False
+                )
+
+                cards.append(f'''
+                <div class="analyzed-band-card" data-artist="{artist_esc}" style="background: rgba(14, 38, 80, 0.55); border: 1px solid rgba(165, 200, 255, 0.18); border-radius: 12px; padding: 16px 20px; display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;">
+                    <div style="min-width: 220px; flex: 1;">
+                        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                            <a href="/artist?artist={artist_url}" style="font-family: 'Montserrat', sans-serif; font-size: 1.15rem; font-weight: 800; color: #FFFFFF; text-decoration: none;" title="Open artist profile">{artist_esc}</a>
+                            <span style="font-size: 0.78rem; color: #A5C8FF; background: rgba(165, 200, 255, 0.12); padding: 2px 8px; border-radius: 6px;">{songs_text}</span>
+                        </div>
+                        <div style="margin-top: 4px;">
+                            <a href="/history?artist={artist_url}" style="font-size: 0.76rem; color: #60A5FA; text-decoration: none;">View Songs in History &rarr;</a>
+                            <span style="color: rgba(165, 200, 255, 0.3); margin: 0 4px;">&bull;</span>
+                            <a href="/artist?artist={artist_url}" style="font-size: 0.76rem; color: #60A5FA; text-decoration: none;">Artist Deep Dive &rarr;</a>
+                        </div>
+                    </div>
+
+                    <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                        {inline_widget}
+                    </div>
+                </div>
+                ''')
+
+            cards_html = "\n".join(cards) if cards else '<p style="text-align: center; color: #A5C8FF; padding: 40px;">No analyzed bands found yet. Search and analyze songs to build your catalog!</p>'
+
+            tab_content_html = f'''
+            <div style="display: flex; flex-direction: column; gap: 16px;">
+                <div style="background: rgba(11, 30, 63, 0.65); border: 1px solid rgba(165, 200, 255, 0.2); border-radius: 12px; padding: 16px 20px; display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;">
+                    <div>
+                        <div style="font-size: 1.1rem; font-weight: 800; color: #FFFFFF; font-family: 'Montserrat', sans-serif;">
+                            Rate Analyzed Bands ({total_analyzed_count})
+                        </div>
+                        <div style="font-size: 0.84rem; color: #A5C8FF; margin-top: 2px;">
+                            Assign ratings (0–5) to bands that have lyrics analyzed with Gemini. Your ratings power recommendation seeds.
+                        </div>
+                    </div>
+                    <div style="min-width: 260px; flex: 1; max-width: 400px;">
+                        <input type="text" id="analyzed-search-input" oninput="filterAnalyzedBands(this.value)" placeholder="Filter analyzed bands by name..."
+                               style="width: 100%; box-sizing: border-box; background: rgba(14, 38, 80, 0.7); border: 1px solid rgba(165, 200, 255, 0.3); border-radius: 8px; padding: 8px 14px; color: #FFFFFF; font-size: 0.88rem; font-family: inherit;">
+                    </div>
+                </div>
+
+                <div id="no-analyzed-matches" style="display: none; text-align: center; padding: 30px; color: #A5C8FF; background: rgba(11, 30, 63, 0.4); border-radius: 10px;">
+                    No analyzed bands match your search filter.
+                </div>
+
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                    {cards_html}
+                </div>
+            </div>
+            '''
+
+        elif active_tab == 'my_ratings':
+            filter_chips = [
+                f'<a href="/ratings?tab=my_ratings" class="filter-chip-link{" active" if rating_filter is None else ""}">'
+                f'All ({total_rated_count})</a>'
+            ]
+            for r_val, r_label, r_count, _ in badge_defs:
+                active_cls = " active" if rating_filter == r_val else ""
+                filter_chips.append(
+                    f'<a href="/ratings?tab=my_ratings&rating={r_val}" class="filter-chip-link{active_cls}">'
+                    f'{r_label} ({r_count})</a>'
+                )
+            filter_chips_html = " ".join(filter_chips)
+
+            filtered_ratings = [
+                r for r in all_my_ratings
+                if rating_filter is None or r.get('rating') == rating_filter
+            ]
+
+            cards = []
+            for r in filtered_ratings:
+                artist_name = r['artist']
+                artist_esc = html_escape(artist_name)
+                artist_url = urllib.parse.quote(artist_name)
+                rating = r.get('rating', 0)
+                updated_at = html_escape(r.get('updated_at', '') or '')
+
+                inline_widget = build_band_rating_widget(
+                    artist=artist_name,
+                    user_email=user_email,
+                    current_rating=rating,
+                    compact=True,
+                    show_header=False
+                )
+
+                cards.append(f'''
+                <div class="my-rated-band-card" data-artist="{artist_esc}" style="background: rgba(14, 38, 80, 0.55); border: 1px solid rgba(165, 200, 255, 0.18); border-radius: 12px; padding: 16px 20px; display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;">
+                    <div style="min-width: 220px; flex: 1;">
+                        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                            <a href="/artist?artist={artist_url}" style="font-family: 'Montserrat', sans-serif; font-size: 1.15rem; font-weight: 800; color: #FFFFFF; text-decoration: none;" title="Open artist profile">{artist_esc}</a>
+                        </div>
+                        <div style="font-size: 0.76rem; color: rgba(225, 232, 240, 0.5); margin-top: 4px;">
+                            Ranked on {updated_at}
+                            <span style="color: rgba(165, 200, 255, 0.3); margin: 0 4px;">&bull;</span>
+                            <a href="/artist?artist={artist_url}" style="color: #60A5FA; text-decoration: none;">Artist Deep Dive &rarr;</a>
+                            <span style="color: rgba(165, 200, 255, 0.3); margin: 0 4px;">&bull;</span>
+                            <a href="/ratings?tab=discover&seed={artist_url}" style="color: #6EE7B7; text-decoration: none;">Explore Similar &rarr;</a>
+                        </div>
+                    </div>
+
+                    <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
+                        {inline_widget}
+                        <button type="button" data-artist="{artist_esc}" onclick="deleteRating(this.dataset.artist)" class="pill-btn danger" style="padding: 5px 10px; font-size: 0.78rem; background: transparent; border: 1px solid rgba(239, 68, 68, 0.4); color: #F87171; cursor: pointer; border-radius: 6px;" title="Remove this rating">
+                            🗑 Delete
+                        </button>
+                    </div>
+                </div>
+                ''')
+
+            cards_html = "\n".join(cards) if cards else '<p style="text-align: center; color: #A5C8FF; padding: 40px;">No ranked bands found for this filter.</p>'
+
+            tab_content_html = f'''
+            <div style="display: flex; flex-direction: column; gap: 16px;">
+                <div style="background: rgba(11, 30, 63, 0.65); border: 1px solid rgba(165, 200, 255, 0.2); border-radius: 12px; padding: 16px 20px; display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;">
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+                        <span style="font-size: 0.82rem; font-weight: 700; color: #A5C8FF; margin-right: 4px;">Filter:</span>
+                        {filter_chips_html}
+                    </div>
+                    <div style="min-width: 240px; flex: 1; max-width: 360px;">
+                        <input type="text" id="rated-search-input" oninput="filterRatedBands(this.value)" placeholder="Search your ranked bands..."
+                               style="width: 100%; box-sizing: border-box; background: rgba(14, 38, 80, 0.7); border: 1px solid rgba(165, 200, 255, 0.3); border-radius: 8px; padding: 8px 14px; color: #FFFFFF; font-size: 0.88rem; font-family: inherit;">
+                    </div>
+                </div>
+
+                <div id="no-rated-matches" style="display: none; text-align: center; padding: 30px; color: #A5C8FF; background: rgba(11, 30, 63, 0.4); border-radius: 10px;">
+                    No ranked bands match your search filter.
+                </div>
+
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                    {cards_html}
+                </div>
+            </div>
+            '''
+
+        page_content = RATINGS_PAGE_HTML.replace('{app_header}', build_app_header('ratings', user=current_user))\
+                                        .replace('{message_block}', message_block)\
+                                        .replace('{stats_badges_html}', stats_badges_html)\
+                                        .replace('{tab_discover_active}', tab_discover_active)\
+                                        .replace('{tab_analyzed_active}', tab_analyzed_active)\
+                                        .replace('{tab_my_ratings_active}', tab_my_ratings_active)\
+                                        .replace('{total_analyzed_count}', str(total_analyzed_count))\
+                                        .replace('{total_rated_count}', str(total_rated_count))\
+                                        .replace('{tab_content_html}', tab_content_html)
+
+        self._send_html(page_content)
 
     def log_message(self, format, *args):
         return

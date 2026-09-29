@@ -233,6 +233,21 @@ def _format_playlist_item_record(rec: Any) -> Optional[Dict[str, Any]]:
             d['position'] = 0
     return d
 
+def _format_band_rating_record(rec: Any) -> Optional[Dict[str, Any]]:
+    if not rec:
+        return None
+    d = dict(rec)
+    if 'created_at' in d and d['created_at'] is not None:
+        d['created_at'] = _format_datetime(d['created_at'])
+    if 'updated_at' in d and d['updated_at'] is not None:
+        d['updated_at'] = _format_datetime(d['updated_at'])
+    if 'rating' in d and d['rating'] is not None:
+        try:
+            d['rating'] = int(d['rating'])
+        except (ValueError, TypeError):
+            d['rating'] = 0
+    return d
+
 
 @contextmanager
 def get_connection(db_path: Optional[str] = None):
@@ -493,6 +508,31 @@ def init_db(db_path: Optional[str] = None) -> None:
                 ON thematic_curation_cache(cache_key);
             """)
             cursor.execute("""
+                CREATE TABLE IF NOT EXISTS band_ratings (
+                    id SERIAL PRIMARY KEY,
+                    user_email TEXT NOT NULL,
+                    artist TEXT NOT NULL,
+                    artist_normalized TEXT NOT NULL,
+                    rating INTEGER NOT NULL CHECK (rating >= 0 AND rating <= 5),
+                    notes TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(user_email, artist_normalized)
+                );
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_band_ratings_user_artist 
+                ON band_ratings(user_email, artist_normalized);
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_band_ratings_user_rating 
+                ON band_ratings(user_email, rating DESC);
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_band_ratings_user_updated 
+                ON band_ratings(user_email, updated_at DESC);
+            """)
+            cursor.execute("""
                 INSERT INTO users (email, is_admin, is_active, created_at)
                 VALUES (%s, TRUE, TRUE, CURRENT_TIMESTAMP)
                 ON CONFLICT (email) DO UPDATE SET is_admin = TRUE, is_active = TRUE;
@@ -701,6 +741,31 @@ def init_db(db_path: Optional[str] = None) -> None:
             cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_thematic_cache_key 
                 ON thematic_curation_cache(cache_key);
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS band_ratings (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_email TEXT NOT NULL,
+                    artist TEXT NOT NULL,
+                    artist_normalized TEXT NOT NULL,
+                    rating INTEGER NOT NULL CHECK (rating >= 0 AND rating <= 5),
+                    notes TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(user_email, artist_normalized)
+                );
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_band_ratings_user_artist 
+                ON band_ratings(user_email, artist_normalized);
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_band_ratings_user_rating 
+                ON band_ratings(user_email, rating DESC);
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_band_ratings_user_updated 
+                ON band_ratings(user_email, updated_at DESC);
             """)
             cursor.execute("""
                 INSERT INTO users (email, is_admin, is_active, created_at)
@@ -2333,6 +2398,234 @@ def clear_thematic_curation_cache(cache_key: Optional[str] = None, db_path: Opti
             return True
     except Exception:
         return False
+
+
+# ============================================================================
+# Band Ratings (0 to 5) Persistence & Analytics
+# ============================================================================
+
+def save_band_rating(
+    artist: str,
+    rating: int,
+    user_email: Optional[str] = None,
+    notes: Optional[str] = None,
+    db_path: Optional[str] = None
+) -> Optional[Dict[str, Any]]:
+    """
+    Save or update a 0 to 5 band rating for a user.
+    Rating scale:
+      0: Know nothing about them (unrated / unknown marker)
+      1: Dislike
+      2: Is ok
+      3: Likes
+      4: Really enjoy them
+      5: One of your absolute favorites
+    """
+    if not artist or not artist.strip():
+        return None
+
+    clean_artist = artist.strip()
+    norm_artist = normalize_text(clean_artist)
+    clean_email = (user_email or PRIMARY_ADMIN_EMAIL).lower().strip()
+
+    try:
+        r_int = int(rating)
+    except (ValueError, TypeError):
+        r_int = 0
+    clamped_rating = max(0, min(5, r_int))
+
+    target = get_db_target(db_path)
+    with get_connection(target) as conn:
+        cursor = conn.cursor()
+        if is_postgres(target):
+            cursor.execute("""
+                INSERT INTO band_ratings (user_email, artist, artist_normalized, rating, notes, created_at, updated_at)
+                VALUES (%s, %s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                ON CONFLICT (user_email, artist_normalized) DO UPDATE SET
+                    artist = EXCLUDED.artist,
+                    rating = EXCLUDED.rating,
+                    notes = EXCLUDED.notes,
+                    updated_at = CURRENT_TIMESTAMP
+                RETURNING id, user_email, artist, artist_normalized, rating, notes, created_at, updated_at;
+            """, (clean_email, clean_artist, norm_artist, clamped_rating, notes))
+            row = cursor.fetchone()
+            notify_db_mutation()
+            if row:
+                col_names = [desc[0] for desc in cursor.description]
+                return _format_band_rating_record(dict(zip(col_names, row)))
+            return None
+        else:
+            cursor.execute("""
+                INSERT INTO band_ratings (user_email, artist, artist_normalized, rating, notes, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'), strftime('%Y-%m-%d %H:%M:%f', 'now'))
+                ON CONFLICT (user_email, artist_normalized) DO UPDATE SET
+                    artist = excluded.artist,
+                    rating = excluded.rating,
+                    notes = excluded.notes,
+                    updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now');
+            """, (clean_email, clean_artist, norm_artist, clamped_rating, notes))
+            notify_db_mutation()
+            cursor.execute("""
+                SELECT id, user_email, artist, artist_normalized, rating, notes, created_at, updated_at
+                FROM band_ratings
+                WHERE LOWER(user_email) = ? AND artist_normalized = ?
+            """, (clean_email, norm_artist))
+            row = cursor.fetchone()
+            if row:
+                col_names = [desc[0] for desc in cursor.description]
+                return _format_band_rating_record(dict(zip(col_names, row)))
+            return None
+
+
+def get_band_rating(
+    artist: str,
+    user_email: Optional[str] = None,
+    db_path: Optional[str] = None
+) -> Optional[Dict[str, Any]]:
+    """Retrieve a band's rating record for a user."""
+    if not artist or not artist.strip():
+        return None
+    clean_email = (user_email or PRIMARY_ADMIN_EMAIL).lower().strip()
+    norm_artist = normalize_text(artist)
+
+    target = get_db_target(db_path)
+    with get_connection(target) as conn:
+        cursor = conn.cursor()
+        ph = "%s" if is_postgres(target) else "?"
+        cursor.execute(f"""
+            SELECT id, user_email, artist, artist_normalized, rating, notes, created_at, updated_at
+            FROM band_ratings
+            WHERE LOWER(user_email) = {ph} AND artist_normalized = {ph}
+        """, (clean_email, norm_artist))
+        row = cursor.fetchone()
+        if not row:
+            return None
+        col_names = [desc[0] for desc in cursor.description]
+        return _format_band_rating_record(dict(zip(col_names, row)))
+
+
+def get_band_ratings(
+    user_email: Optional[str] = None,
+    min_rating: Optional[int] = None,
+    rating_filter: Optional[int] = None,
+    order_by: str = 'rating DESC, updated_at DESC',
+    limit: Optional[int] = None,
+    db_path: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    """
+    Retrieve all band ratings for a user with optional filtering by rating or minimum rating.
+    """
+    clean_email = (user_email or PRIMARY_ADMIN_EMAIL).lower().strip()
+    target = get_db_target(db_path)
+    with get_connection(target) as conn:
+        cursor = conn.cursor()
+        ph = "%s" if is_postgres(target) else "?"
+        query = f"SELECT id, user_email, artist, artist_normalized, rating, notes, created_at, updated_at FROM band_ratings WHERE LOWER(user_email) = {ph}"
+        params: List[Any] = [clean_email]
+
+        if rating_filter is not None:
+            query += f" AND rating = {ph}"
+            params.append(int(rating_filter))
+        elif min_rating is not None:
+            query += f" AND rating >= {ph}"
+            params.append(int(min_rating))
+
+        order_map = {
+            'rating DESC, updated_at DESC': 'rating DESC, updated_at DESC, artist ASC',
+            'rating ASC, updated_at DESC': 'rating ASC, updated_at DESC, artist ASC',
+            'updated_at DESC': 'updated_at DESC, id DESC',
+            'artist ASC': 'artist ASC, rating DESC',
+            'rating DESC': 'rating DESC, artist ASC',
+        }
+        order_clause = order_map.get(order_by, 'rating DESC, updated_at DESC, artist ASC')
+        query += f" ORDER BY {order_clause}"
+
+        if limit and limit > 0:
+            query += f" LIMIT {ph}"
+            params.append(limit)
+
+        cursor.execute(query, tuple(params))
+        rows = cursor.fetchall()
+        col_names = [desc[0] for desc in cursor.description]
+        return [_format_band_rating_record(dict(zip(col_names, r))) for r in rows]
+
+
+def delete_band_rating(
+    artist: str,
+    user_email: Optional[str] = None,
+    db_path: Optional[str] = None
+) -> bool:
+    """Delete a band rating record for a user."""
+    if not artist or not artist.strip():
+        return False
+    clean_email = (user_email or PRIMARY_ADMIN_EMAIL).lower().strip()
+    norm_artist = normalize_text(artist)
+
+    target = get_db_target(db_path)
+    with get_connection(target) as conn:
+        cursor = conn.cursor()
+        ph = "%s" if is_postgres(target) else "?"
+        cursor.execute(f"DELETE FROM band_ratings WHERE LOWER(user_email) = {ph} AND artist_normalized = {ph}", (clean_email, norm_artist))
+        deleted = cursor.rowcount > 0
+        if deleted:
+            notify_db_mutation()
+        return deleted
+
+
+def get_rated_artists_map(
+    user_email: Optional[str] = None,
+    db_path: Optional[str] = None
+) -> Dict[str, int]:
+    """Return dictionary of {artist_normalized: rating} for quick UI lookups."""
+    ratings = get_band_ratings(user_email=user_email, db_path=db_path)
+    return {r['artist_normalized']: r['rating'] for r in ratings if r and 'artist_normalized' in r}
+
+
+def get_analyzed_artists_with_ratings(
+    user_email: Optional[str] = None,
+    db_path: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    """
+    Retrieve distinct analyzed artists from searches together with the user's band ratings.
+    """
+    analyzed_artists = get_analyzed_artists(db_path=db_path)
+    rated_map = get_rated_artists_map(user_email=user_email, db_path=db_path)
+
+    results = []
+    for a in analyzed_artists:
+        art_name = a.get('artist', '').strip()
+        norm = normalize_text(art_name)
+        rating_val = rated_map.get(norm)
+        results.append({
+            'artist': art_name,
+            'song_count': a.get('song_count', 0),
+            'rating': rating_val,  # None if never rated, or 0..5
+            'has_rating': (rating_val is not None),
+        })
+    return results
+
+
+def get_band_rating_stats(
+    user_email: Optional[str] = None,
+    db_path: Optional[str] = None
+) -> Dict[str, Any]:
+    """Return summary statistics of ratings for a user."""
+    ratings = get_band_ratings(user_email=user_email, db_path=db_path)
+    by_rating = {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
+    for r in ratings:
+        val = r.get('rating', 0)
+        if val in by_rating:
+            by_rating[val] += 1
+
+    ranked_ratings = [r['rating'] for r in ratings if r.get('rating', 0) > 0]
+    avg_rating = round(sum(ranked_ratings) / len(ranked_ratings), 2) if ranked_ratings else 0.0
+
+    return {
+        'total_rated': len(ratings),
+        'total_ranked': len(ranked_ratings),  # 1 to 5
+        'by_rating': by_rating,
+        'average_ranked_rating': avg_rating,
+    }
 
 
 
