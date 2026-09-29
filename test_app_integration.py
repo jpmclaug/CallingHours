@@ -1628,6 +1628,153 @@ class TestAppIntegration(unittest.TestCase):
             self.assertIn('Saving Playlist...', pl_html)
             self.assertIn('Exporting to Spotify...', pl_html)
 
+    def test_48_multi_artist_blend_playlist(self):
+        """Verify Option 7: Multi-Artist Top Tracks Blend (Alternating and Thematic modes, M3U/CSV export, and saving)."""
+        # 1. Verify Option 7 card is present on /playlists
+        with self.authed_get("/playlists") as resp:
+            self.assertEqual(resp.status, 200)
+            html = resp.read().decode('utf-8')
+            self.assertIn('Option 7 • Multi-Artist', html)
+            self.assertIn('Multi-Artist Top Tracks', html)
+            self.assertIn('id="option-card-multi-artist"', html)
+            self.assertIn('2+ Artists Catalog Blend', html)
+            self.assertIn('Blend top tracks from 2 or more artists', html)
+
+        # Verify Option 7 form controls when visiting mode=multi_artist
+        with self.authed_get("/playlists?mode=multi_artist") as resp:
+            self.assertEqual(resp.status, 200)
+            html = resp.read().decode('utf-8')
+            self.assertIn('id="input-multi-artists"', html)
+            self.assertIn('id="select-mix-mode"', html)
+            self.assertIn('Alternating Rotation', html)
+            self.assertIn('Thematic Analysis', html)
+            self.assertIn('id="select-per-artist"', html)
+
+        mock_catalog = {
+            "Jimmy Eat World": [
+                {"artist": "Jimmy Eat World", "song": "The Middle", "popularity": 85, "source": "spotify_top_tracks"},
+                {"artist": "Jimmy Eat World", "song": "Sweetness", "popularity": 78, "source": "spotify_top_tracks"},
+            ],
+            "Taking Back Sunday": [
+                {"artist": "Taking Back Sunday", "song": "Cute Without the 'E'", "popularity": 80, "source": "spotify_top_tracks"},
+                {"artist": "Taking Back Sunday", "song": "MakeDamnSure", "popularity": 76, "source": "spotify_top_tracks"},
+            ],
+        }
+
+        # 2. Test Alternating Mode
+        with patch("playlist_curator.fetch_multi_artist_catalog", return_value=mock_catalog):
+            url = "/playlists?mode=multi_artist&artists=" + urllib.parse.quote("Jimmy Eat World,Taking Back Sunday") + "&mix_mode=alternating&per_artist=2"
+            with self.authed_get(url) as resp:
+                self.assertEqual(resp.status, 200)
+                html = resp.read().decode('utf-8')
+                self.assertIn("Jimmy Eat World & Taking Back Sunday: Alternating Top Tracks", html)
+                self.assertIn("The Middle", html)
+                self.assertIn("Cute Without the 'E'", html)
+                self.assertIn("Sweetness", html)
+                self.assertIn("MakeDamnSure", html)
+                self.assertIn("Round 1 • Jimmy Eat World", html)
+                self.assertIn("Round 1 • Taking Back Sunday", html)
+
+        # 3. Test Thematic Mode with Gemini / Analysis response
+        mock_thematic_res = {
+            "playlist_title": "Anthemic Catharsis & Emo Reckoning",
+            "playlist_description": "Thematic cross-artist journey.",
+            "curator_notes": "From suburban restlessness to fiery vocal delivery.",
+            "engine": "gemini",
+            "themes": [
+                {"name": "Cathartic Crescendo", "description": "High energy emotional release.", "icon": "⚡", "track_count": 2}
+            ],
+            "tracks": [
+                {
+                    "artist": "Jimmy Eat World",
+                    "song": "The Middle",
+                    "theme": "Cathartic Crescendo",
+                    "connection_note": "Upbeat opening with infectious optimism."
+                },
+                {
+                    "artist": "Taking Back Sunday",
+                    "song": "MakeDamnSure",
+                    "theme": "Cathartic Crescendo",
+                    "connection_note": "Explosive post-hardcore chorus following up."
+                }
+            ]
+        }
+        with patch("playlist_curator.fetch_multi_artist_catalog", return_value=mock_catalog), \
+             patch("playlist_curator.mix_thematic", return_value=mock_thematic_res):
+            url = "/playlists?mode=multi_artist&artists=" + urllib.parse.quote("Jimmy Eat World,Taking Back Sunday") + "&mix_mode=thematic&per_artist=2"
+            with self.authed_get(url) as resp:
+                self.assertEqual(resp.status, 200)
+                html = resp.read().decode('utf-8')
+                self.assertIn("Anthemic Catharsis & Emo Reckoning", html)
+                self.assertIn("Thematic Track Analysis &amp; Detected Themes", html)
+                self.assertIn("Cathartic Crescendo", html)
+                self.assertIn("From suburban restlessness to fiery vocal delivery.", html)
+                self.assertIn("Upbeat opening with infectious optimism.", html)
+                self.assertIn("Explosive post-hardcore chorus following up.", html)
+
+        # 4. Test M3U8 Export for Multi-Artist
+        with patch("playlist_curator.fetch_multi_artist_catalog", return_value=mock_catalog):
+            url = "/playlists/export/m3u?mode=multi_artist&artists=" + urllib.parse.quote("Jimmy Eat World,Taking Back Sunday") + "&mix_mode=alternating"
+            with self.authed_get(url) as resp:
+                self.assertEqual(resp.status, 200)
+                self.assertIn("audio/x-mpegurl", resp.headers.get("Content-Type", ""))
+                body = resp.read().decode('utf-8')
+                self.assertIn("#EXTM3U", body)
+                self.assertIn("Jimmy Eat World - The Middle", body)
+                self.assertIn("Taking Back Sunday - Cute Without the 'E'", body)
+
+        # 5. Test CSV Export for Multi-Artist
+        with patch("playlist_curator.fetch_multi_artist_catalog", return_value=mock_catalog), \
+             patch("playlist_curator.mix_thematic", return_value=mock_thematic_res):
+            url = "/playlists/export/csv?mode=multi_artist&artists=" + urllib.parse.quote("Jimmy Eat World,Taking Back Sunday") + "&mix_mode=thematic"
+            with self.authed_get(url) as resp:
+                self.assertEqual(resp.status, 200)
+                self.assertIn("text/csv", resp.headers.get("Content-Type", ""))
+                body = resp.read().decode('utf-8')
+                self.assertIn("Position,Artist,Song,Theme,Thematic Rationale", body)
+                self.assertIn("Jimmy Eat World,The Middle,Cathartic Crescendo,Upbeat opening with infectious optimism.", body)
+                self.assertIn("Taking Back Sunday,MakeDamnSure,Cathartic Crescendo,Explosive post-hardcore chorus following up.", body)
+
+        # 6. Test Saving and Loading a Multi-Artist Blend Playlist via API
+        payload = json.dumps({
+            "name": "Jimmy and TBS Thematic Blend",
+            "description": "Cross-artist top tracks curation",
+            "generator_type": "multi_artist",
+            "items": mock_thematic_res["tracks"]
+        }).encode('utf-8')
+        headers = dict(self.auth_headers)
+        headers["Content-Type"] = "application/json"
+        req = urllib.request.Request(
+            f"{self.base_url}/api/playlists/save",
+            data=payload,
+            headers=headers
+        )
+        with urllib.request.urlopen(req) as resp:
+            self.assertEqual(resp.status, 200)
+            data = json.loads(resp.read().decode('utf-8'))
+            self.assertTrue(data.get("success"))
+            saved_pid = data.get("playlist_id")
+            self.assertIsNotNone(saved_pid)
+
+        # Verify Saved view shows the new multi-artist playlist
+        with self.authed_get("/playlists?tab=saved") as resp:
+            self.assertEqual(resp.status, 200)
+            html = resp.read().decode('utf-8')
+            self.assertIn("Jimmy and TBS Thematic Blend", html)
+            self.assertIn(f"/playlists?id={saved_pid}", html)
+
+        # Verify loading saved playlist shows tracks
+        with self.authed_get(f"/playlists?id={saved_pid}") as resp:
+            self.assertEqual(resp.status, 200)
+            html = resp.read().decode('utf-8')
+            self.assertIn("Jimmy and TBS Thematic Blend", html)
+            self.assertIn("The Middle", html)
+            self.assertIn("MakeDamnSure", html)
+
+        # Clean up
+        with self.authed_get(f"/playlists/delete?id={saved_pid}") as resp:
+            self.assertEqual(resp.status, 200)
+
 
 if __name__ == "__main__":
     unittest.main()
