@@ -6220,97 +6220,268 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
         .playlist-page-container {
             position: relative;
             z-index: 2;
-            width: min(1180px, 94vw);
+            width: min(1380px, 96vw);
             margin: 0 auto 60px auto;
             display: flex;
             flex-direction: column;
-            gap: 24px;
+            gap: 20px;
         }
+
+        /* Top Header & Navigation */
         .playlist-top-bar {
             display: flex;
             justify-content: space-between;
             align-items: center;
             gap: 16px;
             flex-wrap: wrap;
+            padding-bottom: 4px;
         }
-        .playlist-card {
-            background: linear-gradient(135deg, rgba(14, 34, 72, 0.85) 0%, rgba(6, 14, 30, 0.95) 100%);
-            border: 1px solid rgba(165, 200, 255, 0.22);
-            border-radius: 16px;
-            padding: 24px 28px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
-        }
-        .playlist-kpi-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-            gap: 16px;
-        }
-        .playlist-kpi-card {
-            background: rgba(14, 38, 80, 0.6);
-            border: 1px solid rgba(165, 200, 255, 0.2);
-            border-radius: 12px;
-            padding: 16px 18px;
+        .playlist-heading-group {
             display: flex;
             flex-direction: column;
             gap: 4px;
-            transition: transform 0.2s ease, border-color 0.2s ease;
         }
-        .playlist-kpi-card:hover {
-            transform: translateY(-2px);
-            border-color: rgba(165, 200, 255, 0.4);
-        }
-        .playlist-kpi-value {
-            font-size: 1.8rem;
+        .playlist-main-title {
+            font-size: 2rem;
             font-weight: 800;
-            color: #E1E8F0;
+            font-family: 'Montserrat', sans-serif;
+            color: #FFFFFF;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin: 0;
+            letter-spacing: -0.02em;
+        }
+        .playlist-studio-pill {
+            font-size: 0.72rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            background: linear-gradient(135deg, #1DB954 0%, #194685 100%);
+            color: #FFFFFF;
+            padding: 3px 10px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(29, 185, 84, 0.3);
+        }
+        .playlist-sub-title {
+            color: rgba(225, 232, 240, 0.72);
+            font-size: 0.9rem;
+            margin: 0;
+            max-width: 680px;
+            line-height: 1.45;
+        }
+        .playlist-tabs-nav {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            background: rgba(11, 30, 63, 0.75);
+            padding: 4px;
+            border-radius: 24px;
+            border: 1px solid rgba(165, 200, 255, 0.22);
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+        }
+        .playlist-tab-btn {
+            background: transparent;
+            border: none;
+            color: #A5C8FF;
+            font-size: 0.88rem;
+            font-weight: 700;
+            font-family: 'Montserrat', sans-serif;
+            padding: 8px 18px;
+            border-radius: 20px;
+            cursor: pointer;
+            text-decoration: none;
+            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .playlist-tab-btn:hover {
+            color: #FFFFFF;
+            background: rgba(165, 200, 255, 0.12);
+        }
+        .playlist-tab-btn.active {
+            background: #A5C8FF;
+            color: #050A14;
+            box-shadow: 0 2px 10px rgba(165, 200, 255, 0.35);
+        }
+
+        /* 2-Column Studio Workbench Layout */
+        .playlist-workbench {
+            display: grid;
+            grid-template-columns: 390px 1fr;
+            gap: 22px;
+            align-items: start;
+        }
+        @media (max-width: 1080px) {
+            .playlist-workbench {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Base Card Styling */
+        .playlist-card {
+            background: linear-gradient(135deg, rgba(14, 34, 72, 0.88) 0%, rgba(6, 14, 30, 0.96) 100%);
+            border: 1px solid rgba(165, 200, 255, 0.22);
+            border-radius: 16px;
+            padding: 22px 24px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+        }
+
+        /* Left Rail (Studio Controls) */
+        .playlist-studio-rail {
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
+        }
+
+        /* Mini KPI Bar in Rail */
+        .playlist-mini-kpis {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr) auto;
+            gap: 8px;
+            background: rgba(11, 30, 63, 0.6);
+            border: 1px solid rgba(165, 200, 255, 0.18);
+            border-radius: 12px;
+            padding: 10px 14px;
+            align-items: center;
+        }
+        .mini-kpi-item {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        .mini-kpi-val {
+            font-size: 1.15rem;
+            font-weight: 800;
+            color: #FFFFFF;
             font-family: 'Montserrat', sans-serif;
             line-height: 1.1;
         }
-        .playlist-kpi-label {
-            font-size: 0.78rem;
+        .mini-kpi-lbl {
+            font-size: 0.68rem;
             color: #A5C8FF;
             text-transform: uppercase;
-            letter-spacing: 0.05em;
-            font-weight: 600;
+            font-weight: 700;
+            letter-spacing: 0.04em;
         }
+        .mini-kpi-spotify {
+            border-left: 1px solid rgba(165, 200, 255, 0.15);
+            padding-left: 10px;
+            display: flex;
+            align-items: center;
+        }
+
+        /* Strategy Category Tabs */
+        .strategy-cat-nav {
+            display: flex;
+            gap: 6px;
+            background: rgba(5, 10, 20, 0.55);
+            padding: 4px;
+            border-radius: 10px;
+            border: 1px solid rgba(165, 200, 255, 0.14);
+            margin-bottom: 12px;
+            overflow-x: auto;
+        }
+        .strategy-cat-btn {
+            background: transparent;
+            border: none;
+            color: rgba(165, 200, 255, 0.75);
+            font-size: 0.74rem;
+            font-weight: 700;
+            padding: 5px 9px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            white-space: nowrap;
+        }
+        .strategy-cat-btn:hover {
+            color: #FFFFFF;
+            background: rgba(165, 200, 255, 0.1);
+        }
+        .strategy-cat-btn.active {
+            background: rgba(165, 200, 255, 0.22);
+            color: #FFFFFF;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+        }
+
+        /* Mode Selector Grid */
         .playlist-mode-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(185px, 1fr));
-            gap: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            max-height: 380px;
+            overflow-y: auto;
+            padding-right: 4px;
+        }
+        .playlist-mode-grid::-webkit-scrollbar {
+            width: 4px;
+        }
+        .playlist-mode-grid::-webkit-scrollbar-thumb {
+            background: rgba(165, 200, 255, 0.25);
+            border-radius: 4px;
         }
         .playlist-mode-card {
             background: rgba(11, 30, 63, 0.6);
-            border: 1px solid rgba(165, 200, 255, 0.2);
-            border-radius: 12px;
-            padding: 10px 14px;
+            border: 1px solid rgba(165, 200, 255, 0.18);
+            border-radius: 10px;
+            padding: 9px 12px;
             display: flex;
             align-items: center;
             gap: 10px;
             cursor: pointer;
             text-decoration: none;
-            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+            transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
             position: relative;
-            min-height: 48px;
         }
         .playlist-mode-card:hover {
             background: rgba(165, 200, 255, 0.12);
             border-color: rgba(165, 200, 255, 0.45);
-            transform: translateY(-1px);
+            transform: translateX(2px);
         }
         .playlist-mode-card.active {
-            background: linear-gradient(135deg, rgba(25, 70, 133, 0.65) 0%, rgba(14, 34, 72, 0.95) 100%);
+            background: linear-gradient(135deg, rgba(25, 70, 133, 0.7) 0%, rgba(14, 34, 72, 0.95) 100%);
             border: 2px solid #A5C8FF;
-            box-shadow: 0 0 16px rgba(165, 200, 255, 0.3);
+            box-shadow: 0 0 14px rgba(165, 200, 255, 0.3);
         }
         .playlist-mode-card.flagship {
             border-color: rgba(165, 200, 255, 0.35);
         }
+        .playlist-mode-icon {
+            font-size: 1.25rem;
+            line-height: 1;
+            flex-shrink: 0;
+            width: 26px;
+            text-align: center;
+        }
+        .playlist-mode-content {
+            display: flex;
+            flex-direction: column;
+            gap: 1px;
+            flex: 1;
+            min-width: 0;
+        }
+        .playlist-mode-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 6px;
+        }
+        .playlist-mode-title {
+            font-size: 0.86rem;
+            font-weight: 800;
+            color: #E1E8F0;
+            font-family: 'Montserrat', sans-serif;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
         .playlist-mode-badge {
-            font-size: 0.62rem;
+            font-size: 0.6rem;
             font-weight: 800;
             letter-spacing: 0.03em;
             text-transform: uppercase;
-            padding: 2px 6px;
+            padding: 1px 5px;
             border-radius: 4px;
             background: rgba(165, 200, 255, 0.12);
             color: #A5C8FF;
@@ -6320,31 +6491,11 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             background: #A5C8FF;
             color: #050A14;
             font-weight: 800;
-            box-shadow: 0 0 8px rgba(165, 200, 255, 0.35);
         }
-        .playlist-mode-icon {
-            font-size: 1.3rem;
-            line-height: 1;
-            flex-shrink: 0;
-        }
-        .playlist-mode-content {
-            display: flex;
-            flex-direction: column;
-            gap: 2px;
-            flex: 1;
-            min-width: 0;
-        }
-        .playlist-mode-header {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            flex-wrap: wrap;
-        }
-        .playlist-mode-title {
-            font-size: 0.88rem;
-            font-weight: 800;
-            color: #E1E8F0;
-            font-family: 'Montserrat', sans-serif;
+        .playlist-mode-count {
+            font-size: 0.7rem;
+            color: rgba(165, 200, 255, 0.75);
+            font-weight: 600;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -6352,41 +6503,39 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
         .playlist-mode-desc {
             display: none;
         }
-        .playlist-mode-count {
-            font-size: 0.72rem;
-            color: rgba(165, 200, 255, 0.75);
-            font-weight: 600;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
         .playlist-active-banner {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            gap: 12px;
-            flex-wrap: wrap;
+            gap: 10px;
             background: rgba(11, 30, 63, 0.45);
-            border: 1px solid rgba(165, 200, 255, 0.18);
+            border: 1px solid rgba(165, 200, 255, 0.16);
             border-radius: 8px;
-            padding: 8px 14px;
-            margin-top: 12px;
-            font-size: 0.82rem;
+            padding: 8px 12px;
+            margin-top: 10px;
+            font-size: 0.78rem;
             color: rgba(225, 232, 240, 0.85);
+            line-height: 1.4;
         }
-        .playlist-form-grid {
+
+        /* Form Inputs */
+        .playlist-form-fields {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+        .playlist-form-row {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-            gap: 16px;
-            align-items: flex-end;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
         }
         .playlist-input-group {
             display: flex;
             flex-direction: column;
-            gap: 6px;
+            gap: 5px;
         }
         .playlist-input-group label {
-            font-size: 0.78rem;
+            font-size: 0.75rem;
             font-weight: 700;
             color: #A5C8FF;
             text-transform: uppercase;
@@ -6395,68 +6544,281 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
         .playlist-input-group select,
         .playlist-input-group input[type="text"] {
             background: rgba(5, 10, 20, 0.85);
-            border: 1px solid rgba(165, 200, 255, 0.3);
+            border: 1px solid rgba(165, 200, 255, 0.28);
             border-radius: 8px;
-            padding: 10px 14px;
+            padding: 8px 12px;
             color: #FFFFFF;
             font-family: inherit;
-            font-size: 0.9rem;
+            font-size: 0.86rem;
             outline: none;
-            transition: border-color 0.2s ease;
+            transition: all 0.2s ease;
+            width: 100%;
+            box-sizing: border-box;
         }
         .playlist-input-group select:focus,
         .playlist-input-group input[type="text"]:focus {
             border-color: #A5C8FF;
             box-shadow: 0 0 10px rgba(165, 200, 255, 0.25);
         }
-        .playlist-actions-toolbar {
+        .deep-cuts-label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            color: #E1E8F0;
+            font-size: 0.82rem;
+            text-transform: none;
+            letter-spacing: normal;
+            margin-top: 4px;
+        }
+        .custom-checkbox {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+            accent-color: #A5C8FF;
+        }
+        .btn-reset-title {
+            padding: 6px 12px;
+            font-size: 0.75rem;
+            white-space: nowrap;
+            height: 38px;
+        }
+        .btn-generate-primary {
+            background: linear-gradient(135deg, #194685 0%, #15396D 100%);
+            color: #FFFFFF;
+            border: 1px solid #A5C8FF;
+            border-radius: 10px;
+            padding: 10px 18px;
+            font-size: 0.92rem;
+            font-weight: 800;
+            font-family: 'Montserrat', sans-serif;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            box-shadow: 0 4px 14px rgba(25, 70, 133, 0.4);
+            width: 100%;
+        }
+        .btn-generate-primary:hover {
+            background: linear-gradient(135deg, #1F55A3 0%, #194685 100%);
+            transform: translateY(-1px);
+            box-shadow: 0 6px 18px rgba(165, 200, 255, 0.35);
+        }
+
+        /* Right Stage: Hero Deck & Output */
+        .playlist-studio-stage {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .stage-hero-deck {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            flex-wrap: wrap;
+            padding-bottom: 18px;
+            border-bottom: 1px solid rgba(165, 200, 255, 0.16);
+        }
+        .playlist-hero-art {
+            position: relative;
+            width: 72px;
+            height: 72px;
+            border-radius: 14px;
+            background: linear-gradient(135deg, #194685 0%, #0B1E3F 100%);
+            border: 1px solid rgba(165, 200, 255, 0.4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+            flex-shrink: 0;
+            overflow: hidden;
+        }
+        .vinyl-grooves {
+            position: absolute;
+            width: 90px;
+            height: 90px;
+            border-radius: 50%;
+            border: 2px dashed rgba(165, 200, 255, 0.15);
+            animation: spinVinyl 14s linear infinite;
+        }
+        @keyframes spinVinyl {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        .hero-art-icon {
+            font-size: 2rem;
+            position: relative;
+            z-index: 2;
+        }
+        .playlist-hero-info {
+            flex: 1;
+            min-width: 260px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .hero-title-row {
             display: flex;
             align-items: center;
             gap: 10px;
             flex-wrap: wrap;
         }
+        .playlist-hero-title {
+            margin: 0;
+            font-size: 1.35rem;
+            font-weight: 800;
+            font-family: 'Montserrat', sans-serif;
+            color: #FFFFFF;
+            line-height: 1.2;
+        }
+        .playlist-hero-desc {
+            font-size: 0.82rem;
+            color: rgba(225, 232, 240, 0.7);
+            line-height: 1.4;
+        }
+        .playlist-meta-metrics {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            align-items: center;
+            margin-top: 4px;
+        }
+        .metric-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            background: rgba(165, 200, 255, 0.1);
+            border: 1px solid rgba(165, 200, 255, 0.22);
+            color: #A5C8FF;
+            font-size: 0.74rem;
+            font-weight: 700;
+            padding: 2px 9px;
+            border-radius: 12px;
+        }
+
+        /* Action Toolbar */
+        .playlist-actions-toolbar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-top: 10px;
+        }
         .btn-playlist-action {
             display: inline-flex;
             align-items: center;
             gap: 6px;
-            padding: 8px 16px;
+            padding: 7px 14px;
             border-radius: 8px;
-            font-size: 0.84rem;
+            font-size: 0.82rem;
             font-weight: 700;
             cursor: pointer;
             text-decoration: none;
             transition: all 0.2s ease;
             border: 1px solid transparent;
+            font-family: inherit;
         }
         .btn-playlist-spotify {
-            background: #1DB954;
+            background: linear-gradient(135deg, #1DB954 0%, #179343 100%);
             color: #050A14;
             font-weight: 800;
             box-shadow: 0 4px 14px rgba(29, 185, 84, 0.35);
         }
         .btn-playlist-spotify:hover {
-            background: #1ed760;
+            background: linear-gradient(135deg, #1ED760 0%, #1DB954 100%);
             transform: translateY(-1px);
             box-shadow: 0 6px 18px rgba(29, 185, 84, 0.45);
         }
         .btn-playlist-outline {
-            background: rgba(165, 200, 255, 0.1);
-            border-color: rgba(165, 200, 255, 0.25);
+            background: rgba(165, 200, 255, 0.08);
+            border-color: rgba(165, 200, 255, 0.24);
             color: #A5C8FF;
         }
         .btn-playlist-outline:hover {
-            background: rgba(165, 200, 255, 0.2);
+            background: rgba(165, 200, 255, 0.18);
             color: #FFFFFF;
             border-color: #A5C8FF;
         }
+
+        /* Tracklist Section */
+        .tracklist-container {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-top: 10px;
+        }
+        .tracklist-header-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .tracklist-header-left {
+            display: flex;
+            align-items: baseline;
+            gap: 10px;
+        }
+        .tracklist-section-title {
+            font-size: 0.86rem;
+            font-weight: 800;
+            color: #FFFFFF;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            font-family: 'Montserrat', sans-serif;
+        }
+        .tracklist-live-counter {
+            font-size: 0.74rem;
+            color: rgba(165, 200, 255, 0.7);
+            font-weight: 600;
+        }
+        .tracklist-header-right {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .tracklist-search-box {
+            background: rgba(5, 10, 20, 0.75);
+            border: 1px solid rgba(165, 200, 255, 0.25);
+            border-radius: 20px;
+            padding: 6px 14px;
+            color: #FFFFFF;
+            font-size: 0.8rem;
+            outline: none;
+            width: min(240px, 100%);
+            transition: all 0.2s ease;
+        }
+        .tracklist-search-box:focus {
+            border-color: #A5C8FF;
+            box-shadow: 0 0 8px rgba(165, 200, 255, 0.3);
+        }
+        .btn-reset-pruned {
+            background: rgba(240, 140, 90, 0.15);
+            border: 1px solid rgba(240, 140, 90, 0.35);
+            color: #F08C5A;
+            border-radius: 14px;
+            padding: 4px 10px;
+            font-size: 0.74rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .btn-reset-pruned:hover {
+            background: rgba(240, 140, 90, 0.25);
+            color: #FFFFFF;
+        }
+
+        /* Table Styling */
         .playlist-tracklist-table {
             width: 100%;
             border-collapse: separate;
-            border-spacing: 0 8px;
+            border-spacing: 0 6px;
         }
         .playlist-tracklist-row {
             background: rgba(11, 30, 63, 0.55);
-            border: 1px solid rgba(165, 200, 255, 0.15);
+            border: 1px solid rgba(165, 200, 255, 0.14);
             border-radius: 10px;
             transition: all 0.15s ease;
         }
@@ -6465,7 +6827,7 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             border-color: rgba(165, 200, 255, 0.35);
         }
         .playlist-tracklist-row td {
-            padding: 12px 16px;
+            padding: 10px 14px;
             vertical-align: middle;
         }
         .playlist-tracklist-row td:first-child {
@@ -6477,62 +6839,60 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             border-bottom-right-radius: 10px;
         }
         .playlist-track-num {
-            font-size: 0.86rem;
+            font-size: 0.82rem;
             color: rgba(225, 232, 240, 0.5);
             font-weight: 700;
-            width: 40px;
+            width: 36px;
             text-align: center;
         }
         .playlist-track-main {
             display: flex;
             flex-direction: column;
-            gap: 3px;
+            gap: 2px;
         }
         .playlist-track-title {
             font-weight: 700;
             color: #E1E8F0;
-            font-size: 0.98rem;
+            font-size: 0.94rem;
         }
         .playlist-track-artist {
             color: #A5C8FF;
-            font-size: 0.84rem;
+            font-size: 0.82rem;
         }
         .playlist-badge-model {
             display: inline-flex;
             align-items: center;
             gap: 4px;
-            font-size: 0.72rem;
+            font-size: 0.7rem;
             padding: 2px 7px;
             border-radius: 6px;
             background: rgba(120, 90, 255, 0.25);
             color: #D1C4E9;
             font-weight: 600;
         }
-        .playlist-tab-btn {
+        .btn-track-remove {
             background: transparent;
             border: none;
-            color: #A5C8FF;
-            font-size: 0.95rem;
-            font-weight: 700;
-            font-family: 'Montserrat', sans-serif;
-            padding: 8px 18px;
-            border-radius: 20px;
+            color: rgba(225, 232, 240, 0.4);
+            font-size: 1.15rem;
+            line-height: 1;
+            padding: 4px 6px;
+            border-radius: 4px;
             cursor: pointer;
-            text-decoration: none;
-            transition: all 0.2s ease;
+            transition: all 0.15s ease;
         }
-        .playlist-tab-btn.active {
-            background: #A5C8FF;
-            color: #050A14;
+        .btn-track-remove:hover {
+            color: #F08C5A;
+            background: rgba(240, 140, 90, 0.15);
         }
         .playlist-tag-chip {
             display: inline-block;
             background: rgba(165, 200, 255, 0.12);
             color: #A5C8FF;
             border: 1px solid rgba(165, 200, 255, 0.25);
-            padding: 3px 10px;
-            border-radius: 16px;
-            font-size: 0.76rem;
+            padding: 2px 8px;
+            border-radius: 14px;
+            font-size: 0.72rem;
             cursor: pointer;
             text-decoration: none;
             transition: all 0.15s ease;
@@ -6541,13 +6901,12 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             background: #A5C8FF;
             color: #050A14;
         }
+
+        /* Modal & Toast */
         .playlist-modal-backdrop {
             display: none;
             position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
+            top: 0; left: 0; right: 0; bottom: 0;
             background: rgba(5, 10, 20, 0.85);
             backdrop-filter: blur(8px);
             z-index: 1000;
@@ -6559,7 +6918,7 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             background: #0E2248;
             border: 1px solid #A5C8FF;
             border-radius: 16px;
-            padding: 28px;
+            padding: 26px;
             max-width: 500px;
             width: 100%;
             box-shadow: 0 12px 40px rgba(0, 0, 0, 0.7);
@@ -6575,7 +6934,7 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             border: 1px solid #A5C8FF;
             padding: 12px 20px;
             border-radius: 10px;
-            font-size: 0.88rem;
+            font-size: 0.86rem;
             font-weight: 600;
             box-shadow: 0 6px 20px rgba(0,0,0,0.5);
             opacity: 0;
@@ -6595,290 +6954,331 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
 
         <!-- Top Title & Navigation -->
         <div class="playlist-top-bar">
-            <div>
-                <h1 style="font-size: 2.1rem; font-weight: 800; font-family: 'Montserrat', sans-serif; color: #FFFFFF; display: flex; align-items: center; gap: 12px; margin: 0;">
-                    <span>🎶</span> Playlist Generator
+            <div class="playlist-heading-group">
+                <h1 class="playlist-main-title">
+                    <span>🎶</span> Playlist Generator <span class="playlist-studio-pill">Studio</span>
                 </h1>
-                <p style="color: rgba(225, 232, 240, 0.7); font-size: 0.92rem; margin: 6px 0 0 0;">
-                    Curate, export, and listen to intelligent playlists created from your Calling Hours lyric analyses.
+                <p class="playlist-sub-title">
+                    Intelligently curate, filter, prune, and export custom playlists powered by Gemini AI and Calling Hours analyses.
                 </p>
             </div>
-            <div style="display: flex; gap: 10px; align-items: center; background: rgba(11, 30, 63, 0.7); padding: 4px; border-radius: 24px; border: 1px solid rgba(165, 200, 255, 0.2);">
+            <div class="playlist-tabs-nav">
                 <a href="/playlists" class="playlist-tab-btn{generate_tab_active}" data-loading-title="Opening Generator Studio..." data-loading-subtitle="Playlist Studio" data-loading-icon="✨">✨ Generator Studio</a>
                 <a href="/playlists?tab=saved" class="playlist-tab-btn{saved_playlists_tab_active}" data-loading-title="Loading Saved Playlists..." data-loading-subtitle="Calling Hours Library" data-loading-icon="💾">💾 Saved Playlists ({saved_playlists_count})</a>
             </div>
         </div>
 
-        <!-- Global Stats KPI Grid -->
-        <div class="playlist-kpi-grid">
-            <div class="playlist-kpi-card">
-                <span class="playlist-kpi-label">Analyzed Songs</span>
-                <span class="playlist-kpi-value">{total_analyzed_count}</span>
-            </div>
-            <div class="playlist-kpi-card">
-                <span class="playlist-kpi-label">Artists Analyzed</span>
-                <span class="playlist-kpi-value">{total_artists_count}</span>
-            </div>
-            <div class="playlist-kpi-card">
-                <span class="playlist-kpi-label">Genre & Vibe Tags</span>
-                <span class="playlist-kpi-value">{total_tags_count}</span>
-            </div>
-            <div class="playlist-kpi-card">
-                <span class="playlist-kpi-label">Spotify Destination</span>
-                <div style="margin-top: 4px;">{spotify_status_badge}</div>
-            </div>
-        </div>
-
         <!-- Generator Studio View -->
-        <div id="generator-view" style="{generator_view_display}; display: flex; flex-direction: column; gap: 24px;">
-            <!-- Compact Generator Strategy Selector -->
-            <div class="playlist-card" style="padding: 18px 22px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;">
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        <span style="font-size: 1rem;">🎛️</span>
-                        <h2 style="font-size: 1.05rem; font-weight: 800; font-family: 'Montserrat', sans-serif; color: #FFFFFF; margin: 0;">
-                            1. Select Generator Strategy
-                        </h2>
-                    </div>
-                    <span style="font-size: 0.76rem; color: #A5C8FF; font-weight: 600;">Choose a curation method to build your playlist</span>
-                </div>
+        <div id="generator-view" style="{generator_view_display}">
+            <div class="playlist-workbench">
 
-                <div class="playlist-mode-grid">
-                    <!-- Option 1: All Analyzed Songs (Flagship / Primary) -->
-                    <a href="/playlists?mode=all_analyzed" class="playlist-mode-card flagship{mode_all_analyzed_active}" id="option-card-all" data-loading-title="Loading All Analyzed Tracks..." data-loading-subtitle="Calling Hours Master Library" data-loading-icon="✦">
-                        <div class="playlist-mode-icon">✦</div>
-                        <div class="playlist-mode-content">
-                            <div class="playlist-mode-header">
-                                <span class="playlist-mode-title">All Analyzed Songs</span>
-                                <span class="playlist-mode-badge primary">Option 1 • Flagship</span>
-                            </div>
-                            <span class="playlist-mode-count">{total_analyzed_count} tracks ready</span>
-                            <div class="playlist-mode-desc">Create a master playlist containing every track in your collection that has been analyzed by Gemini.</div>
+                <!-- Left Column: Strategy & Criteria Rail -->
+                <div class="playlist-studio-rail">
+                    <!-- Global Stats Mini KPI Grid -->
+                    <div class="playlist-mini-kpis">
+                        <div class="mini-kpi-item" title="Analyzed Songs in Library">
+                            <span class="mini-kpi-val">{total_analyzed_count}</span>
+                            <span class="mini-kpi-lbl">Analyzed</span>
                         </div>
-                    </a>
-
-                    <!-- Option 2: By Artist / Band -->
-                    <a href="/playlists?mode=artist" class="playlist-mode-card{mode_artist_active}" id="option-card-artist" data-loading-title="Loading Artist Playlist..." data-loading-subtitle="By Artist / Band" data-loading-icon="👤">
-                        <div class="playlist-mode-icon">👤</div>
-                        <div class="playlist-mode-content">
-                            <div class="playlist-mode-header">
-                                <span class="playlist-mode-title">By Artist / Band</span>
-                                <span class="playlist-mode-badge">Option 2 • Artist</span>
-                            </div>
-                            <span class="playlist-mode-count">{total_artists_count} artists available</span>
-                            <div class="playlist-mode-desc">Generate a curated playlist focusing on all analyzed songs from a specific band or musician.</div>
+                        <div class="mini-kpi-item" title="Artists with Lyrical Analyses">
+                            <span class="mini-kpi-val">{total_artists_count}</span>
+                            <span class="mini-kpi-lbl">Artists</span>
                         </div>
-                    </a>
-
-                    <!-- Option 3: By Genre & Mood Tag -->
-                    <a href="/playlists?mode=tag" class="playlist-mode-card{mode_tag_active}" id="option-card-tag" data-loading-title="Loading Genre & Mood Tags..." data-loading-subtitle="Last.fm Community Tags" data-loading-icon="🏷️">
-                        <div class="playlist-mode-icon">🏷️</div>
-                        <div class="playlist-mode-content">
-                            <div class="playlist-mode-header">
-                                <span class="playlist-mode-title">By Genre & Mood Tag</span>
-                                <span class="playlist-mode-badge">Option 3 • Last.fm</span>
-                            </div>
-                            <span class="playlist-mode-count">{total_tags_count} tags available</span>
-                            <div class="playlist-mode-desc">Filter analyzed songs by Last.fm community genre tags like Post-Punk, Shoegaze, or Midwest Emo.</div>
+                        <div class="mini-kpi-item" title="Genre & Vibe Tags">
+                            <span class="mini-kpi-val">{total_tags_count}</span>
+                            <span class="mini-kpi-lbl">Tags</span>
                         </div>
-                    </a>
-
-                    <!-- Option 4: By Audio Attributes -->
-                    <a href="/playlists?mode=mood" class="playlist-mode-card{mode_mood_active}" id="option-card-mood" data-loading-title="Loading Audio Radar..." data-loading-subtitle="Energy & Valence Attributes" data-loading-icon="⚡">
-                        <div class="playlist-mode-icon">⚡</div>
-                        <div class="playlist-mode-content">
-                            <div class="playlist-mode-header">
-                                <span class="playlist-mode-title">By Audio Attributes</span>
-                                <span class="playlist-mode-badge">Option 4 • Audio</span>
-                            </div>
-                            <span class="playlist-mode-count">Sonic Audio Radar</span>
-                            <div class="playlist-mode-desc">Curate songs by musical energy, danceability, deep melancholy (valence), or acoustic atmosphere.</div>
-                        </div>
-                    </a>
-
-                    <!-- Option 5: Spotify Heavy Rotation -->
-                    <a href="/playlists?mode=spotify" class="playlist-mode-card{mode_spotify_active}" id="option-card-spotify" data-loading-title="Loading Spotify History..." data-loading-subtitle="Recent Listening History" data-loading-icon="🎧">
-                        <div class="playlist-mode-icon">🎧</div>
-                        <div class="playlist-mode-content">
-                            <div class="playlist-mode-header">
-                                <span class="playlist-mode-title">Spotify Rotation</span>
-                                <span class="playlist-mode-badge">Option 5 • Streaming</span>
-                            </div>
-                            <span class="playlist-mode-count">Listening Sync</span>
-                            <div class="playlist-mode-desc">Build a playlist from your recent Spotify listening history matched with Calling Hours analyses.</div>
-                        </div>
-                    </a>
-
-                    <!-- Option 6: Setlist.fm Average Setlist by Year -->
-                    <a href="/playlists?mode=setlist_fm" class="playlist-mode-card{mode_setlist_fm_active}" id="option-card-setlist" data-loading-title="Loading Tour Setlist Intelligence..." data-loading-subtitle="Setlist.fm Concert History" data-loading-icon="🎫">
-                        <div class="playlist-mode-icon">🎫</div>
-                        <div class="playlist-mode-content">
-                            <div class="playlist-mode-header">
-                                <span class="playlist-mode-title">Average Setlist by Year</span>
-                                <span class="playlist-mode-badge" style="background: rgba(245, 158, 11, 0.2); color: #FCD34D; border: 1px solid rgba(245, 158, 11, 0.4);">Option 6 • Setlist.fm</span>
-                            </div>
-                            <span class="playlist-mode-count">Tour Setlist Intelligence</span>
-                            <div class="playlist-mode-desc">Recreate an artist's tour setlist for any given year based on Setlist.fm concert frequency and stage order.</div>
-                        </div>
-                    </a>
-
-                    <!-- Option 7: Multi-Artist Top Tracks Blend -->
-                    <a href="/playlists?mode=multi_artist" class="playlist-mode-card{mode_multi_artist_active}" id="option-card-multi-artist" data-loading-title="Loading Multi-Artist Blend..." data-loading-subtitle="Alternating &amp; Thematic Mix" data-loading-icon="🎭">
-                        <div class="playlist-mode-icon">🎭</div>
-                        <div class="playlist-mode-content">
-                            <div class="playlist-mode-header">
-                                <span class="playlist-mode-title">Multi-Artist Top Tracks</span>
-                                <span class="playlist-mode-badge" style="background: rgba(197, 184, 255, 0.2); color: #C5B8FF; border: 1px solid rgba(197, 184, 255, 0.4);">Option 7 • Multi-Artist</span>
-                            </div>
-                            <span class="playlist-mode-count">2+ Artists Catalog Blend</span>
-                            <div class="playlist-mode-desc">Blend top tracks from 2 or more artists by alternating round-robin or deep Gemini thematic analysis.</div>
-                        </div>
-                    </a>
-
-                    <!-- Option 8: AI Mood & Prompt Curator -->
-                    <a href="/playlists?mode=ai_prompt" class="playlist-mode-card{mode_ai_prompt_active}" id="option-card-ai-prompt" data-loading-title="Curating with Gemini AI..." data-loading-subtitle="AI Prompt &amp; Mood Curator" data-loading-icon="✨">
-                        <div class="playlist-mode-icon">✨</div>
-                        <div class="playlist-mode-content">
-                            <div class="playlist-mode-header">
-                                <span class="playlist-mode-title">AI Mood &amp; Prompt</span>
-                                <span class="playlist-mode-badge" style="background: rgba(90, 240, 165, 0.2); color: #5af0a5; border: 1px solid rgba(90, 240, 165, 0.4);">Option 8 • Gemini AI</span>
-                            </div>
-                            <span class="playlist-mode-count">Freeform Vibe Synthesis</span>
-                            <div class="playlist-mode-desc">Describe any vibe, mood, or setting (e.g. &quot;late night rainy drive&quot;) and Gemini will pick and sequence matching library tracks.</div>
-                        </div>
-                    </a>
-                </div>
-
-                <div class="playlist-active-banner">
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        <span>💡</span>
-                        <span><strong>Strategy:</strong> {active_playlist_desc}</span>
-                    </div>
-                    {saved_playlist_quick_dropdown_html}
-                </div>
-            </div>
-
-            <!-- Configuration & Filter Bar -->
-            <div class="playlist-card" style="padding: 20px 26px;">
-                <form method="GET" action="/playlists" id="generator-form" onsubmit="return handleGeneratorFormSubmit(event)">
-                    <input type="hidden" name="mode" value="{current_mode}">
-                    <div style="font-weight: 700; color: #E1E8F0; font-size: 0.95rem; margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <span>⚙️</span> 2. Configure Generator Settings
-                        </div>
-                        <span id="name-status-indicator" style="font-size: 0.76rem; color: #5af0a5; font-weight: 600;">✦ Auto-generates name on criteria changes</span>
-                    </div>
-
-                    <div class="playlist-form-grid">
-                        <!-- Mode-specific selector -->
-                        {mode_specific_inputs}
-
-                        <div class="playlist-input-group">
-                            <label for="select-order">Sort Order</label>
-                            <select name="order" id="select-order" onchange="submitGeneratorForm()">
-                                {sort_options_html}
-                            </select>
-                        </div>
-
-                        <div class="playlist-input-group">
-                            <label for="select-limit">Track Limit</label>
-                            <select name="limit" id="select-limit" onchange="submitGeneratorForm()">
-                                {limit_options_html}
-                            </select>
-                        </div>
-
-                        <div class="playlist-input-group" style="display: flex; align-items: flex-end; padding-bottom: 8px;">
-                            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; color: #E1E8F0; font-size: 0.84rem; text-transform: none; letter-spacing: normal;">
-                                <input type="checkbox" name="deep_cuts" value="1" id="check-deep-cuts" onchange="submitGeneratorForm()" {deep_cuts_checked} style="width: 16px; height: 16px; cursor: pointer; accent-color: #A5C8FF;">
-                                <span>💎 <strong>Deep Cuts Only</strong> <span style="font-size: 0.74rem; color: #A5C8FF;">(Hide hits)</span></span>
-                            </label>
-                        </div>
-
-                        <div class="playlist-input-group" style="grid-column: span 2;">
-                            <div style="display: flex; justify-content: space-between; align-items: center;">
-                                <label for="input-playlist-name">Playlist Title</label>
-                                <span id="title-mode-hint" style="font-size: 0.72rem; color: #A5C8FF;">(Editable &amp; auto-refreshes)</span>
-                            </div>
-                            <div style="display: flex; gap: 8px; align-items: center;">
-                                <input type="text" name="name" id="input-playlist-name" value="{active_playlist_title}" placeholder="Playlist Title" style="flex: 1;" oninput="onTitleManualEdit()">
-                                <button type="button" id="btn-reset-name" onclick="resetPlaylistName()" class="btn-playlist-action btn-playlist-outline" style="padding: 8px 12px; font-size: 0.76rem; white-space: nowrap; height: 42px;" title="Reset to default autogenerated title">
-                                    ↺ Auto Title
-                                </button>
-                            </div>
-                        </div>
-
-                        <div style="align-self: flex-end;">
-                            <button type="submit" id="btn-generate-playlist" class="btn-playlist-action" style="background: #194685; color: #FFFFFF; border-color: #A5C8FF; width: 100%; height: 42px; justify-content: center;">
-                                <span>⚡</span> Generate Playlist
-                            </button>
+                        <div class="mini-kpi-spotify" title="Spotify Destination Status">
+                            {spotify_status_badge}
                         </div>
                     </div>
-                    {tag_chips_container_html}
-                </form>
-            </div>
 
-            <!-- Generated Playlist Output Card -->
-            <div class="playlist-card" id="generated-playlist-section">
-                <!-- Header with Title, Count, and Export Actions -->
-                <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; flex-wrap: wrap; padding-bottom: 20px; border-bottom: 1px solid rgba(165, 200, 255, 0.15);">
-                    <div style="display: flex; gap: 16px; align-items: center;">
-                        <div style="width: 60px; height: 60px; border-radius: 12px; background: linear-gradient(135deg, #194685 0%, #0B1E3F 100%); border: 1px solid #A5C8FF; display: flex; align-items: center; justify-content: center; font-size: 1.8rem; box-shadow: 0 4px 16px rgba(0,0,0,0.4);">
-                            🎶
-                        </div>
-                        <div>
-                            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-                                <h3 id="display-playlist-title" style="margin: 0; font-size: 1.35rem; font-weight: 800; font-family: 'Montserrat', sans-serif; color: #FFFFFF;">
-                                    {active_playlist_title}
-                                </h3>
-                                <span class="playlist-mode-badge primary">{track_count} Tracks</span>
+                    <!-- 1. Generator Strategy Selector Card -->
+                    <div class="playlist-card" style="padding: 18px 20px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px;">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span style="font-size: 1rem;">🎛️</span>
+                                <h2 style="font-size: 1.02rem; font-weight: 800; font-family: 'Montserrat', sans-serif; color: #FFFFFF; margin: 0;">
+                                    1. Select Generator Strategy
+                                </h2>
                             </div>
-                            <div style="font-size: 0.84rem; color: rgba(225, 232, 240, 0.7); margin-top: 4px;">
-                                {active_playlist_desc}
+                            {saved_playlist_quick_dropdown_html}
+                        </div>
+
+                        <!-- Quick Category Switcher Tabs -->
+                        <div class="strategy-cat-nav">
+                            <button type="button" class="strategy-cat-btn active" data-cat="all" onclick="filterStrategyModes('all')">All (8)</button>
+                            <button type="button" class="strategy-cat-btn" data-cat="ai" onclick="filterStrategyModes('ai')">✨ AI &amp; Mixes</button>
+                            <button type="button" class="strategy-cat-btn" data-cat="catalog" onclick="filterStrategyModes('catalog')">🎸 Catalog &amp; Tours</button>
+                            <button type="button" class="strategy-cat-btn" data-cat="vibe" onclick="filterStrategyModes('vibe')">🎨 Vibes &amp; Radar</button>
+                        </div>
+
+                        <div class="playlist-mode-grid">
+                            <!-- Option 1: All Analyzed Songs (Flagship / Primary) -->
+                            <a href="/playlists?mode=all_analyzed" class="playlist-mode-card flagship{mode_all_analyzed_active}" id="option-card-all" data-mode-cat="catalog" data-loading-title="Loading All Analyzed Tracks..." data-loading-subtitle="Calling Hours Master Library" data-loading-icon="✦">
+                                <div class="playlist-mode-icon">✦</div>
+                                <div class="playlist-mode-content">
+                                    <div class="playlist-mode-header">
+                                        <span class="playlist-mode-title">All Analyzed Songs</span>
+                                        <span class="playlist-mode-badge primary">Option 1 • Flagship</span>
+                                    </div>
+                                    <span class="playlist-mode-count">{total_analyzed_count} tracks ready</span>
+                                    <div class="playlist-mode-desc">Create a master playlist containing every track in your collection that has been analyzed by Gemini.</div>
+                                </div>
+                            </a>
+
+                            <!-- Option 2: By Artist / Band -->
+                            <a href="/playlists?mode=artist" class="playlist-mode-card{mode_artist_active}" id="option-card-artist" data-mode-cat="catalog" data-loading-title="Loading Artist Playlist..." data-loading-subtitle="By Artist / Band" data-loading-icon="👤">
+                                <div class="playlist-mode-icon">👤</div>
+                                <div class="playlist-mode-content">
+                                    <div class="playlist-mode-header">
+                                        <span class="playlist-mode-title">By Artist / Band</span>
+                                        <span class="playlist-mode-badge">Option 2 • Artist</span>
+                                    </div>
+                                    <span class="playlist-mode-count">{total_artists_count} artists available</span>
+                                    <div class="playlist-mode-desc">Generate a curated playlist focusing on all analyzed songs from a specific band or musician.</div>
+                                </div>
+                            </a>
+
+                            <!-- Option 3: By Genre & Mood Tag -->
+                            <a href="/playlists?mode=tag" class="playlist-mode-card{mode_tag_active}" id="option-card-tag" data-mode-cat="vibe" data-loading-title="Loading Genre & Mood Tags..." data-loading-subtitle="Last.fm Community Tags" data-loading-icon="🏷️">
+                                <div class="playlist-mode-icon">🏷️</div>
+                                <div class="playlist-mode-content">
+                                    <div class="playlist-mode-header">
+                                        <span class="playlist-mode-title">By Genre & Mood Tag</span>
+                                        <span class="playlist-mode-badge">Option 3 • Last.fm</span>
+                                    </div>
+                                    <span class="playlist-mode-count">{total_tags_count} tags available</span>
+                                    <div class="playlist-mode-desc">Filter analyzed songs by Last.fm community genre tags like Post-Punk, Shoegaze, or Midwest Emo.</div>
+                                </div>
+                            </a>
+
+                            <!-- Option 4: By Audio Attributes -->
+                            <a href="/playlists?mode=mood" class="playlist-mode-card{mode_mood_active}" id="option-card-mood" data-mode-cat="vibe" data-loading-title="Loading Audio Radar..." data-loading-subtitle="Energy & Valence Attributes" data-loading-icon="⚡">
+                                <div class="playlist-mode-icon">⚡</div>
+                                <div class="playlist-mode-content">
+                                    <div class="playlist-mode-header">
+                                        <span class="playlist-mode-title">By Audio Attributes</span>
+                                        <span class="playlist-mode-badge">Option 4 • Audio</span>
+                                    </div>
+                                    <span class="playlist-mode-count">Sonic Audio Radar</span>
+                                    <div class="playlist-mode-desc">Curate songs by musical energy, danceability, deep melancholy (valence), or acoustic atmosphere.</div>
+                                </div>
+                            </a>
+
+                            <!-- Option 5: Spotify Heavy Rotation -->
+                            <a href="/playlists?mode=spotify" class="playlist-mode-card{mode_spotify_active}" id="option-card-spotify" data-mode-cat="vibe" data-loading-title="Loading Spotify History..." data-loading-subtitle="Recent Listening History" data-loading-icon="🎧">
+                                <div class="playlist-mode-icon">🎧</div>
+                                <div class="playlist-mode-content">
+                                    <div class="playlist-mode-header">
+                                        <span class="playlist-mode-title">Spotify Rotation</span>
+                                        <span class="playlist-mode-badge">Option 5 • Streaming</span>
+                                    </div>
+                                    <span class="playlist-mode-count">Listening Sync</span>
+                                    <div class="playlist-mode-desc">Build a playlist from your recent Spotify listening history matched with Calling Hours analyses.</div>
+                                </div>
+                            </a>
+
+                            <!-- Option 6: Setlist.fm Average Setlist by Year -->
+                            <a href="/playlists?mode=setlist_fm" class="playlist-mode-card{mode_setlist_fm_active}" id="option-card-setlist" data-mode-cat="catalog" data-loading-title="Loading Tour Setlist Intelligence..." data-loading-subtitle="Setlist.fm Concert History" data-loading-icon="🎫">
+                                <div class="playlist-mode-icon">🎫</div>
+                                <div class="playlist-mode-content">
+                                    <div class="playlist-mode-header">
+                                        <span class="playlist-mode-title">Average Setlist by Year</span>
+                                        <span class="playlist-mode-badge" style="background: rgba(245, 158, 11, 0.2); color: #FCD34D; border: 1px solid rgba(245, 158, 11, 0.4);">Option 6 • Setlist.fm</span>
+                                    </div>
+                                    <span class="playlist-mode-count">Tour Setlist Intelligence</span>
+                                    <div class="playlist-mode-desc">Recreate an artist's tour setlist for any given year based on Setlist.fm concert frequency and stage order.</div>
+                                </div>
+                            </a>
+
+                            <!-- Option 7: Multi-Artist Top Tracks Blend -->
+                            <a href="/playlists?mode=multi_artist" class="playlist-mode-card{mode_multi_artist_active}" id="option-card-multi-artist" data-mode-cat="ai" data-loading-title="Loading Multi-Artist Blend..." data-loading-subtitle="Alternating &amp; Thematic Mix" data-loading-icon="🎭">
+                                <div class="playlist-mode-icon">🎭</div>
+                                <div class="playlist-mode-content">
+                                    <div class="playlist-mode-header">
+                                        <span class="playlist-mode-title">Multi-Artist Top Tracks</span>
+                                        <span class="playlist-mode-badge" style="background: rgba(197, 184, 255, 0.2); color: #C5B8FF; border: 1px solid rgba(197, 184, 255, 0.4);">Option 7 • Multi-Artist</span>
+                                    </div>
+                                    <span class="playlist-mode-count">2+ Artists Catalog Blend</span>
+                                    <div class="playlist-mode-desc">Blend top tracks from 2 or more artists by alternating round-robin or deep Gemini thematic analysis.</div>
+                                </div>
+                            </a>
+
+                            <!-- Option 8: AI Mood & Prompt Curator -->
+                            <a href="/playlists?mode=ai_prompt" class="playlist-mode-card{mode_ai_prompt_active}" id="option-card-ai-prompt" data-mode-cat="ai" data-loading-title="Curating with Gemini AI..." data-loading-subtitle="AI Prompt &amp; Mood Curator" data-loading-icon="✨">
+                                <div class="playlist-mode-icon">✨</div>
+                                <div class="playlist-mode-content">
+                                    <div class="playlist-mode-header">
+                                        <span class="playlist-mode-title">AI Mood &amp; Prompt</span>
+                                        <span class="playlist-mode-badge" style="background: rgba(90, 240, 165, 0.2); color: #5af0a5; border: 1px solid rgba(90, 240, 165, 0.4);">Option 8 • Gemini AI</span>
+                                    </div>
+                                    <span class="playlist-mode-count">Freeform Vibe Synthesis</span>
+                                    <div class="playlist-mode-desc">Describe any vibe, mood, or setting (e.g. &quot;late night rainy drive&quot;) and Gemini will pick and sequence matching library tracks.</div>
+                                </div>
+                            </a>
+                        </div>
+
+                        <div class="playlist-active-banner">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span>💡</span>
+                                <span><strong>Strategy:</strong> {active_playlist_desc}</span>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Action Buttons -->
-                    <div class="playlist-actions-toolbar">
-                        <button type="button" class="btn-playlist-action btn-playlist-spotify" onclick="triggerSpotifyExport()" id="btn-export-spotify">
-                            <span>🎧</span> Export to Spotify
-                        </button>
-                        <a href="{export_apple_url}" class="btn-playlist-action btn-playlist-outline" onclick="showToast('Exporting Apple Music playlist...')" title="Download Apple Music / iTunes playlist">
-                            <span>🍎</span> Apple Music
-                        </a>
-                        <a href="{export_m3u_url}" class="btn-playlist-action btn-playlist-outline" onclick="showToast('Exporting .m3u8 playlist file...')" title="Download .m3u8 playlist file">
-                            <span>📥</span> .M3U8
-                        </a>
-                        <a href="{export_csv_url}" class="btn-playlist-action btn-playlist-outline" onclick="showToast('Exporting .csv spreadsheet...')" title="Download .csv spreadsheet">
-                            <span>📄</span> .CSV
-                        </a>
-                        <button type="button" class="btn-playlist-action btn-playlist-outline" onclick="copyPlaylistTracklist()" title="Copy tracklist to clipboard">
-                            <span>📋</span> Copy
-                        </button>
-                        <button type="button" class="btn-playlist-action btn-playlist-outline" onclick="savePlaylistToCallingHours()" id="btn-save-db" title="Save playlist in Calling Hours">
-                            <span>💾</span> Save
-                        </button>
+                    <!-- 2. Configuration & Filter Box -->
+                    <div class="playlist-card" style="padding: 18px 20px;">
+                        <form method="GET" action="/playlists" id="generator-form" onsubmit="return handleGeneratorFormSubmit(event)">
+                            <input type="hidden" name="mode" value="{current_mode}">
+                            <div style="font-weight: 700; color: #E1E8F0; font-size: 0.95rem; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <span>⚙️</span>
+                                    <span style="font-size: 1.02rem; font-family: 'Montserrat', sans-serif;">2. Configure Generator Settings</span>
+                                </div>
+                                <span id="name-status-indicator" style="font-size: 0.74rem; color: #5af0a5; font-weight: 600;">✦ Auto-generates name</span>
+                            </div>
+
+                            <div class="playlist-form-fields">
+                                <!-- Mode-specific selector -->
+                                {mode_specific_inputs}
+
+                                <div class="playlist-form-row">
+                                    <div class="playlist-input-group">
+                                        <label for="select-order">Sort Order</label>
+                                        <select name="order" id="select-order" onchange="submitGeneratorForm()">
+                                            {sort_options_html}
+                                        </select>
+                                    </div>
+
+                                    <div class="playlist-input-group">
+                                        <label for="select-limit">Track Limit</label>
+                                        <select name="limit" id="select-limit" onchange="submitGeneratorForm()">
+                                            {limit_options_html}
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div class="playlist-input-group" style="padding: 2px 0;">
+                                    <label class="deep-cuts-label">
+                                        <input type="checkbox" name="deep_cuts" value="1" id="check-deep-cuts" onchange="submitGeneratorForm()" {deep_cuts_checked} class="custom-checkbox">
+                                        <span>💎 <strong>Deep Cuts Only</strong> <span style="font-size: 0.72rem; color: #A5C8FF;">(Hide hits)</span></span>
+                                    </label>
+                                </div>
+
+                                <div class="playlist-input-group">
+                                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                                        <label for="input-playlist-name">Playlist Title</label>
+                                        <span id="title-mode-hint" style="font-size: 0.72rem; color: #A5C8FF;">(Auto-refreshes)</span>
+                                    </div>
+                                    <div style="display: flex; gap: 8px; align-items: center;">
+                                        <input type="text" name="name" id="input-playlist-name" value="{active_playlist_title}" placeholder="Playlist Title" style="flex: 1;" oninput="onTitleManualEdit()">
+                                        <button type="button" id="btn-reset-name" onclick="resetPlaylistName()" class="btn-playlist-action btn-playlist-outline btn-reset-title" title="Reset to default autogenerated title">
+                                            ↺ Auto Title
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div style="margin-top: 4px;">
+                                    <button type="submit" id="btn-generate-playlist" class="btn-generate-primary">
+                                        <span>⚡</span> Generate Playlist
+                                    </button>
+                                </div>
+                            </div>
+                            {tag_chips_container_html}
+                        </form>
                     </div>
                 </div>
 
-                {thematic_synergy_card_html}
+                <!-- Right Column: Live Playlist Canvas & Interactive Track Deck -->
+                <div class="playlist-studio-stage">
+                    <div class="playlist-card" id="generated-playlist-section" style="padding: 24px 26px;">
+                        <!-- Stage Hero Deck -->
+                        <div class="stage-hero-deck">
+                            <!-- Dynamic Vinyl Artwork Badge -->
+                            <div class="playlist-hero-art">
+                                <div class="vinyl-grooves"></div>
+                                <span class="hero-art-icon">🎶</span>
+                            </div>
 
-                <!-- Tracklist Search & Table -->
-                <div style="margin-top: 20px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; gap: 12px; flex-wrap: wrap;">
-                        <span style="font-size: 0.85rem; font-weight: 700; color: #A5C8FF; text-transform: uppercase; letter-spacing: 0.04em;">Tracklist Overview</span>
-                        <input type="text" id="tracklist-filter-input" placeholder="Filter songs in this playlist..." onkeyup="filterPlaylistTracks()" style="background: rgba(5, 10, 20, 0.7); border: 1px solid rgba(165, 200, 255, 0.25); border-radius: 20px; padding: 6px 14px; color: #FFFFFF; font-size: 0.82rem; outline: none; width: min(280px, 100%);">
-                    </div>
+                            <!-- Info & Action Hub -->
+                            <div class="playlist-hero-info">
+                                <div class="hero-title-row">
+                                    <h3 id="display-playlist-title" class="playlist-hero-title">
+                                        {active_playlist_title}
+                                    </h3>
+                                    <span class="playlist-mode-badge primary" id="badge-track-count">{track_count} Tracks</span>
+                                    <span class="playlist-mode-badge" style="text-transform: uppercase;">{current_mode}</span>
+                                </div>
+                                <div class="playlist-hero-desc">
+                                    {active_playlist_desc}
+                                </div>
 
-                    <div style="overflow-x: auto;">
-                        <table class="playlist-tracklist-table">
-                            <tbody id="playlist-tracklist-body">
-                                {tracklist_html}
-                            </tbody>
-                        </table>
-                    </div>
-                    <div id="playlist-no-tracks" style="display: none; text-align: center; color: #A5C8FF; padding: 30px; font-style: italic;">
-                        No matching tracks found in this playlist.
+                                <!-- Audio & Runtime Metric Pills -->
+                                <div class="playlist-meta-metrics">
+                                    <span class="metric-pill" id="metric-pill-runtime" title="Estimated listening duration">
+                                        ⏱️ {playlist_runtime_str}
+                                    </span>
+                                    <span class="metric-pill" id="metric-pill-tempo" title="Average tempo across tracks">
+                                        🎹 {playlist_avg_tempo_str}
+                                    </span>
+                                    <span class="metric-pill" id="metric-pill-energy" title="Average acoustic &amp; sonic energy">
+                                        ⚡ {playlist_avg_energy_str}
+                                    </span>
+                                </div>
+
+                                <!-- Action Toolbar -->
+                                <div class="playlist-actions-toolbar">
+                                    <button type="button" class="btn-playlist-action btn-playlist-spotify" onclick="triggerSpotifyExport()" id="btn-export-spotify">
+                                        <span>🎧</span> Export to Spotify
+                                    </button>
+                                    <a href="{export_apple_url}" class="btn-playlist-action btn-playlist-outline" onclick="showToast('Exporting Apple Music playlist...')" title="Download Apple Music / iTunes playlist">
+                                        <span>🍎</span> Apple Music
+                                    </a>
+                                    <a href="{export_m3u_url}" class="btn-playlist-action btn-playlist-outline" onclick="showToast('Exporting .m3u8 playlist file...')" title="Download .m3u8 playlist file">
+                                        <span>📥</span> .M3U8
+                                    </a>
+                                    <a href="{export_csv_url}" class="btn-playlist-action btn-playlist-outline" onclick="showToast('Exporting .csv spreadsheet...')" title="Download .csv spreadsheet">
+                                        <span>📄</span> .CSV
+                                    </a>
+                                    <button type="button" class="btn-playlist-action btn-playlist-outline" onclick="copyPlaylistTracklist()" title="Copy tracklist to clipboard">
+                                        <span>📋</span> Copy
+                                    </button>
+                                    <button type="button" class="btn-playlist-action btn-playlist-outline" onclick="savePlaylistToCallingHours()" id="btn-save-db" title="Save playlist in Calling Hours">
+                                        <span>💾</span> Save
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        {thematic_synergy_card_html}
+
+                        <!-- Interactive Tracklist Section -->
+                        <div class="tracklist-container">
+                            <div class="tracklist-header-bar">
+                                <div class="tracklist-header-left">
+                                    <span class="tracklist-section-title">Tracklist Overview</span>
+                                    <span class="tracklist-live-counter" id="tracklist-live-count">Showing <span id="visible-track-count">{track_count}</span> of <span id="total-track-count">{track_count}</span> songs</span>
+                                </div>
+                                <div class="tracklist-header-right">
+                                    <input type="text" id="tracklist-filter-input" placeholder="Quick filter songs or artists..." onkeyup="filterPlaylistTracks()" class="tracklist-search-box">
+                                    <button type="button" id="btn-reset-pruned-tracks" onclick="resetPrunedTracks()" class="btn-reset-pruned" style="display: none;" title="Restore all removed tracks">
+                                        ↺ Restore Removed
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div style="overflow-x: auto;">
+                                <table class="playlist-tracklist-table">
+                                    <tbody id="playlist-tracklist-body">
+                                        {tracklist_html}
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div id="playlist-no-tracks" style="display: none; text-align: center; color: #A5C8FF; padding: 36px; font-style: italic;">
+                                No matching tracks found in this playlist.
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -7218,6 +7618,122 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             window.location.href = `/playlists?id=${encodeURIComponent(id)}`;
         }
 
+        function filterStrategyModes(cat) {
+            const buttons = document.querySelectorAll('.strategy-cat-btn');
+            buttons.forEach(b => b.classList.toggle('active', b.getAttribute('data-cat') === cat));
+
+            const cards = document.querySelectorAll('.playlist-mode-card');
+            cards.forEach(c => {
+                const cardCat = c.getAttribute('data-mode-cat') || 'all';
+                if (cat === 'all' || cardCat === cat) {
+                    c.style.display = 'flex';
+                } else {
+                    c.style.display = 'none';
+                }
+            });
+        }
+
+        function pruneTrack(idx) {
+            if (!CURRENT_PLAYLIST.tracks || !CURRENT_PLAYLIST.tracks[idx]) return;
+            const removedSong = CURRENT_PLAYLIST.tracks[idx].song;
+
+            // Remove from current tracks array
+            CURRENT_PLAYLIST.tracks.splice(idx, 1);
+
+            // Animate and remove row from DOM
+            const row = document.getElementById(`playlist-track-row-${idx + 1}`);
+            if (row) {
+                row.style.transition = 'all 0.22s ease';
+                row.style.opacity = '0';
+                row.style.transform = 'translateX(24px)';
+                setTimeout(() => {
+                    row.remove();
+                    renumberTrackRows();
+                }, 220);
+            } else {
+                renumberTrackRows();
+            }
+
+            recalculatePlaylistMetrics();
+            showToast(`Removed "${removedSong}" from playlist.`);
+
+            const resetBtn = document.getElementById('btn-reset-pruned-tracks');
+            if (resetBtn) resetBtn.style.display = 'inline-block';
+        }
+
+        function renumberTrackRows() {
+            const rows = document.querySelectorAll('.playlist-tracklist-row');
+            rows.forEach((r, i) => {
+                r.id = `playlist-track-row-${i + 1}`;
+                r.setAttribute('data-idx', i);
+                const numSpan = r.querySelector('.track-num-display') || r.querySelector('.playlist-track-num');
+                if (numSpan) numSpan.textContent = `#${i + 1}`;
+                const removeBtn = r.querySelector('.btn-track-remove');
+                if (removeBtn) {
+                    removeBtn.setAttribute('onclick', `pruneTrack(${i})`);
+                }
+            });
+
+            const visibleCount = rows.length;
+            const countEl = document.getElementById('visible-track-count');
+            const totalEl = document.getElementById('total-track-count');
+            const badgeEl = document.getElementById('badge-track-count');
+            if (countEl) countEl.textContent = visibleCount;
+            if (totalEl) totalEl.textContent = CURRENT_PLAYLIST.tracks.length;
+            if (badgeEl) badgeEl.textContent = `${CURRENT_PLAYLIST.tracks.length} Tracks`;
+
+            const noTracks = document.getElementById('playlist-no-tracks');
+            if (noTracks) {
+                noTracks.style.display = CURRENT_PLAYLIST.tracks.length === 0 ? 'block' : 'none';
+            }
+        }
+
+        function resetPrunedTracks() {
+            window.location.reload();
+        }
+
+        function recalculatePlaylistMetrics() {
+            const tracks = CURRENT_PLAYLIST.tracks || [];
+            let totalMs = 0;
+            let tempoSum = 0;
+            let tempoCount = 0;
+            let energySum = 0;
+            let energyCount = 0;
+
+            tracks.forEach(t => {
+                if (t.duration_ms) totalMs += parseInt(t.duration_ms);
+                if (t.theaudiodb_data) {
+                    const adb = (typeof t.theaudiodb_data === 'string') ? JSON.parse(t.theaudiodb_data) : t.theaudiodb_data;
+                    if (adb && adb.tempo) { tempoSum += parseFloat(adb.tempo); tempoCount++; }
+                    if (adb && adb.energy) { energySum += parseFloat(adb.energy); energyCount++; }
+                }
+            });
+
+            let runtimeStr = '';
+            if (totalMs > 0) {
+                const totSecs = Math.floor(totalMs / 1000);
+                const mins = Math.floor(totSecs / 60);
+                const secs = totSecs % 60;
+                runtimeStr = mins >= 60 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : `${mins}m ${secs}s`;
+            } else if (tracks.length > 0) {
+                const estMins = tracks.length * 3.5;
+                runtimeStr = estMins >= 60 ? `~${Math.floor(estMins / 60)}h ${Math.floor(estMins % 60)}m` : `~${Math.floor(estMins)} min`;
+            } else {
+                runtimeStr = '0 min';
+            }
+
+            const tempoStr = tempoCount ? `${Math.round(tempoSum / tempoCount)} BPM` : 'Adaptive BPM';
+            const energyStr = energyCount ? `${Math.round(energySum / energyCount)}% Energy` : 'Balanced Energy';
+
+            const pillRuntime = document.getElementById('metric-pill-runtime');
+            const pillTempo = document.getElementById('metric-pill-tempo');
+            const pillEnergy = document.getElementById('metric-pill-energy');
+
+            if (pillRuntime) pillRuntime.textContent = `⏱️ ${runtimeStr}`;
+            if (pillTempo) pillTempo.textContent = `🎹 ${tempoStr}`;
+            if (pillEnergy) pillEnergy.textContent = `⚡ ${energyStr}`;
+        }
+
         function filterPlaylistTracks() {
             const query = (document.getElementById('tracklist-filter-input').value || '').toLowerCase().trim();
             const rows = document.querySelectorAll('.playlist-tracklist-row');
@@ -7231,6 +7747,8 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
                     r.style.display = 'none';
                 }
             });
+            const visCountEl = document.getElementById('visible-track-count');
+            if (visCountEl) visCountEl.textContent = visible;
             const noMatch = document.getElementById('playlist-no-tracks');
             if (noMatch) {
                 noMatch.style.display = (visible === 0 && rows.length > 0) ? 'block' : 'none';
@@ -7567,80 +8085,312 @@ RATINGS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             color: #FFFFFF;
             box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35);
         }
-        .rec-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-            gap: 16px;
-        }
-        .rec-card {
-            background: rgba(14, 38, 80, 0.6);
-            border: 1px solid rgba(165, 200, 255, 0.22);
-            border-radius: 14px;
-            padding: 18px 20px;
+
+        /* One-at-a-Time Spotlight Card Styles */
+        .spotlight-deck-wrapper {
             display: flex;
             flex-direction: column;
-            justify-content: space-between;
-            gap: 14px;
-            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
-            transition: border-color 0.2s ease, transform 0.18s ease;
+            gap: 16px;
+            max-width: 820px;
+            width: 100%;
+            margin: 0 auto;
         }
-        .rec-card:hover {
-            border-color: rgba(165, 200, 255, 0.45);
-            transform: translateY(-2px);
-        }
-        .rec-header {
+        .spotlight-toolbar {
             display: flex;
+            justify-content: space-between;
             align-items: center;
             gap: 14px;
+            flex-wrap: wrap;
+            background: rgba(11, 30, 63, 0.65);
+            border: 1px solid rgba(165, 200, 255, 0.2);
+            border-radius: 12px;
+            padding: 12px 18px;
         }
-        .rec-avatar {
-            width: 48px;
-            height: 48px;
+        .spotlight-mode-pills {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .mode-pill {
+            background: rgba(14, 38, 80, 0.7);
+            border: 1px solid rgba(165, 200, 255, 0.25);
+            color: #A5C8FF;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 0.84rem;
+            font-weight: 700;
+            font-family: inherit;
+            cursor: pointer;
+            transition: all 0.18s ease;
+        }
+        .mode-pill:hover {
+            border-color: #A5C8FF;
+            color: #FFFFFF;
+            background: rgba(37, 99, 235, 0.3);
+        }
+        .mode-pill.active {
+            background: linear-gradient(135deg, #194685, #2563EB);
+            border-color: #60A5FA;
+            color: #FFFFFF;
+            box-shadow: 0 2px 10px rgba(37, 99, 235, 0.4);
+        }
+        .spotlight-progress-wrap {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .spotlight-counter-badge {
+            font-size: 0.82rem;
+            font-weight: 700;
+            color: #A5C8FF;
+            white-space: nowrap;
+        }
+        .spotlight-progress-bar {
+            width: 120px;
+            height: 6px;
+            background: rgba(11, 30, 63, 0.8);
+            border: 1px solid rgba(165, 200, 255, 0.2);
+            border-radius: 999px;
+            overflow: hidden;
+        }
+        .spotlight-progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #38BDF8, #34D399);
+            border-radius: 999px;
+            transition: width 0.25s ease;
+        }
+        .spotlight-card {
+            background: linear-gradient(145deg, rgba(14, 38, 80, 0.85) 0%, rgba(11, 30, 63, 0.96) 100%);
+            border: 1.5px solid rgba(165, 200, 255, 0.35);
+            border-radius: 18px;
+            padding: 26px 30px;
+            box-shadow: 0 12px 36px rgba(0, 0, 0, 0.45);
+            display: flex;
+            flex-direction: column;
+            gap: 22px;
+            position: relative;
+            transform-origin: center;
+            animation: spotlightPopIn 0.18s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+        @keyframes spotlightPopIn {
+            from {
+                opacity: 0;
+                transform: translateY(12px) scale(0.97);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+        .spotlight-card.card-exit {
+            opacity: 0;
+            transform: translateY(-8px) scale(0.98);
+            transition: all 0.1s ease-out;
+        }
+        .spotlight-card-header {
+            display: flex;
+            align-items: center;
+            gap: 18px;
+        }
+        .spotlight-avatar {
+            width: 64px;
+            height: 64px;
             border-radius: 50%;
-            background: linear-gradient(135deg, rgba(37, 99, 235, 0.45), rgba(11, 30, 63, 0.9));
-            border: 2px solid rgba(165, 200, 255, 0.4);
+            background: linear-gradient(135deg, rgba(37, 99, 235, 0.6), rgba(11, 30, 63, 0.9));
+            border: 2px solid rgba(165, 200, 255, 0.5);
             display: flex;
             align-items: center;
             justify-content: center;
-            font-weight: 800;
-            font-size: 1.25rem;
+            font-size: 1.6rem;
+            font-weight: 900;
             color: #A5C8FF;
             flex-shrink: 0;
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
             overflow: hidden;
         }
-        .rec-avatar img {
+        .spotlight-avatar img {
             width: 100%;
             height: 100%;
             object-fit: cover;
         }
-        .rec-title-wrap {
+        .spotlight-band-info {
             flex: 1;
             min-width: 0;
         }
-        .rec-band-name {
-            font-family: 'Montserrat', sans-serif;
-            font-size: 1.12rem;
-            font-weight: 800;
-            color: #FFFFFF;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-        .rec-reason {
-            font-size: 0.78rem;
-            color: #DDD6FE;
-            margin-top: 3px;
+        .spotlight-band-name-row {
             display: flex;
             align-items: center;
-            gap: 5px;
+            gap: 12px;
+            flex-wrap: wrap;
         }
-        .quick-rate-box {
-            background: linear-gradient(135deg, rgba(25, 70, 133, 0.3) 0%, rgba(11, 30, 63, 0.7) 100%);
-            border: 1px solid rgba(165, 200, 255, 0.25);
+        .spotlight-artist-title {
+            font-family: 'Montserrat', sans-serif;
+            font-size: 1.85rem;
+            font-weight: 900;
+            color: #FFFFFF;
+            text-decoration: none;
+            letter-spacing: -0.01em;
+            line-height: 1.2;
+        }
+        .spotlight-artist-title:hover {
+            color: #60A5FA;
+            text-decoration: underline;
+        }
+        .spotlight-reason-text {
+            font-size: 0.9rem;
+            color: #DDD6FE;
+            margin-top: 5px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .spotlight-tags-row {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+            margin-top: 8px;
+        }
+        .spotlight-rating-section {
+            background: rgba(11, 30, 63, 0.65);
+            border: 1px solid rgba(165, 200, 255, 0.18);
             border-radius: 14px;
-            padding: 20px 24px;
-            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+            padding: 18px 20px;
         }
+        .spotlight-rating-prompt {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 14px;
+            font-size: 0.88rem;
+            font-weight: 700;
+            color: #A5C8FF;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+        .spotlight-btn-grid {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 10px;
+        }
+        @media (max-width: 768px) {
+            .spotlight-btn-grid {
+                grid-template-columns: repeat(3, 1fr);
+            }
+        }
+        @media (max-width: 480px) {
+            .spotlight-btn-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+        .spotlight-btn {
+            background: rgba(14, 38, 80, 0.7);
+            border: 1.5px solid rgba(165, 200, 255, 0.25);
+            border-radius: 12px;
+            padding: 12px 6px;
+            color: #FFFFFF;
+            cursor: pointer;
+            font-family: inherit;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            position: relative;
+            transition: all 0.15s ease;
+            user-select: none;
+            touch-action: manipulation;
+        }
+        .spotlight-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+        }
+        .spotlight-btn:active {
+            transform: translateY(0);
+        }
+        .spotlight-btn .btn-icon {
+            font-size: 1.4rem;
+            line-height: 1;
+        }
+        .spotlight-btn .btn-label-title {
+            font-size: 0.86rem;
+            font-weight: 800;
+        }
+        .spotlight-btn .btn-label-sub {
+            font-size: 0.68rem;
+            color: rgba(225, 232, 240, 0.7);
+            text-align: center;
+            line-height: 1.1;
+        }
+        .spotlight-btn.color-0:hover { border-color: #94A3B8; background: rgba(100, 116, 139, 0.35); }
+        .spotlight-btn.color-1:hover { border-color: #EF4444; background: rgba(239, 68, 68, 0.35); }
+        .spotlight-btn.color-2:hover { border-color: #F59E0B; background: rgba(245, 158, 11, 0.35); }
+        .spotlight-btn.color-3:hover { border-color: #38BDF8; background: rgba(56, 189, 248, 0.35); }
+        .spotlight-btn.color-4:hover { border-color: #A855F7; background: rgba(168, 85, 247, 0.35); }
+        .spotlight-btn.color-5:hover { border-color: #FBBF24; background: rgba(245, 158, 11, 0.45); }
+        .key-badge {
+            position: absolute;
+            top: 5px;
+            right: 6px;
+            background: rgba(0, 0, 0, 0.45);
+            border: 1px solid rgba(165, 200, 255, 0.3);
+            border-radius: 4px;
+            padding: 1px 5px;
+            font-size: 0.65rem;
+            font-weight: 700;
+            color: #A5C8FF;
+            font-family: monospace;
+        }
+        .spotlight-card-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .spotlight-links-group {
+            display: flex;
+            gap: 8px;
+        }
+        .spotlight-skip-btn {
+            background: rgba(165, 200, 255, 0.12) !important;
+            border-color: rgba(165, 200, 255, 0.3) !important;
+            color: #FFFFFF !important;
+            font-weight: 700;
+        }
+        .spotlight-skip-btn:hover {
+            background: rgba(165, 200, 255, 0.25) !important;
+        }
+        .key-badge-sm {
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid rgba(165, 200, 255, 0.3);
+            border-radius: 4px;
+            padding: 1px 6px;
+            font-size: 0.7rem;
+            margin-left: 4px;
+            font-family: monospace;
+        }
+        .spotlight-shortcuts-bar {
+            text-align: center;
+            font-size: 0.8rem;
+            color: rgba(165, 200, 255, 0.7);
+            padding: 4px;
+        }
+        .spotlight-shortcuts-bar kbd {
+            background: rgba(11, 30, 63, 0.8);
+            border: 1px solid rgba(165, 200, 255, 0.3);
+            border-radius: 4px;
+            padding: 1px 6px;
+            font-family: monospace;
+            color: #FFFFFF;
+        }
+        .spotlight-empty-card {
+            background: rgba(14, 38, 80, 0.65);
+            border: 1.5px dashed rgba(165, 200, 255, 0.3);
+            border-radius: 18px;
+            padding: 44px 30px;
+            text-align: center;
+            box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+        }
+
         .filter-chip-link {
             background: rgba(11, 30, 63, 0.6);
             border: 1px solid rgba(165, 200, 255, 0.2);
@@ -7667,7 +8417,7 @@ RATINGS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
                     ⭐ Band Rankings &amp; Discovery
                 </h1>
                 <div style="font-size: 0.9rem; color: #A5C8FF; margin-top: 4px;">
-                    Rank bands from 0 to 5, curate your analyzed catalog, and uncover bands related to your favorites
+                    Rank bands from 0 to 5 one-by-one to tune your recommendations, rate analyzed bands, and discover new favorites
                 </div>
             </div>
             <a href="/" class="pill-btn secondary" style="font-size: 0.88rem; padding: 8px 16px;">
@@ -7682,7 +8432,7 @@ RATINGS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
 
         <div class="ratings-nav-tabs">
             <a href="/ratings?tab=discover" class="ratings-tab-btn{tab_discover_active}">
-                <span>✨ Related &amp; Discover</span>
+                <span>⚡ One-at-a-Time Rating</span>
             </a>
             <a href="/ratings?tab=analyzed" class="ratings-tab-btn{tab_analyzed_active}">
                 <span>🎯 Rate Analyzed Bands ({total_analyzed_count})</span>
@@ -7696,28 +8446,6 @@ RATINGS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
     </main>
 
     <script>
-        function handleQuickRateSubmit(e) {
-            e.preventDefault();
-            const artist = document.getElementById('quick-artist-input').value.trim();
-            const rating = parseInt(document.getElementById('quick-rating-select').value, 10);
-            if (!artist) return;
-            
-            fetch('/api/band-rating', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({artist: artist, rating: rating})
-            })
-            .then(r => r.json())
-            .then(data => {
-                if (data.success) {
-                    window.location.href = '/ratings?tab=discover&msg=' + encodeURIComponent('Rated ' + artist + ' ' + rating + '★! Recommendations updated.');
-                }
-            })
-            .catch(err => {
-                console.error('Quick rate error:', err);
-            });
-        }
-
         function filterAnalyzedBands(query) {
             const q = (query || '').toLowerCase().trim();
             const cards = document.querySelectorAll('.analyzed-band-card');
@@ -7730,6 +8458,24 @@ RATINGS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             });
             const noMatch = document.getElementById('no-analyzed-matches');
             if (noMatch) noMatch.style.display = (visibleCount === 0 && cards.length > 0) ? 'block' : 'none';
+        }
+
+        function toggleAnalyzedView(mode) {
+            const spotlightWrap = document.getElementById('analyzed-spotlight-section');
+            const catalogWrap = document.getElementById('analyzed-catalog-section');
+            const btnSpotlight = document.getElementById('btn-analyzed-view-spotlight');
+            const btnCatalog = document.getElementById('btn-analyzed-view-catalog');
+            if (mode === 'catalog') {
+                if (spotlightWrap) spotlightWrap.style.display = 'none';
+                if (catalogWrap) catalogWrap.style.display = 'flex';
+                if (btnSpotlight) btnSpotlight.classList.remove('active');
+                if (btnCatalog) btnCatalog.classList.add('active');
+            } else {
+                if (spotlightWrap) spotlightWrap.style.display = 'block';
+                if (catalogWrap) catalogWrap.style.display = 'none';
+                if (btnSpotlight) btnSpotlight.classList.add('active');
+                if (btnCatalog) btnCatalog.classList.remove('active');
+            }
         }
 
         function filterRatedBands(query) {
@@ -7762,7 +8508,472 @@ RATINGS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
                 console.error('Delete rating error:', err);
             }
         }
+
+        const ratingsQueueController = {
+            queue: [],
+            currentIndex: 0,
+            userRatedMap: {},
+            ratedCount: 0,
+            activeMode: 'discover',
+            isLoadingMore: false,
+
+            init: function(mode) {
+                this.activeMode = mode || 'discover';
+                this.userRatedMap = window.USER_RATED_MAP || {};
+                this.queue = (this.activeMode === 'analyzed') 
+                    ? (window.INITIAL_ANALYZED_QUEUE || [])
+                    : (window.INITIAL_DISCOVERY_QUEUE || []);
+                this.currentIndex = 0;
+                this.ratedCount = 0;
+                
+                this.setupKeyboardShortcuts();
+                this.renderCurrentCard();
+
+                if (this.activeMode === 'discover' && this.queue.length < 8) {
+                    this.fetchMoreRecommendations();
+                }
+            },
+
+            setupKeyboardShortcuts: function() {
+                if (window._ratingsKeyHandlerAttached) return;
+                window._ratingsKeyHandlerAttached = true;
+
+                window.addEventListener('keydown', (e) => {
+                    const target = e.target;
+                    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+                        return;
+                    }
+                    const stage = document.getElementById('spotlight-card-stage');
+                    if (!stage) return;
+
+                    if (e.key >= '0' && e.key <= '5') {
+                        e.preventDefault();
+                        this.rate(parseInt(e.key, 10));
+                    } else if (e.key === ' ' || e.key === 'ArrowRight') {
+                        e.preventDefault();
+                        this.skip();
+                    } else if (e.key === 'ArrowLeft') {
+                        e.preventDefault();
+                        this.prev();
+                    }
+                });
+            },
+
+            rate: function(val) {
+                if (this.currentIndex >= this.queue.length) return;
+                const item = this.queue[this.currentIndex];
+                if (!item || !item.artist) return;
+
+                const artist = item.artist;
+                const artistKey = artist.toLowerCase();
+                const oldVal = this.userRatedMap[artistKey];
+
+                this.userRatedMap[artistKey] = val;
+                this.ratedCount++;
+
+                this.updateStatsCounters(val, oldVal);
+
+                fetch('/api/band-rating', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({artist: artist, rating: val})
+                }).catch(err => console.error('Rating save error:', err));
+
+                if (val >= 3) {
+                    this.fetchMoreRelated(artist);
+                }
+
+                const activeCard = document.getElementById('active-spotlight-card');
+                if (activeCard) {
+                    activeCard.classList.add('card-exit');
+                }
+
+                setTimeout(() => {
+                    this.currentIndex++;
+                    this.renderCurrentCard();
+                }, 50);
+            },
+
+            skip: function() {
+                if (this.currentIndex >= this.queue.length) return;
+                const activeCard = document.getElementById('active-spotlight-card');
+                if (activeCard) {
+                    activeCard.classList.add('card-exit');
+                }
+                setTimeout(() => {
+                    this.currentIndex++;
+                    this.renderCurrentCard();
+                }, 50);
+            },
+
+            prev: function() {
+                if (this.currentIndex > 0) {
+                    this.currentIndex--;
+                    this.renderCurrentCard();
+                }
+            },
+
+            handleJump: function(e) {
+                if (e) e.preventDefault();
+                const input = document.getElementById('spotlight-jump-input');
+                if (!input) return;
+                const name = input.value.trim();
+                if (!name) return;
+                input.value = '';
+
+                const existingIdx = this.queue.findIndex(item => item.artist.toLowerCase() === name.toLowerCase());
+                if (existingIdx >= 0) {
+                    this.currentIndex = existingIdx;
+                } else {
+                    const newItem = {
+                        artist: name,
+                        reason: "Direct search / quick rate",
+                        tags: [],
+                        image_url: "",
+                        in_library: false,
+                        current_rating: this.userRatedMap[name.toLowerCase()] ?? null
+                    };
+                    this.queue.splice(this.currentIndex, 0, newItem);
+                }
+                this.renderCurrentCard();
+            },
+
+            handleQuickRateSubmit: function(e) {
+                if (e) e.preventDefault();
+                const artistInput = document.getElementById('quick-artist-input');
+                const ratingSelect = document.getElementById('quick-rating-select');
+                if (!artistInput || !ratingSelect) return;
+                const artist = artistInput.value.trim();
+                const rating = parseInt(ratingSelect.value, 10);
+                if (!artist) return;
+
+                artistInput.value = '';
+
+                const artistKey = artist.toLowerCase();
+                const oldVal = this.userRatedMap[artistKey];
+                this.userRatedMap[artistKey] = rating;
+                this.updateStatsCounters(rating, oldVal);
+
+                fetch('/api/band-rating', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({artist: artist, rating: rating})
+                }).catch(err => console.error('Rating save error:', err));
+
+                if (rating >= 3) {
+                    this.fetchMoreRelated(artist);
+                }
+
+                if (typeof showGlobalToast === 'function') {
+                    showGlobalToast(`Rated ${artist}: ${rating}★!`);
+                }
+
+                const existingIdx = this.queue.findIndex(item => item.artist.toLowerCase() === artistKey);
+                if (existingIdx >= 0) {
+                    this.queue[existingIdx].current_rating = rating;
+                }
+                this.renderCurrentCard();
+            },
+
+            updateStatsCounters: function(newVal, oldVal) {
+                const totalEl = document.getElementById('stat-total-ranked');
+                if (totalEl && (oldVal === undefined || oldVal === null)) {
+                    const cur = parseInt(totalEl.innerText, 10) || 0;
+                    totalEl.innerText = cur + 1;
+                }
+
+                if (oldVal !== undefined && oldVal !== null && oldVal !== newVal) {
+                    const oldEl = document.getElementById('stat-count-' + oldVal);
+                    if (oldEl) {
+                        const curOld = parseInt(oldEl.innerText, 10) || 0;
+                        oldEl.innerText = Math.max(0, curOld - 1);
+                    }
+                }
+
+                if (newVal !== undefined && newVal !== null && newVal !== oldVal) {
+                    const newEl = document.getElementById('stat-count-' + newVal);
+                    if (newEl) {
+                        const curNew = parseInt(newEl.innerText, 10) || 0;
+                        newEl.innerText = curNew + 1;
+                    }
+                }
+            },
+
+            fetchMoreRelated: function(artist) {
+                if (this.isLoadingMore) return;
+                this.isLoadingMore = true;
+
+                fetch(`/api/band-recommendations?artist=${encodeURIComponent(artist)}&limit=10`)
+                    .then(r => r.json())
+                    .then(data => {
+                        const recs = data.recommendations || [];
+                        let addedCount = 0;
+                        recs.forEach(r => {
+                            const k = r.artist.toLowerCase();
+                            const alreadyQueued = this.queue.some(q => q.artist.toLowerCase() === k);
+                            if (!alreadyQueued && this.userRatedMap[k] === undefined) {
+                                this.queue.push({
+                                    artist: r.artist,
+                                    reason: r.reason || `Related to ${artist}`,
+                                    tags: r.tags || [],
+                                    image_url: r.image_url || '',
+                                    in_library: !!r.in_library,
+                                    current_rating: null
+                                });
+                                addedCount++;
+                            }
+                        });
+                        this.updateProgressBar();
+                        if (this.currentIndex >= this.queue.length - addedCount) {
+                            this.renderCurrentCard();
+                        }
+                    })
+                    .catch(err => console.error('Fetch related bands error:', err))
+                    .finally(() => {
+                        this.isLoadingMore = false;
+                    });
+            },
+
+            fetchMoreRecommendations: function() {
+                if (this.isLoadingMore) return;
+                this.isLoadingMore = true;
+
+                fetch('/api/band-recommendations?limit=25')
+                    .then(r => r.json())
+                    .then(data => {
+                        const recs = data.recommendations || [];
+                        let addedCount = 0;
+                        recs.forEach(r => {
+                            const k = r.artist.toLowerCase();
+                            const alreadyQueued = this.queue.some(q => q.artist.toLowerCase() === k);
+                            if (!alreadyQueued && this.userRatedMap[k] === undefined) {
+                                this.queue.push({
+                                    artist: r.artist,
+                                    reason: r.reason || 'Recommended based on your library',
+                                    tags: r.tags || [],
+                                    image_url: r.image_url || '',
+                                    in_library: !!r.in_library,
+                                    current_rating: null
+                                });
+                                addedCount++;
+                            }
+                        });
+                        this.updateProgressBar();
+                        if (this.currentIndex >= this.queue.length - addedCount) {
+                            this.renderCurrentCard();
+                        }
+                    })
+                    .catch(err => console.error('Fetch recommendations error:', err))
+                    .finally(() => {
+                        this.isLoadingMore = false;
+                    });
+            },
+
+            reloadDiscovery: function() {
+                this.queue = [];
+                this.currentIndex = 0;
+                this.fetchMoreRecommendations();
+            },
+
+            updateProgressBar: function() {
+                const counterEl = document.getElementById('spotlight-counter-badge');
+                const fillEl = document.getElementById('spotlight-progress-fill');
+                const total = this.queue.length;
+                const current = Math.min(this.currentIndex + 1, total);
+
+                if (counterEl) {
+                    if (total === 0) {
+                        counterEl.innerText = 'Queue Empty';
+                    } else if (this.currentIndex >= total) {
+                        counterEl.innerText = `Finished (${total} bands)`;
+                    } else {
+                        counterEl.innerText = `Band ${current} of ${total}`;
+                    }
+                }
+
+                if (fillEl) {
+                    const pct = total === 0 ? 0 : Math.min(100, Math.round(((this.currentIndex) / total) * 100));
+                    fillEl.style.width = pct + '%';
+                }
+            },
+
+            renderCurrentCard: function() {
+                const stage = document.getElementById('spotlight-card-stage');
+                if (!stage) return;
+
+                this.updateProgressBar();
+
+                if (this.currentIndex >= this.queue.length) {
+                    stage.innerHTML = this.buildEmptyCardHtml();
+                    return;
+                }
+
+                const item = this.queue[this.currentIndex];
+                const artist = item.artist;
+                const artistKey = artist.toLowerCase();
+                const currentRating = (this.userRatedMap[artistKey] !== undefined)
+                    ? this.userRatedMap[artistKey]
+                    : item.current_rating;
+
+                stage.innerHTML = this.buildCardHtml(item, currentRating);
+            },
+
+            buildCardHtml: function(item, currentRating) {
+                const artistEsc = escapeHtml(item.artist);
+                const artistUrl = encodeURIComponent(item.artist);
+                const initial = (item.artist && item.artist.length > 0) ? escapeHtml(item.artist[0].toUpperCase()) : '?';
+                const avatarContent = item.image_url 
+                    ? `<img src="${escapeHtml(item.image_url)}" alt="${artistEsc}">`
+                    : initial;
+
+                const inLibBadge = item.in_library
+                    ? '<span class="artist-meta-badge" style="color: #6EE7B7; border-color: rgba(16, 185, 129, 0.4); font-size: 0.72rem; padding: 2px 8px;">✓ In Library</span>'
+                    : '';
+
+                let ratedBadge = '';
+                if (currentRating !== null && currentRating !== undefined) {
+                    const scaleTitles = {
+                        5: '5★ Favorite',
+                        4: '4★ Really Enjoy',
+                        3: '3★ Likes',
+                        2: '2★ OK',
+                        1: '1★ Dislike',
+                        0: '0 Unknown'
+                    };
+                    ratedBadge = `<span class="rating-badge rating-${currentRating}" style="font-size: 0.74rem; padding: 2px 8px;">Currently: ${scaleTitles[currentRating] || currentRating}</span>`;
+                }
+
+                let tagsHtml = '';
+                if (item.tags && item.tags.length > 0) {
+                    const tagChips = item.tags.slice(0, 3).map(t => 
+                        `<span class="lastfm-tag-chip" style="font-size: 0.7rem; padding: 2px 8px;">#${escapeHtml(t)}</span>`
+                    ).join('');
+                    tagsHtml = `<div class="spotlight-tags-row">${tagChips}</div>`;
+                }
+
+                const reason = item.reason || 'Recommended based on your ratings & analyzed library';
+
+                return `
+                <div class="spotlight-card" id="active-spotlight-card" data-artist="${artistEsc}">
+                    <div class="spotlight-card-header">
+                        <div class="spotlight-avatar">${avatarContent}</div>
+                        <div class="spotlight-band-info">
+                            <div class="spotlight-band-name-row">
+                                <a href="/artist?artist=${artistUrl}" class="spotlight-artist-title" title="Open artist profile">${artistEsc}</a>
+                                ${inLibBadge}
+                                ${ratedBadge}
+                            </div>
+                            <div class="spotlight-reason-text">
+                                <span>✨</span>
+                                <span>${escapeHtml(reason)}</span>
+                            </div>
+                            ${tagsHtml}
+                        </div>
+                    </div>
+
+                    <div class="spotlight-rating-section">
+                        <div class="spotlight-rating-prompt">
+                            <span>Rank this band (0 to 5):</span>
+                            <span style="font-size: 0.76rem; font-weight: 600; color: #DDD6FE; text-transform: none;">Click or tap key <kbd>0</kbd>–<kbd>5</kbd></span>
+                        </div>
+                        <div class="spotlight-btn-grid">
+                            <button type="button" class="spotlight-btn color-5${currentRating === 5 ? ' active' : ''}" onclick="ratingsQueueController.rate(5)" title="5: One of your absolute favorites (Key 5)">
+                                <span class="key-badge">5</span>
+                                <span class="btn-icon">🏆</span>
+                                <span class="btn-label-title">5</span>
+                                <span class="btn-label-sub">Favorite</span>
+                            </button>
+                            <button type="button" class="spotlight-btn color-4${currentRating === 4 ? ' active' : ''}" onclick="ratingsQueueController.rate(4)" title="4: Really enjoy them (Key 4)">
+                                <span class="key-badge">4</span>
+                                <span class="btn-icon">🔥</span>
+                                <span class="btn-label-title">4</span>
+                                <span class="btn-label-sub">Really Enjoy</span>
+                            </button>
+                            <button type="button" class="spotlight-btn color-3${currentRating === 3 ? ' active' : ''}" onclick="ratingsQueueController.rate(3)" title="3: Likes them (Key 3)">
+                                <span class="key-badge">3</span>
+                                <span class="btn-icon">👍</span>
+                                <span class="btn-label-title">3</span>
+                                <span class="btn-label-sub">Likes</span>
+                            </button>
+                            <button type="button" class="spotlight-btn color-2${currentRating === 2 ? ' active' : ''}" onclick="ratingsQueueController.rate(2)" title="2: Is OK (Key 2)">
+                                <span class="key-badge">2</span>
+                                <span class="btn-icon">😐</span>
+                                <span class="btn-label-title">2</span>
+                                <span class="btn-label-sub">Is OK</span>
+                            </button>
+                            <button type="button" class="spotlight-btn color-1${currentRating === 1 ? ' active' : ''}" onclick="ratingsQueueController.rate(1)" title="1: Dislike (Key 1)">
+                                <span class="key-badge">1</span>
+                                <span class="btn-icon">👎</span>
+                                <span class="btn-label-title">1</span>
+                                <span class="btn-label-sub">Dislike</span>
+                            </button>
+                            <button type="button" class="spotlight-btn color-0${currentRating === 0 ? ' active' : ''}" onclick="ratingsQueueController.rate(0)" title="0: Know nothing about them (Key 0)">
+                                <span class="key-badge">0</span>
+                                <span class="btn-icon">⚪</span>
+                                <span class="btn-label-title">0</span>
+                                <span class="btn-label-sub">Don't Know</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="spotlight-card-footer">
+                        <div class="spotlight-links-group">
+                            <a href="/artist?artist=${artistUrl}" class="pill-btn secondary" style="font-size: 0.78rem; padding: 4px 10px;">Artist Profile &rarr;</a>
+                            <a href="/?artist=${artistUrl}" class="pill-btn secondary" style="font-size: 0.78rem; padding: 4px 10px;">Search Songs &rarr;</a>
+                        </div>
+                        <div style="display: flex; gap: 8px;">
+                            <button type="button" class="pill-btn secondary" onclick="ratingsQueueController.prev()" style="font-size: 0.8rem; padding: 6px 12px;" ${this.currentIndex === 0 ? 'disabled style="opacity: 0.4; cursor: not-allowed;"' : ''} title="Go back to previous band">
+                                &larr; Prev
+                            </button>
+                            <button type="button" class="pill-btn spotlight-skip-btn" onclick="ratingsQueueController.skip()" style="font-size: 0.8rem; padding: 6px 14px;" title="Skip to next band without rating">
+                                Skip &rarr; <span class="key-badge-sm">Space</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                `;
+            },
+
+            buildEmptyCardHtml: function() {
+                const remainingAnalyzed = window.TOTAL_UNRATED_ANALYZED || 0;
+                return `
+                <div class="spotlight-empty-card">
+                    <div style="font-size: 2.8rem; margin-bottom: 12px;">🎉</div>
+                    <h2 style="font-family: 'Montserrat', sans-serif; font-size: 1.4rem; font-weight: 800; color: #FFFFFF; margin: 0 0 8px 0;">
+                        You're All Caught Up!
+                    </h2>
+                    <p style="color: #A5C8FF; font-size: 0.9rem; max-width: 500px; margin: 0 auto 22px auto; line-height: 1.5;">
+                        You've rated or skipped all bands in this queue. Type any band name in the search bar above to rate them right away, or explore your ranked catalog!
+                    </p>
+                    <div style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;">
+                        ${remainingAnalyzed > 0 ? `
+                        <a href="/ratings?tab=analyzed" class="pill-btn primary" style="font-size: 0.86rem; padding: 8px 18px;">
+                            🎯 Rate Analyzed Bands (${remainingAnalyzed} remaining)
+                        </a>
+                        ` : ''}
+                        <a href="/ratings?tab=my_ratings" class="pill-btn secondary" style="font-size: 0.86rem; padding: 8px 18px;">
+                            ⭐ View My Ranked Bands
+                        </a>
+                        <button type="button" onclick="ratingsQueueController.reloadDiscovery()" class="pill-btn secondary" style="font-size: 0.86rem; padding: 8px 18px;">
+                            🔄 Refresh Discovery Queue
+                        </button>
+                    </div>
+                </div>
+                `;
+            }
+        };
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
     </script>
+    {injected_queue_script}
 </body>
 </html>'''
 
@@ -12346,6 +13557,58 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         if order_by == 'narrative_arc' and songs:
             songs = playlist_curator.sequence_narrative_arc(songs)
 
+        # Compute listening metrics (runtime, average tempo, energy)
+        total_duration_ms = 0
+        tempo_sum = 0
+        tempo_count = 0
+        energy_sum = 0
+        energy_count = 0
+        for s in songs:
+            dur = s.get('duration_ms') or 0
+            if isinstance(dur, (int, float)):
+                total_duration_ms += int(dur)
+            adb = s.get('theaudiodb_data')
+            if isinstance(adb, str):
+                try:
+                    adb = json.loads(adb)
+                except Exception:
+                    adb = {}
+            if adb and isinstance(adb, dict):
+                if adb.get('tempo'):
+                    try:
+                        tempo_sum += float(adb['tempo'])
+                        tempo_count += 1
+                    except (ValueError, TypeError):
+                        pass
+                if adb.get('energy'):
+                    try:
+                        energy_sum += float(adb['energy'])
+                        energy_count += 1
+                    except (ValueError, TypeError):
+                        pass
+
+        if total_duration_ms > 0:
+            tot_secs = total_duration_ms // 1000
+            tot_mins = tot_secs // 60
+            rem_secs = tot_secs % 60
+            if tot_mins >= 60:
+                hrs = tot_mins // 60
+                mins = tot_mins % 60
+                playlist_runtime_str = f"{hrs}h {mins}m"
+            else:
+                playlist_runtime_str = f"{tot_mins}m {rem_secs}s"
+        elif songs:
+            est_mins = len(songs) * 3.5
+            if est_mins >= 60:
+                playlist_runtime_str = f"~{int(est_mins // 60)}h {int(est_mins % 60)}m"
+            else:
+                playlist_runtime_str = f"~{int(est_mins)} min"
+        else:
+            playlist_runtime_str = "0 min"
+
+        playlist_avg_tempo_str = f"{int(tempo_sum / tempo_count)} BPM" if tempo_count else "Adaptive BPM"
+        playlist_avg_energy_str = f"{int(energy_sum / energy_count)}% Energy" if energy_count else "Balanced Energy"
+
         # Build Sort Options
         if active_mode == 'setlist_fm':
             sort_choices = [
@@ -12695,8 +13958,8 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                     action_btn_html = f'<a href="/?artist={urllib.parse.quote(artist_val)}&song={urllib.parse.quote(song_val)}" class="btn-playlist-action btn-playlist-outline" style="font-size: 0.74rem; padding: 3px 8px; text-decoration: none;">Search ↗</a>'
 
                 track_rows.append(f'''
-                    <tr class="playlist-tracklist-row" data-search="{artist_esc} {song_esc}">
-                        <td class="playlist-track-num">#{idx}</td>
+                    <tr class="playlist-tracklist-row" id="playlist-track-row-{idx}" data-idx="{idx - 1}" data-search="{artist_esc} {song_esc}">
+                        <td class="playlist-track-num"><span class="track-num-display">#{idx}</span></td>
                         <td>
                             <div class="playlist-track-main">
                                 <span class="playlist-track-title">{song_esc}</span>
@@ -12723,6 +13986,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                             <div style="display: flex; gap: 8px; justify-content: flex-end; align-items: center;">
                                 {listen_spotify_link}
                                 {action_btn_html}
+                                <button type="button" class="btn-track-remove" onclick="pruneTrack({idx - 1})" title="Prune track from playlist" aria-label="Remove track">&times;</button>
                             </div>
                         </td>
                     </tr>
@@ -12737,6 +14001,8 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                     'theme': s.get('theme') or '',
                     'connection_note': s.get('connection_note') or '',
                     'alternating_badge': s.get('alternating_badge') or '',
+                    'duration_ms': s.get('duration_ms') or 0,
+                    'theaudiodb_data': audiodb_data if isinstance(audiodb_data, dict) else None,
                 })
 
             tracklist_html = "".join(track_rows)
@@ -12900,6 +14166,9 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                                      .replace('{saved_view_display}', saved_view_display)\
                                      .replace('{saved_playlists_html}', saved_playlists_html)\
                                      .replace('{current_playlist_json}', json.dumps(current_playlist_dict))\
+                                     .replace('{playlist_runtime_str}', playlist_runtime_str)\
+                                     .replace('{playlist_avg_tempo_str}', playlist_avg_tempo_str)\
+                                     .replace('{playlist_avg_energy_str}', playlist_avg_energy_str)\
                                      .replace('{is_spotify_connected_json}', 'true' if is_spotify_connected else 'false')
 
         self._send_html(content)
@@ -13417,12 +14686,12 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             (0, "⚪ 0 Unknown", counts.get(0, 0), "color: #94A3B8; background: rgba(100, 116, 139, 0.2); border: 1px solid rgba(100, 116, 139, 0.4);"),
         ]
         stats_badges = [
-            f'<span style="font-size: 0.8rem; font-weight: 700; color: #FFFFFF; background: rgba(37, 99, 235, 0.35); border: 1px solid #60A5FA; padding: 4px 10px; border-radius: 8px;">Total Ranked: <strong>{total_rated}</strong></span>'
+            f'<span style="font-size: 0.8rem; font-weight: 700; color: #FFFFFF; background: rgba(37, 99, 235, 0.35); border: 1px solid #60A5FA; padding: 4px 10px; border-radius: 8px;">Total Ranked: <strong id="stat-total-ranked">{total_rated}</strong></span>'
         ]
         for r_val, r_label, r_count, r_style in badge_defs:
             stats_badges.append(
                 f'<a href="/ratings?tab=my_ratings&rating={r_val}" style="{r_style} padding: 4px 10px; border-radius: 8px; font-size: 0.78rem; font-weight: 600; text-decoration: none; display: inline-flex; align-items: center; gap: 5px;" title="View {r_label}">'
-                f'<span>{r_label}:</span> <strong>{r_count}</strong>'
+                f'<span>{r_label}:</span> <strong id="stat-count-{r_val}">{r_count}</strong>'
                 f'</a>'
             )
         stats_badges_html = " ".join(stats_badges)
@@ -13432,6 +14701,108 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
 
         all_my_ratings = database.get_band_ratings(user_email=user_email, min_rating=None, db_path=DATABASE_PATH)
         total_rated_count = len(all_my_ratings)
+        user_rated_map = {r['artist'].lower(): r['rating'] for r in all_my_ratings}
+        unrated_analyzed = [a for a in analyzed_artists if a.get('rating') is None]
+
+        # Fast local discovery queue (zero synchronous external HTTP calls!)
+        initial_discover_queue = []
+        seen_queue_artists = set(user_rated_map.keys())
+
+        # 1. Unrated analyzed bands
+        for a in unrated_analyzed:
+            a_key = a['artist'].lower()
+            if a_key not in seen_queue_artists:
+                seen_queue_artists.add(a_key)
+                cnt = a.get('song_count', 1)
+                initial_discover_queue.append({
+                    'artist': a['artist'],
+                    'reason': f"From your analyzed library ({cnt} song{'s' if cnt != 1 else ''})",
+                    'tags': [],
+                    'image_url': '',
+                    'in_library': True,
+                    'current_rating': None,
+                    'song_count': cnt
+                })
+
+        # 2. Local cached similar artists for high-rated bands (3, 4, 5 stars)
+        high_rated = [r for r in all_my_ratings if r.get('rating', 0) >= 3]
+        for hr in high_rated:
+            hr_artist = hr['artist']
+            hr_rating = hr['rating']
+            meta = database.get_artist_metadata(hr_artist, db_path=DATABASE_PATH)
+            if meta and meta.get('similar_artists'):
+                sim_list = meta['similar_artists']
+                if isinstance(sim_list, str):
+                    try:
+                        sim_list = json.loads(sim_list)
+                    except Exception:
+                        sim_list = []
+                if isinstance(sim_list, list):
+                    for item in sim_list:
+                        s_name = (item.get('name') if isinstance(item, dict) else str(item)).strip()
+                        if s_name and s_name.lower() not in seen_queue_artists:
+                            seen_queue_artists.add(s_name.lower())
+                            initial_discover_queue.append({
+                                'artist': s_name,
+                                'reason': f"Similar to {hr_artist} (rated {hr_rating}★)",
+                                'tags': [],
+                                'image_url': item.get('image_url', '') if isinstance(item, dict) else '',
+                                'in_library': any(a['artist'].lower() == s_name.lower() for a in analyzed_artists),
+                                'current_rating': None,
+                                'song_count': 0
+                            })
+                            if len(initial_discover_queue) >= 30:
+                                break
+            if len(initial_discover_queue) >= 30:
+                break
+
+        # 3. Fallback popular bands from library if discover queue is empty
+        if not initial_discover_queue:
+            try:
+                distinct_bands = database.get_distinct_bands(db_path=DATABASE_PATH)
+                for b_item in distinct_bands:
+                    db_band = b_item.get('artist') if isinstance(b_item, dict) else str(b_item)
+                    if db_band and db_band.lower() not in seen_queue_artists:
+                        seen_queue_artists.add(db_band.lower())
+                        initial_discover_queue.append({
+                            'artist': db_band,
+                            'reason': "Band in your library",
+                            'tags': [],
+                            'image_url': '',
+                            'in_library': True,
+                            'current_rating': None,
+                            'song_count': b_item.get('song_count', 1) if isinstance(b_item, dict) else 1
+                        })
+                        if len(initial_discover_queue) >= 15:
+                            break
+            except Exception:
+                pass
+
+        # Build initial analyzed queue
+        initial_analyzed_queue = []
+        for a in unrated_analyzed:
+            cnt = a.get('song_count', 1)
+            initial_analyzed_queue.append({
+                'artist': a['artist'],
+                'reason': f"From your analyzed library ({cnt} song{'s' if cnt != 1 else ''})",
+                'tags': [],
+                'image_url': '',
+                'in_library': True,
+                'current_rating': None,
+                'song_count': cnt
+            })
+        for a in analyzed_artists:
+            if a.get('rating') is not None:
+                cnt = a.get('song_count', 1)
+                initial_analyzed_queue.append({
+                    'artist': a['artist'],
+                    'reason': f"Analyzed library band ({cnt} song{'s' if cnt != 1 else ''})",
+                    'tags': [],
+                    'image_url': '',
+                    'in_library': True,
+                    'current_rating': a['rating'],
+                    'song_count': cnt
+                })
 
         message_block = f'<div class="message" style="margin-bottom: 16px; background: rgba(16, 185, 129, 0.2); border: 1px solid #34D399; color: #E1E8F0; padding: 12px 18px; border-radius: 10px;">{html_escape(msg)}</div>' if msg else ''
 
@@ -13448,9 +14819,9 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                     ⚡ Quick Rate Any Band
                 </div>
                 <div style="font-size: 0.84rem; color: #A5C8FF; margin-top: 4px; margin-bottom: 14px;">
-                    Search or enter any band name to give them a 0–5 rating and immediately boost your discovery feed
+                    Search or enter any band name to give them a 0–5 rating or jump directly into the one-at-a-time rating deck
                 </div>
-                <form onsubmit="handleQuickRateSubmit(event)" style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+                <form onsubmit="ratingsQueueController.handleQuickRateSubmit(event)" style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
                     <input type="text" id="quick-artist-input" placeholder="Enter band name (e.g. Turnstile, Deftones, Touché Amoré)..." required
                            style="flex: 1; min-width: 260px; background: rgba(11, 30, 63, 0.8); border: 1px solid rgba(165, 200, 255, 0.3); border-radius: 8px; padding: 10px 14px; color: #FFFFFF; font-size: 0.95rem; font-family: inherit;">
                     <select id="quick-rating-select" style="background: rgba(11, 30, 63, 0.9); border: 1px solid rgba(165, 200, 255, 0.3); border-radius: 8px; padding: 10px 14px; color: #FFFFFF; font-size: 0.92rem; font-family: inherit; font-weight: 600;">
@@ -13462,24 +14833,14 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                         <option value="0">⚪ 0 - Know nothing (Candidate)</option>
                     </select>
                     <button type="submit" class="pill-btn primary" style="padding: 10px 20px; font-size: 0.92rem; font-weight: 700; white-space: nowrap;">
-                        Rate &amp; Update Recommendations &rarr;
+                        Rate &amp; Add to Feed &rarr;
                     </button>
                 </form>
             </div>
             '''
 
-            rec_data = band_recommender.get_related_band_recommendations(
-                user_email=user_email,
-                limit=30,
-                include_already_rated=False,
-                db_path=DATABASE_PATH
-            )
-            recs = rec_data.get('recommendations', [])
-            seed_artists = rec_data.get('seed_artists', [])
-            fallback_used = rec_data.get('fallback_used', False)
-
             seeds_chips = []
-            for s in seed_artists:
+            for s in high_rated:
                 s_name = html_escape(s['artist'])
                 s_rating = s['rating']
                 r_badge = f'<span class="rating-badge rating-{s_rating}" style="font-size: 0.72rem; padding: 1px 6px;">{s_rating}★</span>'
@@ -13495,98 +14856,59 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             ''' if seeds_chips else '''
             <div style="background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.35); border-radius: 12px; padding: 14px 18px; color: #FDE68A; font-size: 0.88rem; display: flex; align-items: center; gap: 10px;">
                 <span>💡</span>
-                <span>You haven't rated any bands 3★, 4★, or 5★ yet! Rate bands using the quick box above or on the <a href="/ratings?tab=analyzed" style="color: #60A5FA; font-weight: 700;">Analyzed Bands tab</a> to get personalized recommendations tailored to your exact taste.</span>
+                <span>You haven't rated any bands 3★, 4★, or 5★ yet! Rate bands using the card below or the quick jump box to get personalized recommendations tailored to your exact taste.</span>
             </div>
             '''
 
-            fallback_notice = '''
-            <div style="background: rgba(37, 99, 235, 0.15); border: 1px solid rgba(37, 99, 235, 0.3); border-radius: 10px; padding: 10px 16px; color: #A5C8FF; font-size: 0.82rem; margin-top: 10px;">
-                ℹ️ <em>Showing starter recommendations based on analyzed bands in your library. Rate more bands to make these recommendations uniquely yours!</em>
-            </div>
-            ''' if fallback_used else ''
-
-            if not recs:
-                recs_grid_html = '''
-                <div style="text-align: center; padding: 50px 20px; background: rgba(11, 30, 63, 0.5); border-radius: 14px; border: 1px dashed rgba(165, 200, 255, 0.2); color: #A5C8FF;">
-                    <div style="font-size: 2.2rem; margin-bottom: 10px;">🎵</div>
-                    <div style="font-size: 1.15rem; font-weight: 700; color: #FFFFFF;">No recommendations found yet</div>
-                    <p style="font-size: 0.88rem; margin: 8px 0 16px 0; max-width: 480px; margin-inline: auto;">
-                        Rate a few bands with 4★ or 5★ in the quick rate bar above or analyze more songs to unlock scene discovery!
-                    </p>
-                </div>
-                '''
-            else:
-                card_items = []
-                for r in recs:
-                    r_artist = r['artist']
-                    r_artist_esc = html_escape(r_artist)
-                    r_artist_url = urllib.parse.quote(r_artist)
-                    r_initial = html_escape(r_artist[:1].upper() if r_artist else '?')
-                    r_img = r.get('image_url') or ''
-                    avatar_content = f'<img src="{html_escape(r_img)}" alt="{r_artist_esc}">' if r_img else r_initial
-
-                    in_lib_badge = '<span class="artist-meta-badge" style="color: #6EE7B7; border-color: rgba(16, 185, 129, 0.4); font-size: 0.72rem; padding: 1px 7px;">✓ In Library</span>' if r.get('in_library') else ''
-                    
-                    reason_esc = html_escape(r.get('reason') or 'Recommended based on your ratings')
-                    
-                    tag_chips = []
-                    for t in (r.get('tags') or [])[:2]:
-                        tag_chips.append(f'<span class="lastfm-tag-chip" style="font-size: 0.68rem; padding: 1px 6px;">#{html_escape(t)}</span>')
-                    tags_html = f'<div style="display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px;">{"".join(tag_chips)}</div>' if tag_chips else ''
-
-                    inline_rating_widget = build_band_rating_widget(
-                        artist=r_artist,
-                        user_email=user_email,
-                        current_rating=r.get('user_rating'),
-                        compact=True,
-                        show_header=False
-                    )
-
-                    card_items.append(f'''
-                    <div class="rec-card">
-                        <div>
-                            <div class="rec-header">
-                                <div class="rec-avatar">{avatar_content}</div>
-                                <div class="rec-title-wrap">
-                                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                                        <a href="/artist?artist={r_artist_url}" class="rec-band-name" title="View artist profile">{r_artist_esc}</a>
-                                        {in_lib_badge}
-                                    </div>
-                                    <div class="rec-reason">✨ {reason_esc}</div>
-                                    {tags_html}
-                                </div>
-                            </div>
+            spotlight_deck_html = '''
+            <div class="spotlight-deck-wrapper">
+                <div class="spotlight-deck-topbar">
+                    <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                        <div style="font-size: 1.05rem; font-weight: 800; color: #FFFFFF; font-family: 'Montserrat', sans-serif;">
+                            ⚡ One-at-a-Time Band Rating
                         </div>
-
-                        <div>
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                                <span style="font-size: 0.75rem; font-weight: 700; color: #A5C8FF; text-transform: uppercase;">Rate this band:</span>
-                                <div style="display: flex; gap: 6px;">
-                                    <a href="/artist?artist={r_artist_url}" class="pill-btn secondary" style="font-size: 0.72rem; padding: 2px 8px;">Profile &rarr;</a>
-                                    <a href="/?artist={r_artist_url}" class="pill-btn secondary" style="font-size: 0.72rem; padding: 2px 8px;">Songs &rarr;</a>
-                                </div>
+                        <div class="spotlight-progress-wrap">
+                            <span id="spotlight-counter-badge" class="spotlight-counter-badge">Loading deck...</span>
+                            <div class="spotlight-progress-bar">
+                                <div id="spotlight-progress-fill" class="spotlight-progress-fill" style="width: 0%;"></div>
                             </div>
-                            {inline_rating_widget}
                         </div>
                     </div>
-                    ''')
-                recs_grid_html = f'<div class="rec-grid">{"".join(card_items)}</div>'
+
+                    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                        <form id="spotlight-jump-form" onsubmit="ratingsQueueController.handleJump(event)" style="display: flex; gap: 6px;">
+                            <input type="text" id="spotlight-jump-input" placeholder="Jump to / rate any band..." 
+                                   style="background: rgba(14, 38, 80, 0.85); border: 1px solid rgba(165, 200, 255, 0.3); border-radius: 8px; padding: 6px 12px; font-size: 0.82rem; color: #FFFFFF; width: 220px; font-family: inherit;">
+                            <button type="submit" class="pill-btn primary" style="padding: 6px 14px; font-size: 0.82rem; font-weight: 700;">Rate &rarr;</button>
+                        </form>
+                    </div>
+                </div>
+
+                <div id="spotlight-card-stage">
+                    <div style="text-align: center; padding: 40px; color: #A5C8FF;">Loading card...</div>
+                </div>
+
+                <div class="spotlight-shortcuts-bar">
+                    <span>Keyboard shortcuts: <kbd>0</kbd>–<kbd>5</kbd> to Rate &bull; <kbd>Space</kbd> or <kbd>&rarr;</kbd> to Skip &bull; <kbd>&larr;</kbd> to Previous</span>
+                </div>
+            </div>
+            '''
 
             tab_content_html = f'''
             <div style="display: flex; flex-direction: column; gap: 18px;">
                 {quick_rate_html}
                 {seeds_html}
-                {fallback_notice}
-                <div>
-                    <div style="font-size: 1.25rem; font-weight: 800; color: #FFFFFF; font-family: 'Montserrat', sans-serif; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
-                        <span>✨</span> Recommended Bands for You
-                    </div>
-                    {recs_grid_html}
-                </div>
+                {spotlight_deck_html}
             </div>
             '''
 
         elif active_tab == 'analyzed':
+            unrated_count = len(unrated_analyzed)
+            spotlight_active_cls = " active" if unrated_count > 0 else ""
+            catalog_active_cls = "" if unrated_count > 0 else " active"
+            spotlight_display = "block" if unrated_count > 0 else "none"
+            catalog_display = "none" if unrated_count > 0 else "flex"
+
             cards = []
             for item in analyzed_artists:
                 artist_name = item['artist']
@@ -13626,29 +14948,77 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
 
             cards_html = "\n".join(cards) if cards else '<p style="text-align: center; color: #A5C8FF; padding: 40px;">No analyzed bands found yet. Search and analyze songs to build your catalog!</p>'
 
+            analyzed_spotlight_deck = f'''
+            <div id="analyzed-spotlight-section" style="display: {spotlight_display};">
+                <div class="spotlight-deck-wrapper">
+                    <div class="spotlight-deck-topbar">
+                        <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                            <div style="font-size: 1.05rem; font-weight: 800; color: #FFFFFF; font-family: 'Montserrat', sans-serif;">
+                                ⚡ Rate Analyzed Bands One-by-One
+                            </div>
+                            <div class="spotlight-progress-wrap">
+                                <span id="spotlight-counter-badge" class="spotlight-counter-badge">Loading...</span>
+                                <div class="spotlight-progress-bar">
+                                    <div id="spotlight-progress-fill" class="spotlight-progress-fill" style="width: 0%;"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                            <button type="button" class="mode-pill" onclick="toggleAnalyzedView('catalog')" style="padding: 6px 14px; font-size: 0.82rem;">
+                                📋 Switch to Catalog List ({total_analyzed_count})
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="spotlight-card-stage">
+                        <div style="text-align: center; padding: 40px; color: #A5C8FF;">Loading card...</div>
+                    </div>
+
+                    <div class="spotlight-shortcuts-bar">
+                        <span>Keyboard shortcuts: <kbd>0</kbd>–<kbd>5</kbd> to Rate &bull; <kbd>Space</kbd> or <kbd>&rarr;</kbd> to Skip &bull; <kbd>&larr;</kbd> to Previous</span>
+                    </div>
+                </div>
+            </div>
+            '''
+
             tab_content_html = f'''
             <div style="display: flex; flex-direction: column; gap: 16px;">
-                <div style="background: rgba(11, 30, 63, 0.65); border: 1px solid rgba(165, 200, 255, 0.2); border-radius: 12px; padding: 16px 20px; display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;">
+                <div style="background: rgba(11, 30, 63, 0.65); border: 1px solid rgba(165, 200, 255, 0.2); border-radius: 12px; padding: 14px 20px; display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;">
                     <div>
-                        <div style="font-size: 1.1rem; font-weight: 800; color: #FFFFFF; font-family: 'Montserrat', sans-serif;">
-                            Rate Analyzed Bands ({total_analyzed_count})
+                        <div style="font-size: 1.15rem; font-weight: 800; color: #FFFFFF; font-family: 'Montserrat', sans-serif; display: flex; align-items: center; gap: 8px;">
+                            <span>🎯</span> Rate Analyzed Bands ({total_analyzed_count})
                         </div>
                         <div style="font-size: 0.84rem; color: #A5C8FF; margin-top: 2px;">
-                            Assign ratings (0–5) to bands that have lyrics analyzed with Gemini. Your ratings power recommendation seeds.
+                            Assign ratings (0–5) to bands in your analysis catalog to train your recommendation seeds.
                         </div>
                     </div>
-                    <div style="min-width: 260px; flex: 1; max-width: 400px;">
-                        <input type="text" id="analyzed-search-input" oninput="filterAnalyzedBands(this.value)" placeholder="Filter analyzed bands by name..."
-                               style="width: 100%; box-sizing: border-box; background: rgba(14, 38, 80, 0.7); border: 1px solid rgba(165, 200, 255, 0.3); border-radius: 8px; padding: 8px 14px; color: #FFFFFF; font-size: 0.88rem; font-family: inherit;">
+                    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                        <button type="button" id="btn-analyzed-view-spotlight" class="mode-pill{spotlight_active_cls}" onclick="toggleAnalyzedView('spotlight')" style="font-size: 0.82rem; padding: 6px 14px;">
+                            ⚡ One-at-a-Time ({unrated_count} unrated)
+                        </button>
+                        <button type="button" id="btn-analyzed-view-catalog" class="mode-pill{catalog_active_cls}" onclick="toggleAnalyzedView('catalog')" style="font-size: 0.82rem; padding: 6px 14px;">
+                            📋 Catalog List ({total_analyzed_count})
+                        </button>
                     </div>
                 </div>
 
-                <div id="no-analyzed-matches" style="display: none; text-align: center; padding: 30px; color: #A5C8FF; background: rgba(11, 30, 63, 0.4); border-radius: 10px;">
-                    No analyzed bands match your search filter.
-                </div>
+                {analyzed_spotlight_deck}
 
-                <div style="display: flex; flex-direction: column; gap: 10px;">
-                    {cards_html}
+                <div id="analyzed-catalog-section" style="display: {catalog_display}; flex-direction: column; gap: 14px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
+                        <span style="font-size: 0.86rem; color: #A5C8FF; font-weight: 600;">All {total_analyzed_count} analyzed bands in your library:</span>
+                        <input type="text" id="analyzed-search-input" oninput="filterAnalyzedBands(this.value)" placeholder="Filter analyzed bands by name..."
+                               style="min-width: 260px; background: rgba(14, 38, 80, 0.7); border: 1px solid rgba(165, 200, 255, 0.3); border-radius: 8px; padding: 8px 14px; color: #FFFFFF; font-size: 0.88rem; font-family: inherit;">
+                    </div>
+
+                    <div id="no-analyzed-matches" style="display: none; text-align: center; padding: 30px; color: #A5C8FF; background: rgba(11, 30, 63, 0.4); border-radius: 10px;">
+                        No analyzed bands match your search filter.
+                    </div>
+
+                    <div style="display: flex; flex-direction: column; gap: 10px;">
+                        {cards_html}
+                    </div>
                 </div>
             </div>
             '''
@@ -13736,6 +15106,21 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             </div>
             '''
 
+        injected_queue_script = f'''
+        <script>
+            window.INITIAL_DISCOVERY_QUEUE = {json.dumps(initial_discover_queue).replace("</", "<\\/")};
+            window.INITIAL_ANALYZED_QUEUE = {json.dumps(initial_analyzed_queue).replace("</", "<\\/")};
+            window.USER_RATED_MAP = {json.dumps(user_rated_map).replace("</", "<\\/")};
+            window.TOTAL_UNRATED_ANALYZED = {len(unrated_analyzed)};
+
+            document.addEventListener('DOMContentLoaded', function() {{
+                if (typeof ratingsQueueController !== 'undefined') {{
+                    ratingsQueueController.init("{active_tab}");
+                }}
+            }});
+        </script>
+        '''
+
         page_content = RATINGS_PAGE_HTML.replace('{app_header}', build_app_header('ratings', user=current_user))\
                                         .replace('{message_block}', message_block)\
                                         .replace('{stats_badges_html}', stats_badges_html)\
@@ -13744,7 +15129,8 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                                         .replace('{tab_my_ratings_active}', tab_my_ratings_active)\
                                         .replace('{total_analyzed_count}', str(total_analyzed_count))\
                                         .replace('{total_rated_count}', str(total_rated_count))\
-                                        .replace('{tab_content_html}', tab_content_html)
+                                        .replace('{tab_content_html}', tab_content_html)\
+                                        .replace('{injected_queue_script}', injected_queue_script)
 
         self._send_html(page_content)
 

@@ -33,9 +33,11 @@ Calling Hours is a web application that fetches song lyrics via the Genius API a
     - `3`: Likes (*positive recommendation driver, 1.2x weight*)
     - `4`: Really enjoy them (*strong recommendation driver, 2.5x weight*)
     - `5`: Absolute favorite (*primary recommendation driver, 3.5x weight*)
-  - **Rate Analyzed Bands**: Review and rate all artists that have lyrics analyzed with Gemini.
-  - **Related Bands Discovery Engine**: Surfaces tailored band recommendations based on positive seeds (ratings 3–5) with multi-seed synergy boosts and human-readable rationale (e.g. *"Related to Turnstile (5★) and Touché Amoré (4★)"*).
-  - **Quick Rate Bar**: Instantly rank any band to immediately seed recommendations.
+  - **⚡ One-at-a-Time Spotlight Card Flow**: High-velocity rating interface that displays one band at a time with prominent rating buttons and instant pop-up transitions (<50ms). Zero full page reloads: ratings save asynchronously in the background while dynamically updating live stats counters.
+  - **Keyboard Accelerators**: Rate bands using keys `0`–`5`, skip to the next band with `Space` or `→`, and backtrack with `←` for frictionless rapid-fire catalog tuning.
+  - **Auto-Expanding Discovery Stream**: Rating any band 3★, 4★, or 5★ triggers non-blocking background discovery to continuously feed new related artists into the deck.
+  - **Rate Analyzed Bands**: Review and rate all artists that have lyrics analyzed with Gemini via the one-at-a-time deck or searchable catalog table.
+  - **Quick Rate & Jump Bar**: Instantly rank or jump to any band by name.
   - Interactive rating widget embedded on song search analysis, `/artist` deep dives, and history index.
 - **Search History Dashboard**: Dedicated `/history` view to browse, filter, quick-load, and manage previously searched songs and analyses, complete with Last.fm tag chips and artist intelligence links.
 - **Editable & Custom Lyrics**: An editable lyrics workspace allowing users to review, edit, or paste lyrics manually if needed.

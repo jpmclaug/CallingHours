@@ -81,6 +81,10 @@ def _fetch_similar_for_artist(
     if key:
         fetched = lastfm.fetch_artist_similar(clean_artist, api_key=key, limit=25)
         if fetched:
+            try:
+                database.save_artist_metadata(clean_artist, similar_artists=fetched, db_path=db_path)
+            except Exception:
+                pass
             return fetched
 
     # 3. Fallback to similar artists from Last.fm artist.getInfo

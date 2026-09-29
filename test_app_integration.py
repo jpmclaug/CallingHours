@@ -1813,6 +1813,67 @@ class TestAppIntegration(unittest.TestCase):
         with self.authed_get(f"/playlists/delete?id={saved_pid}") as resp:
             self.assertEqual(resp.status, 200)
 
+    def test_51_playlist_generator_studio_overhaul(self):
+        """Verify the overhauled 2-column Studio Workbench layout, category tabs, prune controls, and metrics."""
+        # 1. Verify studio workbench layout structure and category switcher tabs
+        with self.authed_get("/playlists") as resp:
+            self.assertEqual(resp.status, 200)
+            html = resp.read().decode('utf-8')
+            # 2-column workbench
+            self.assertIn('class="playlist-workbench"', html)
+            self.assertIn('class="playlist-studio-rail"', html)
+            self.assertIn('class="playlist-studio-stage"', html)
+            # Strategy category switcher tabs
+            self.assertIn('class="strategy-cat-nav"', html)
+            self.assertIn('data-cat="all"', html)
+            self.assertIn('data-cat="ai"', html)
+            self.assertIn('data-cat="catalog"', html)
+            self.assertIn('data-cat="vibe"', html)
+            # Mini KPI bar in rail
+            self.assertIn('class="playlist-mini-kpis"', html)
+            # Stage Hero Deck & Vinyl Badge
+            self.assertIn('class="stage-hero-deck"', html)
+            self.assertIn('class="playlist-hero-art"', html)
+            self.assertIn('class="vinyl-grooves"', html)
+            # Metric Pills
+            self.assertIn('id="metric-pill-runtime"', html)
+            self.assertIn('id="metric-pill-tempo"', html)
+            self.assertIn('id="metric-pill-energy"', html)
+            # Interactive tracklist header & restore button
+            self.assertIn('id="tracklist-live-count"', html)
+            self.assertIn('id="btn-reset-pruned-tracks"', html)
+            # Client-side pruning and metrics JS functions
+            self.assertIn('function filterStrategyModes(', html)
+            self.assertIn('function pruneTrack(', html)
+            self.assertIn('function renumberTrackRows(', html)
+            self.assertIn('function recalculatePlaylistMetrics(', html)
+
+        # 2. Seed a sample track and verify interactive row with prune button
+        s_id = database.save_search(
+            artist="Jimmy Eat World",
+            song="Bleed American",
+            lyrics="I'm not alone 'cause the TV's on yeah",
+            source="Genius",
+            track_tags=[{"name": "rock"}],
+            theaudiodb_data={"tempo": 140, "energy": 90, "key": "A"},
+            db_path=self.db_path
+        )
+        database.save_analysis(
+            artist="Jimmy Eat World",
+            song="Bleed American",
+            analysis="## Meaning\nFast paced punk rock anthem.",
+            model_name="gemini-3.8-flash",
+            db_path=self.db_path
+        )
+
+        with self.authed_get("/playlists?mode=all_analyzed") as resp:
+            self.assertEqual(resp.status, 200)
+            html = resp.read().decode('utf-8')
+            self.assertIn("Bleed American", html)
+            self.assertIn('class="btn-track-remove"', html)
+            self.assertIn('onclick="pruneTrack(', html)
+            self.assertIn('id="playlist-track-row-', html)
+
 
 if __name__ == "__main__":
     unittest.main()

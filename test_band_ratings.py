@@ -295,6 +295,35 @@ class TestBandRatingsUIAndRecommender(unittest.TestCase):
             self.assertIn("Converge", html)
             self.assertIn("deleteRating", html)
 
+    def test_one_at_a_time_spotlight_deck_elements(self):
+        with self.authed_get("/ratings?tab=discover") as resp:
+            self.assertEqual(resp.status, 200)
+            html = resp.read().decode('utf-8')
+
+            # Verify Spotlight Card stage and deck structure
+            self.assertIn("spotlight-deck-wrapper", html)
+            self.assertIn("id=\"spotlight-card-stage\"", html)
+            self.assertIn("id=\"spotlight-jump-input\"", html)
+            self.assertIn("spotlight-shortcuts-bar", html)
+            self.assertIn("ratingsQueueController", html)
+            self.assertIn("window.INITIAL_DISCOVERY_QUEUE", html)
+            self.assertIn("window.USER_RATED_MAP", html)
+
+            # Verify DOM IDs for real-time live stat updates without reload
+            self.assertIn("id=\"stat-total-ranked\"", html)
+            for r in range(6):
+                self.assertIn(f"id=\"stat-count-{r}\"", html)
+
+    def test_analyzed_tab_spotlight_and_catalog_toggle(self):
+        with self.authed_get("/ratings?tab=analyzed") as resp:
+            self.assertEqual(resp.status, 200)
+            html = resp.read().decode('utf-8')
+
+            self.assertIn("analyzed-spotlight-section", html)
+            self.assertIn("analyzed-catalog-section", html)
+            self.assertIn("toggleAnalyzedView", html)
+            self.assertIn("window.INITIAL_ANALYZED_QUEUE", html)
+
 
 if __name__ == '__main__':
     unittest.main()
