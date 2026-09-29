@@ -155,7 +155,8 @@ class TestMultiArtistPlaylistCurator(unittest.TestCase):
         )
 
         self.assertEqual(res["engine"], "gemini")
-        self.assertEqual(res["playlist_title"], "Jimmy Eat World & Taking Back Sunday: Emo Renaissance")
+        self.assertEqual(res["playlist_title"], "Emo Renaissance (Jimmy Eat World, Taking Back Sunday)")
+        self.assertEqual(res["playlist_theme"], "Emo Renaissance")
         self.assertEqual(len(res["themes"]), 2)
         self.assertEqual(len(res["tracks"]), 4)
         self.assertEqual(res["tracks"][0]["song"], "Sweetness")
@@ -233,6 +234,95 @@ class TestMultiArtistPlaylistCurator(unittest.TestCase):
         self.assertIn("Taking Back Sunday", catalog)
         self.assertEqual(len(catalog["Jimmy Eat World"]), 2)
         self.assertEqual(len(catalog["Taking Back Sunday"]), 2)
+
+    def test_heuristic_parenthetical_title_format(self):
+        catalog = {
+            self.artist_a: self.tracks_a,
+            self.artist_b: self.tracks_b
+        }
+        res = playlist_curator.mix_thematic_heuristic(catalog)
+        title = res["playlist_title"]
+        self.assertTrue(title.endswith(f"({self.artist_a}, {self.artist_b})"))
+        self.assertNotIn(":", title)
+
+    def test_generate_playlist_cover_art_pillow_fallback(self):
+        import io
+        from PIL import Image
+
+        res = playlist_curator.generate_playlist_cover_art(
+            playlist_name="Passionate Hardcore (Bane, Have Heart, Comeback Kid)",
+            artists=["Bane", "Have Heart", "Comeback Kid"],
+            themes=[{"name": "Aggressive Catharsis", "description": "Fast riffs and raw vocals."}],
+            gemini_api_key=None
+        )
+        self.assertEqual(res["engine"], "pillow")
+        self.assertLessEqual(res["size_bytes"], 250000)
+        self.assertTrue(res["data_url"].startswith("data:image/jpeg;base64,"))
+        self.assertTrue(len(res["image_b64"]) > 100)
+
+        # Verify image properties
+        img = Image.open(io.BytesIO(res["image_bytes"]))
+        self.assertEqual(img.size, (640, 640))
+        self.assertEqual(img.format, "JPEG")
+
+    @patch("playlist_curator.genai")
+    def test_generate_playlist_cover_art_gemini(self, mock_genai):
+        import io
+        from PIL import Image
+
+        # Create a simple test image in memory
+        test_img = Image.new("RGB", (800, 800), color=(30, 45, 90))
+        buf = io.BytesIO()
+        test_img.save(buf, format="JPEG")
+        raw_jpeg_bytes = buf.getvalue()
+
+        mock_client = MagicMock()
+        mock_genai.Client.return_value = mock_client
+        mock_part = MagicMock()
+        mock_part.inline_data.data = raw_jpeg_bytes
+        mock_resp = MagicMock()
+        mock_resp.parts = [mock_part]
+        mock_client.models.generate_content.return_value = mock_resp
+
+        res = playlist_curator.generate_playlist_cover_art(
+            playlist_name="Passionate Hardcore (Bane, Have Heart, Comeback Kid)",
+            artists=["Bane", "Have Heart", "Comeback Kid"],
+            themes=[{"name": "Catharsis"}],
+            gemini_api_key="mock_key"
+        )
+        self.assertEqual(res["engine"], "gemini")
+        self.assertLessEqual(res["size_bytes"], 250000)
+        self.assertTrue(res["data_url"].startswith("data:image/jpeg;base64,"))
+
+        # Check resized to 640x640
+        out_img = Image.open(io.BytesIO(res["image_bytes"]))
+        self.assertEqual(out_img.size, (640, 640))
+        self.assertEqual(out_img.format, "JPEG")
+
+    @patch("requests.put")
+    def test_spotify_upload_playlist_cover_image(self, mock_put):
+        import spotify
+
+        # Success case
+        mock_resp_ok = MagicMock()
+        mock_resp_ok.status_code = 202
+        mock_put.return_value = mock_resp_ok
+        ok = spotify.upload_playlist_cover_image("token123", "pl_id", "data:image/jpeg;base64,/9j/4AAQSkZJRg==")
+        self.assertTrue(ok)
+        mock_put.assert_called_with(
+            "https://api.spotify.com/v1/playlists/pl_id/images",
+            headers={"Authorization": "Bearer token123", "Content-Type": "image/jpeg"},
+            data="/9j/4AAQSkZJRg==",
+            timeout=10
+        )
+
+        # Failure case (e.g. 403 lack of scope)
+        mock_resp_err = MagicMock()
+        mock_resp_err.status_code = 403
+        mock_resp_err.text = "Insufficient client scope"
+        mock_put.return_value = mock_resp_err
+        fail = spotify.upload_playlist_cover_image("token123", "pl_id", "/9j/4AAQSkZJRg==")
+        self.assertFalse(fail)
 
 
 if __name__ == "__main__":

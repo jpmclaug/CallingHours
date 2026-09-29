@@ -6304,11 +6304,11 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
                 const mixModeSelect = document.getElementById('select-mix-mode');
                 const mixMode = mixModeSelect ? mixModeSelect.value : 'alternating';
                 const artList = rawArt ? rawArt.split(',').map(s => s.trim()).filter(Boolean) : [];
-                const artSummary = artList.length ? artList.slice(0, 3).join(' & ') + (artList.length > 3 ? ` + ${artList.length - 3} more` : '') : 'Multi-Artist';
+                const artSummary = artList.length ? artList.slice(0, 3).join(', ') + (artList.length > 3 ? `, +${artList.length - 3} more` : '') : 'Multi-Artist';
                 if (mixMode === 'thematic') {
-                    newName = `${artSummary}: Thematic Analysis Blend`;
+                    newName = `Thematic Blend (${artSummary})`;
                 } else {
-                    newName = `${artSummary}: Alternating Top Tracks`;
+                    newName = `Top Tracks Rotation (${artSummary})`;
                 }
             } else if (mode === 'setlist_fm') {
                 const artistSelect = document.getElementById('select-setlist-artist');
@@ -6666,8 +6666,9 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
                     statusSteps: [
                         'Connecting to Spotify Web API...',
                         'Matching tracks with Spotify catalog...',
+                        'Generating custom playlist cover artwork...',
                         'Creating new playlist in your library...',
-                        'Adding curated tracks...'
+                        'Adding curated tracks & uploading artwork...'
                     ],
                     notice: 'Please keep this page open while tracks are exported to Spotify.'
                 });
@@ -6676,7 +6677,9 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             const payload = {
                 name: document.getElementById('input-playlist-name').value || CURRENT_PLAYLIST.name,
                 description: CURRENT_PLAYLIST.description,
-                tracks: CURRENT_PLAYLIST.tracks || []
+                tracks: CURRENT_PLAYLIST.tracks || [],
+                themes: CURRENT_PLAYLIST.themes || (CURRENT_PLAYLIST.criteria ? CURRENT_PLAYLIST.criteria.themes : []),
+                curator_notes: CURRENT_PLAYLIST.curator_notes || ''
             };
 
             fetch('/api/playlists/export-spotify', {
@@ -6696,8 +6699,15 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
                 if (typeof hideActionLoadingOverlay === 'function') hideActionLoadingOverlay();
                 backdrop.style.display = 'flex';
                 if (data.success) {
+                    const coverHtml = data.cover_image_data_url ? `
+                        <div style="text-align: center; margin-bottom: 16px;">
+                            <img src="${data.cover_image_data_url}" alt="Playlist Cover Art" style="width: 140px; height: 140px; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.5); object-fit: cover; border: 1px solid rgba(255,255,255,0.15);" />
+                            ${data.cover_image_uploaded ? '<div style="font-size: 0.76rem; color: #5af0a5; font-weight: 600; margin-top: 6px;">🎨 Custom Album Art Uploaded to Spotify</div>' : ''}
+                        </div>
+                    ` : '';
                     content.innerHTML = `
                         <div style="padding: 10px 0;">
+                            ${coverHtml}
                             <div style="color: #1DB954; font-size: 2.2rem; text-align: center; margin-bottom: 10px;">🎉</div>
                             <h4 style="margin: 0 0 10px 0; font-size: 1.15rem; color: #FFFFFF; text-align: center; font-family: 'Montserrat', sans-serif;">
                                 Playlist Created on Spotify!
@@ -10739,9 +10749,10 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                     themes = thematic_res.get('themes', [])
                     detected_themes_for_save = themes
                     curator_notes = thematic_res.get('curator_notes', '')
-                    auto_title = thematic_res.get('playlist_title') or f"{' & '.join(artists_list[:2])}: Thematic Blend"
-                    auto_desc = thematic_res.get('playlist_description') or f"Thematic mix of top tracks from {', '.join(artists_list)}."
-                    if not active_playlist_title or active_playlist_title.startswith("Calling Hours:") or active_playlist_title.endswith("Average Setlist") or active_playlist_title.endswith("Alternating Top Tracks"):
+                    art_parenthetical = ", ".join(artists_list)
+                    auto_title = thematic_res.get('playlist_title') or f"Thematic Blend ({art_parenthetical})"
+                    auto_desc = thematic_res.get('playlist_description') or f"Thematic mix of top tracks from {art_parenthetical}."
+                    if not active_playlist_title or active_playlist_title.startswith("Calling Hours:") or active_playlist_title.endswith("Average Setlist") or "Alternating" in active_playlist_title or "Rotation" in active_playlist_title or "Thematic" in active_playlist_title:
                         active_playlist_title = auto_title
                     active_playlist_desc = auto_desc
 
@@ -10779,10 +10790,10 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 else:
                     alternating_tracks = playlist_curator.mix_alternating(catalog, limit=limit)
                     songs = alternating_tracks
-                    art_label = " & ".join(artists_list[:3]) + (f" + {len(artists_list) - 3} more" if len(artists_list) > 3 else "")
-                    auto_title = f"{art_label}: Alternating Top Tracks"
-                    auto_desc = f"Alternating round-robin sequence of top tracks from {art_label}."
-                    if not active_playlist_title or active_playlist_title.startswith("Calling Hours:") or active_playlist_title.endswith("Average Setlist") or active_playlist_title.endswith("Thematic Analysis Blend"):
+                    art_parenthetical = ", ".join(artists_list)
+                    auto_title = f"Top Tracks Rotation ({art_parenthetical})"
+                    auto_desc = f"Alternating round-robin sequence of top tracks from {art_parenthetical}."
+                    if not active_playlist_title or active_playlist_title.startswith("Calling Hours:") or active_playlist_title.endswith("Average Setlist") or "Thematic" in active_playlist_title or "Alternating" in active_playlist_title or "Rotation" in active_playlist_title:
                         active_playlist_title = auto_title
                     active_playlist_desc = auto_desc
                     thematic_synergy_card_html = ""
@@ -11248,6 +11259,8 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 'limit': limit,
                 'themes': detected_themes_for_save if 'detected_themes_for_save' in locals() else [],
             },
+            'themes': detected_themes_for_save if 'detected_themes_for_save' in locals() else [],
+            'curator_notes': curator_notes if 'curator_notes' in locals() else '',
             'tracks': clean_tracks_for_json,
         }
 
@@ -11364,10 +11377,12 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                         limit=limit
                     )
                     tracks = mix_res.get('tracks', [])
-                    title = params.get('name', [''])[0].strip() or mix_res.get('playlist_title') or f"{' & '.join(artists_list)}: Thematic Blend"
+                    art_parenthetical = ", ".join(artists_list)
+                    title = params.get('name', [''])[0].strip() or mix_res.get('playlist_title') or f"Thematic Blend ({art_parenthetical})"
                 else:
                     tracks = playlist_curator.mix_alternating(catalog, limit=limit)
-                    title = params.get('name', [''])[0].strip() or f"{' & '.join(artists_list)}: Alternating Top Tracks"
+                    art_parenthetical = ", ".join(artists_list)
+                    title = params.get('name', [''])[0].strip() or f"Top Tracks Rotation ({art_parenthetical})"
                 if limit and limit > 0:
                     tracks = tracks[:limit]
             else:
@@ -11451,10 +11466,12 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                         limit=limit
                     )
                     tracks = mix_res.get('tracks', [])
-                    title = params.get('name', [''])[0].strip() or mix_res.get('playlist_title') or f"{' & '.join(artists_list)}: Thematic Blend"
+                    art_parenthetical = ", ".join(artists_list)
+                    title = params.get('name', [''])[0].strip() or mix_res.get('playlist_title') or f"Thematic Blend ({art_parenthetical})"
                 else:
                     tracks = playlist_curator.mix_alternating(catalog, limit=limit)
-                    title = params.get('name', [''])[0].strip() or f"{' & '.join(artists_list)}: Alternating Top Tracks"
+                    art_parenthetical = ", ".join(artists_list)
+                    title = params.get('name', [''])[0].strip() or f"Top Tracks Rotation ({art_parenthetical})"
                 if limit and limit > 0:
                     tracks = tracks[:limit]
             else:
@@ -11562,14 +11579,44 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
 
         try:
             user_id = token_rec.get('spotify_user_id') if token_rec else None
+
+            # Generate custom playlist cover artwork
+            artists_in_playlist = []
+            for t in tracks:
+                art = (t.get('artist') or '').strip()
+                if art and art not in artists_in_playlist:
+                    artists_in_playlist.append(art)
+
+            themes_list = data.get('themes')
+            if not themes_list:
+                seen_th = set()
+                themes_list = []
+                for t in tracks:
+                    th = t.get('theme')
+                    if th and th not in seen_th:
+                        seen_th.add(th)
+                        themes_list.append({'name': th})
+
+            cover_res = playlist_curator.generate_playlist_cover_art(
+                playlist_name=name,
+                artists=artists_in_playlist,
+                themes=themes_list,
+                curator_notes=data.get('curator_notes') or description,
+                gemini_api_key=GEMINI_API_KEY
+            )
+            cover_b64 = cover_res.get('image_b64')
+
             res = spotify.export_songs_to_spotify_playlist(
                 access_token=access_token,
                 user_id=user_id,
                 playlist_name=name,
                 songs=tracks,
                 description=description,
-                user_email=current_user['email']
+                user_email=current_user['email'],
+                cover_image_b64=cover_b64
             )
+            if cover_res.get('data_url'):
+                res['cover_image_data_url'] = cover_res.get('data_url')
             self.send_response(200)
             self.send_header('Content-Type', 'application/json; charset=utf-8')
             self.end_headers()

@@ -21,6 +21,7 @@ SPOTIFY_TOKEN_URL = "https://accounts.spotify.com/api/token"
 SPOTIFY_API_BASE_URL = "https://api.spotify.com/v1"
 
 SPOTIFY_SCOPES = [
+    "ugc-image-upload",
     "user-read-recently-played",
     "user-top-read",
     "user-read-playback-state",
@@ -1081,13 +1082,46 @@ def add_tracks_to_playlist(access_token: str, playlist_id: str, track_uris: List
     return total_added
 
 
+def upload_playlist_cover_image(access_token: str, playlist_id: str, image_b64: str) -> bool:
+    """Upload a custom playlist cover image to a Spotify playlist.
+    
+    Requires ugc-image-upload scope.
+    image_b64: Base64 string of JPEG image data (max size 256 KB).
+    """
+    if not image_b64:
+        return False
+
+    # Strip data URI prefix if present
+    clean_b64 = image_b64
+    if "base64," in clean_b64:
+        clean_b64 = clean_b64.split("base64,")[1]
+    clean_b64 = clean_b64.strip()
+
+    url = f"{SPOTIFY_API_BASE_URL}/playlists/{playlist_id}/images"
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "image/jpeg"
+    }
+    try:
+        resp = requests.put(url, headers=headers, data=clean_b64, timeout=DEFAULT_TIMEOUT)
+        if resp.status_code in (200, 202):
+            return True
+        else:
+            print(f"Spotify upload_playlist_cover_image error ({resp.status_code}): {resp.text}")
+            return False
+    except Exception as e:
+        print(f"Spotify upload_playlist_cover_image exception: {e}")
+        return False
+
+
 def export_songs_to_spotify_playlist(
     access_token: str,
     user_id: Optional[str],
     playlist_name: str,
     songs: List[Dict[str, Any]],
     description: str = "",
-    user_email: Optional[str] = None
+    user_email: Optional[str] = None,
+    cover_image_b64: Optional[str] = None
 ) -> Dict[str, Any]:
     """Resolve track URIs and generate a playlist directly in Spotify."""
     try:
@@ -1147,6 +1181,11 @@ def export_songs_to_spotify_playlist(
             unique_uris.append(u)
 
     added_count = add_tracks_to_playlist(access_token, playlist_id, unique_uris)
+
+    cover_uploaded = False
+    if cover_image_b64:
+        cover_uploaded = upload_playlist_cover_image(access_token, playlist_id, cover_image_b64)
+
     return {
         "success": True,
         "playlist_id": playlist_id,
@@ -1156,6 +1195,7 @@ def export_songs_to_spotify_playlist(
         "tracks_matched": matched_count,
         "tracks_added": added_count,
         "unmatched": unmatched,
+        "cover_image_uploaded": cover_uploaded,
     }
 
 

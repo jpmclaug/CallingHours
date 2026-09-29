@@ -6,13 +6,17 @@ with deterministic audio-feature and genre-tag heuristic fallbacks.
 """
 from __future__ import annotations
 
+import base64
 import concurrent.futures
 import html
+import io
 import json
 import os
 import re
 import urllib.parse
 from typing import Any, Dict, List, Optional, Tuple, Union
+
+from PIL import Image, ImageDraw, ImageFont
 
 try:
     from google import genai
@@ -485,17 +489,17 @@ def mix_thematic_heuristic(
         ordered_tracks = ordered_tracks[:limit]
 
     # Format title & description
-    art_names = " & ".join(artists[:3]) + (f" + {len(artists) - 3} more" if len(artists) > 3 else "")
+    art_parenthetical = ", ".join(artists)
     primary_theme = themes_summary[0]["name"] if themes_summary else "Thematic Harmony"
-    playlist_title = f"{art_names}: {primary_theme} Blend"
-    playlist_desc = f"Thematically woven mix of top tracks from {art_names}, structured around {len(themes_summary)} distinct musical and emotional themes."
+    playlist_title = f"{primary_theme} ({art_parenthetical})"
+    playlist_desc = f"Thematically woven mix of top tracks from {art_parenthetical}, structured around {len(themes_summary)} distinct musical and emotional themes."
 
     return {
         "tracks": ordered_tracks,
         "themes": themes_summary,
         "playlist_title": playlist_title,
         "playlist_description": playlist_desc,
-        "curator_notes": f"Explores shared sonic and lyrical dimensions across {art_names}.",
+        "curator_notes": f"Explores shared sonic and lyrical dimensions across {art_parenthetical}.",
         "engine": "heuristic"
     }
 
@@ -569,11 +573,12 @@ Your Mission:
 4. For every track, assign:
    - "theme": The name of the detected theme it belongs to (matching one of your identified themes)
    - "connection_note": An insightful 1-2 sentence explanation of why this song fits this theme and how its lyrical/musical spirit connects to the other artist(s).
-5. Produce a creative, evocative playlist title and an insightful curator summary.
+5. Produce a short, punchy 2-4 word theme phrase describing the musical/emotional synergy WITHOUT artist names (e.g. "Passionate Hardcore", "Cathartic Crescendo", "Atmospheric Reckoning") and an insightful curator summary.
 
 Respond ONLY with a valid JSON object matching this exact structure:
 {{
-  "playlist_title": "Creative Playlist Title Here",
+  "playlist_theme": "Short 2-4 word theme phrase (e.g. 'Passionate Hardcore')",
+  "playlist_title": "Short Theme Phrase",
   "playlist_description": "2-3 sentence overview of the playlist and thematic synergy between the artists.",
   "curator_notes": "Deep curator note on the lyrical and sonic chemistry between these bands.",
   "themes": [
@@ -686,11 +691,28 @@ Respond ONLY with a valid JSON object matching this exact structure:
                     "artists_represented": sorted(list(theme_artists.get(th_name, [])))
                 })
 
+        # Format: <Short Theme> (<Band 1>, <Band 2>, ...)
+        art_parenthetical = ", ".join(artists)
+        raw_theme = (data.get("playlist_theme") or "").strip()
+        if not raw_theme:
+            raw_title = (data.get("playlist_title") or "Thematic Harmony").strip()
+            if ":" in raw_title:
+                parts = raw_title.split(":", 1)
+                if any(a.lower() in parts[0].lower() for a in artists):
+                    raw_theme = parts[1].strip()
+                else:
+                    raw_theme = parts[0].strip()
+            else:
+                raw_theme = re.sub(r"\s*\(.*?\)$", "", raw_title).strip()
+        clean_theme = re.sub(r"\s*\(.*?\)$", "", raw_theme).strip() or "Thematic Harmony"
+        final_playlist_title = f"{clean_theme} ({art_parenthetical})"
+
         return {
             "tracks": ordered_tracks,
             "themes": final_themes,
-            "playlist_title": data.get("playlist_title") or f"{' & '.join(artists[:2])}: Thematic Blend",
-            "playlist_description": data.get("playlist_description") or f"Gemini thematic lyric & audio blend for {', '.join(artists)}.",
+            "playlist_theme": clean_theme,
+            "playlist_title": final_playlist_title,
+            "playlist_description": data.get("playlist_description") or f"Gemini thematic lyric & audio blend for {art_parenthetical}.",
             "curator_notes": data.get("curator_notes") or "",
             "engine": "gemini",
             "model": chosen_model
@@ -719,3 +741,200 @@ def mix_thematic(
             limit=limit
         )
     return mix_thematic_heuristic(tracks_by_artist, limit=limit)
+
+
+# ---------------------------------------------------------------------------
+# Spotify AI Cover Art Generator
+# ---------------------------------------------------------------------------
+
+def _generate_procedural_cover_art(
+    playlist_name: str,
+    artists: List[str],
+    themes: Optional[List[Dict[str, Any]]] = None
+) -> bytes:
+    """Generate a clean, high-resolution 640x640 Spotify cover art using Pillow.
+    
+    Guarantees RGB JPEG output <= 250 KB (Spotify limit is 256 KB).
+    """
+    width, height = 640, 640
+    img = Image.new("RGB", (width, height), (11, 30, 63))
+    draw = ImageDraw.Draw(img)
+
+    # 1. Subtle cosmic background gradient
+    for y in range(height):
+        ratio = y / height
+        r = int(5 + (20 - 5) * ratio)
+        g = int(10 + (45 - 10) * ratio)
+        b = int(25 + (95 - 25) * ratio)
+        draw.line([(0, y), (width, y)], fill=(r, g, b))
+
+    # Concentric vinyl record ring / waveform accents
+    center_x, center_y = width // 2, height // 2 - 20
+    for radius in [180, 230, 280]:
+        draw.arc(
+            [center_x - radius, center_y - radius, center_x + radius, center_y + radius],
+            start=0, end=360,
+            fill=(40, 75, 130),
+            width=1
+        )
+
+    # Accent decorative borders
+    draw.rectangle([24, 24, width - 24, height - 24], outline=(165, 200, 255), width=2)
+    draw.rectangle([28, 28, width - 28, height - 28], outline=(25, 70, 133), width=1)
+
+    # Load font
+    font_bold_path = "C:/Windows/Fonts/arialbd.ttf"
+    try:
+        if os.path.exists(font_bold_path):
+            font_title = ImageFont.truetype(font_bold_path, 34)
+            font_artists = ImageFont.truetype(font_bold_path, 20)
+            font_badge = ImageFont.truetype(font_bold_path, 13)
+        else:
+            font_title = ImageFont.load_default()
+            font_artists = ImageFont.load_default()
+            font_badge = ImageFont.load_default()
+    except Exception:
+        font_title = ImageFont.load_default()
+        font_artists = ImageFont.load_default()
+        font_badge = ImageFont.load_default()
+
+    # 2. Header badge
+    badge_text = "CALLING HOURS  •  CURATED BLEND"
+    draw.text((width // 2, 60), badge_text, fill=(165, 200, 255), font=font_badge, anchor="mm")
+
+    # 3. Playlist title (extract short theme name if parenthetical exists)
+    clean_name = playlist_name.strip()
+    match = re.match(r"^(.*?)\s*\((.*?)\)$", clean_name)
+    if match:
+        main_title = match.group(1).strip()
+        sub_artists = match.group(2).strip()
+    else:
+        main_title = clean_name
+        sub_artists = ", ".join(artists)
+
+    # Word wrap main title
+    words = main_title.split()
+    lines = []
+    cur_line = []
+    for w in words:
+        cur_line.append(w)
+        if len(" ".join(cur_line)) > 18:
+            lines.append(" ".join(cur_line))
+            cur_line = []
+    if cur_line:
+        lines.append(" ".join(cur_line))
+
+    # Draw title
+    y_start = 230 - (len(lines) * 22)
+    for i, line in enumerate(lines[:3]):
+        draw.text((width // 2, y_start + (i * 44)), line, fill=(255, 255, 255), font=font_title, anchor="mm")
+
+    # 4. Accent divider line
+    div_y = y_start + (len(lines[:3]) * 44) + 16
+    draw.line([(width // 2 - 80, div_y), (width // 2 + 80, div_y)], fill=(90, 240, 165), width=2)
+
+    # 5. Artists in parentheses
+    art_disp = f"({sub_artists})"
+    if len(art_disp) > 42:
+        art_parts = sub_artists.split(",")
+        mid = len(art_parts) // 2
+        p1 = ", ".join(art_parts[:mid]).strip()
+        p2 = ", ".join(art_parts[mid:]).strip()
+        draw.text((width // 2, div_y + 36), f"({p1},", fill=(197, 184, 255), font=font_artists, anchor="mm")
+        draw.text((width // 2, div_y + 64), f"{p2})", fill=(197, 184, 255), font=font_artists, anchor="mm")
+    else:
+        draw.text((width // 2, div_y + 38), art_disp, fill=(197, 184, 255), font=font_artists, anchor="mm")
+
+    # 6. Bottom footer tag
+    if themes:
+        first_th = themes[0].get("name", "")
+        if first_th:
+            draw.text((width // 2, height - 60), f"THEME: {first_th.upper()}", fill=(165, 200, 255), font=font_badge, anchor="mm")
+
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=85)
+    return buf.getvalue()
+
+
+def generate_playlist_cover_art(
+    playlist_name: str,
+    artists: List[str],
+    themes: Optional[List[Dict[str, Any]]] = None,
+    curator_notes: Optional[str] = None,
+    gemini_api_key: Optional[str] = None
+) -> Dict[str, Any]:
+    """Generate custom 640x640 album cover artwork for Spotify.
+    
+    Uses Gemini native image model (gemini-3.1-flash-image) when configured,
+    and falls back to procedural Pillow art.
+    Guarantees valid JPEG <= 250 KB (Spotify limit is 256 KB).
+    """
+    clean_name = playlist_name.strip()
+    match = re.match(r"^(.*?)\s*\((.*?)\)$", clean_name)
+    theme_label = match.group(1).strip() if match else clean_name
+    artists_str = ", ".join(artists[:5])
+    theme_names = [t.get("name", "") for t in (themes or []) if t.get("name")]
+    theme_desc = ", ".join(theme_names) if theme_names else theme_label
+
+    jpeg_bytes: Optional[bytes] = None
+    engine_used = "pillow"
+
+    if gemini_api_key and genai:
+        try:
+            client = genai.Client(api_key=gemini_api_key.strip())
+            prompt = (
+                f"Square album cover art for a curated music playlist titled '{theme_label}' "
+                f"featuring bands: {artists_str}. "
+                f"Musical themes and mood: {theme_desc}. "
+                f"Curator essence: {curator_notes or 'Intense emotion, melodic resonance, and powerful energy'}. "
+                f"Visual style: striking modern album cover jacket, cinematic atmospheric lighting, dramatic contrast, "
+                f"minimalist graphic design, vinyl LP aesthetics, 1:1 aspect ratio, high resolution. "
+                f"Do not include watermarks or illegible text."
+            )
+            resp = client.models.generate_content(
+                model="gemini-3.1-flash-image",
+                contents=[prompt],
+            )
+            raw_img = None
+            if resp.parts:
+                for part in resp.parts:
+                    if getattr(part, "inline_data", None) and part.inline_data.data:
+                        raw_data = part.inline_data.data
+                        if isinstance(raw_data, str):
+                            raw_bytes = base64.b64decode(raw_data)
+                        else:
+                            raw_bytes = raw_data
+                        raw_img = Image.open(io.BytesIO(raw_bytes))
+                        break
+                    elif hasattr(part, "as_image"):
+                        raw_img = part.as_image()
+                        break
+
+            if raw_img:
+                if raw_img.mode != "RGB":
+                    raw_img = raw_img.convert("RGB")
+                resized = raw_img.resize((640, 640), Image.Resampling.LANCZOS)
+                
+                # Compress under 250 KB (Spotify limit is 256 KB)
+                for q in (85, 75, 65, 55):
+                    buf = io.BytesIO()
+                    resized.save(buf, format="JPEG", quality=q)
+                    if len(buf.getvalue()) <= 250000:
+                        jpeg_bytes = buf.getvalue()
+                        engine_used = "gemini"
+                        break
+        except Exception as e:
+            print(f"Gemini cover art generation notice (using procedural fallback): {e}")
+
+    if not jpeg_bytes:
+        jpeg_bytes = _generate_procedural_cover_art(playlist_name, artists, themes)
+        engine_used = "pillow"
+
+    b64_str = base64.b64encode(jpeg_bytes).decode("utf-8")
+    return {
+        "image_bytes": jpeg_bytes,
+        "image_b64": b64_str,
+        "data_url": f"data:image/jpeg;base64,{b64_str}",
+        "engine": engine_used,
+        "size_bytes": len(jpeg_bytes),
+    }

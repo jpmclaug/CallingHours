@@ -1667,7 +1667,7 @@ class TestAppIntegration(unittest.TestCase):
             with self.authed_get(url) as resp:
                 self.assertEqual(resp.status, 200)
                 html = resp.read().decode('utf-8')
-                self.assertIn("Jimmy Eat World & Taking Back Sunday: Alternating Top Tracks", html)
+                self.assertIn("Top Tracks Rotation (Jimmy Eat World, Taking Back Sunday)", html)
                 self.assertIn("The Middle", html)
                 self.assertIn("Cute Without the 'E'", html)
                 self.assertIn("Sweetness", html)
@@ -1677,7 +1677,7 @@ class TestAppIntegration(unittest.TestCase):
 
         # 3. Test Thematic Mode with Gemini / Analysis response
         mock_thematic_res = {
-            "playlist_title": "Anthemic Catharsis & Emo Reckoning",
+            "playlist_title": "Passionate Hardcore (Jimmy Eat World, Taking Back Sunday)",
             "playlist_description": "Thematic cross-artist journey.",
             "curator_notes": "From suburban restlessness to fiery vocal delivery.",
             "engine": "gemini",
@@ -1705,7 +1705,7 @@ class TestAppIntegration(unittest.TestCase):
             with self.authed_get(url) as resp:
                 self.assertEqual(resp.status, 200)
                 html = resp.read().decode('utf-8')
-                self.assertIn("Anthemic Catharsis & Emo Reckoning", html)
+                self.assertIn("Passionate Hardcore (Jimmy Eat World, Taking Back Sunday)", html)
                 self.assertIn("Thematic Track Analysis &amp; Detected Themes", html)
                 self.assertIn("Cathartic Crescendo", html)
                 self.assertIn("From suburban restlessness to fiery vocal delivery.", html)
@@ -1770,6 +1770,44 @@ class TestAppIntegration(unittest.TestCase):
             self.assertIn("Jimmy and TBS Thematic Blend", html)
             self.assertIn("The Middle", html)
             self.assertIn("MakeDamnSure", html)
+
+        # 7. Test Spotify Export with Custom Cover Art Generation
+        spotify_export_payload = json.dumps({
+            "name": "Passionate Hardcore (Jimmy Eat World, Taking Back Sunday)",
+            "description": "Cross-artist top tracks curation",
+            "tracks": mock_thematic_res["tracks"],
+            "themes": mock_thematic_res["themes"],
+            "curator_notes": mock_thematic_res["curator_notes"]
+        }).encode('utf-8')
+        spot_req = urllib.request.Request(
+            f"{self.base_url}/api/playlists/export-spotify",
+            data=spotify_export_payload,
+            headers=headers
+        )
+        with patch("database.get_spotify_token", return_value={"spotify_user_id": "test_user_sp", "access_token": "mock_tok"}), \
+             patch("spotify.get_valid_access_token", return_value="mock_valid_token"), \
+             patch("spotify.export_songs_to_spotify_playlist") as mock_spot_exp:
+            mock_spot_exp.return_value = {
+                "success": True,
+                "playlist_id": "sp_pl_123",
+                "playlist_url": "https://open.spotify.com/playlist/sp_pl_123",
+                "playlist_name": "Passionate Hardcore (Jimmy Eat World, Taking Back Sunday)",
+                "tracks_added": 2,
+                "cover_image_uploaded": True
+            }
+            with urllib.request.urlopen(spot_req) as resp:
+                self.assertEqual(resp.status, 200)
+                sp_data = json.loads(resp.read().decode('utf-8'))
+                self.assertTrue(sp_data.get("success"))
+                self.assertEqual(sp_data.get("playlist_id"), "sp_pl_123")
+                self.assertTrue(sp_data.get("cover_image_uploaded"))
+                self.assertIn("cover_image_data_url", sp_data)
+                self.assertTrue(sp_data["cover_image_data_url"].startswith("data:image/jpeg;base64,"))
+                # Verify cover_image_b64 was passed to spotify.export_songs_to_spotify_playlist
+                mock_spot_exp.assert_called_once()
+                call_kwargs = mock_spot_exp.call_args[1]
+                self.assertIn("cover_image_b64", call_kwargs)
+                self.assertTrue(len(call_kwargs["cover_image_b64"]) > 50)
 
         # Clean up
         with self.authed_get(f"/playlists/delete?id={saved_pid}") as resp:
