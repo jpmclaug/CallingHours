@@ -477,6 +477,22 @@ def init_db(db_path: Optional[str] = None) -> None:
                 ON playlist_items(playlist_id);
             """)
             cursor.execute("""
+                CREATE TABLE IF NOT EXISTS thematic_curation_cache (
+                    id SERIAL PRIMARY KEY,
+                    cache_key TEXT NOT NULL UNIQUE,
+                    mode TEXT NOT NULL,
+                    prompt TEXT,
+                    artists TEXT,
+                    result_json TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_thematic_cache_key 
+                ON thematic_curation_cache(cache_key);
+            """)
+            cursor.execute("""
                 INSERT INTO users (email, is_admin, is_active, created_at)
                 VALUES (%s, TRUE, TRUE, CURRENT_TIMESTAMP)
                 ON CONFLICT (email) DO UPDATE SET is_admin = TRUE, is_active = TRUE;
@@ -669,6 +685,22 @@ def init_db(db_path: Optional[str] = None) -> None:
             cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_playlist_items_playlist_id 
                 ON playlist_items(playlist_id);
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS thematic_curation_cache (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    cache_key TEXT NOT NULL UNIQUE,
+                    mode TEXT NOT NULL,
+                    prompt TEXT,
+                    artists TEXT,
+                    result_json TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_thematic_cache_key 
+                ON thematic_curation_cache(cache_key);
             """)
             cursor.execute("""
                 INSERT INTO users (email, is_admin, is_active, created_at)
@@ -2180,6 +2212,128 @@ def update_playlist_spotify_info(playlist_id: int, spotify_id: str, spotify_url:
                 WHERE id = ?
             """, (spotify_id, spotify_url, playlist_id))
         return cursor.rowcount > 0
+
+
+def save_thematic_curation(
+    cache_key: str,
+    mode: str,
+    result: Dict[str, Any],
+    prompt: Optional[str] = None,
+    artists: Optional[Union[str, List[str]]] = None,
+    db_path: Optional[str] = None
+) -> bool:
+    """
+    Save or update a generated thematic/mood playlist curation in thematic_curation_cache.
+    Prevents redundant LLM calls when regenerating, viewing, or exporting.
+    """
+    if not cache_key or not str(cache_key).strip() or not result:
+        return False
+    target = get_db_target(db_path)
+    artists_str = json.dumps(artists) if isinstance(artists, (list, set, tuple)) else (str(artists) if artists is not None else None)
+    result_str = json.dumps(result, ensure_ascii=False)
+
+    try:
+        with get_connection(target) as conn:
+            cursor = conn.cursor()
+            if is_postgres(target):
+                cursor.execute("""
+                    INSERT INTO thematic_curation_cache (cache_key, mode, prompt, artists, result_json, updated_at)
+                    VALUES (%s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+                    ON CONFLICT (cache_key) DO UPDATE SET
+                        mode = EXCLUDED.mode,
+                        prompt = EXCLUDED.prompt,
+                        artists = EXCLUDED.artists,
+                        result_json = EXCLUDED.result_json,
+                        updated_at = CURRENT_TIMESTAMP
+                """, (cache_key, mode, prompt, artists_str, result_str))
+            else:
+                cursor.execute("""
+                    INSERT INTO thematic_curation_cache (cache_key, mode, prompt, artists, result_json, updated_at)
+                    VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    ON CONFLICT (cache_key) DO UPDATE SET
+                        mode = excluded.mode,
+                        prompt = excluded.prompt,
+                        artists = excluded.artists,
+                        result_json = excluded.result_json,
+                        updated_at = CURRENT_TIMESTAMP
+                """, (cache_key, mode, prompt, artists_str, result_str))
+            return True
+    except Exception:
+        return False
+
+
+def get_thematic_curation(
+    cache_key: str,
+    max_age_days: Optional[int] = 30,
+    db_path: Optional[str] = None
+) -> Optional[Dict[str, Any]]:
+    """
+    Retrieve cached thematic/mood curation result by cache_key.
+    Returns parsed dictionary with '_cached': True and '_cached_at' if found, else None.
+    """
+    if not cache_key or not str(cache_key).strip():
+        return None
+    target = get_db_target(db_path)
+    try:
+        with get_connection(target) as conn:
+            if is_postgres(target):
+                cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+                ph = "%s"
+            else:
+                cursor = conn.cursor()
+                ph = "?"
+            cursor.execute(f"SELECT cache_key, mode, prompt, artists, result_json, created_at, updated_at FROM thematic_curation_cache WHERE cache_key = {ph}", (cache_key,))
+            row = cursor.fetchone()
+            if not row:
+                return None
+            record = dict(row)
+            if max_age_days is not None:
+                updated_at = record.get('updated_at') or record.get('created_at')
+                if updated_at:
+                    dt = None
+                    if isinstance(updated_at, datetime):
+                        dt = updated_at
+                    elif isinstance(updated_at, str):
+                        try:
+                            clean_ts = updated_at.replace('Z', '+00:00')
+                            dt = datetime.fromisoformat(clean_ts)
+                        except Exception:
+                            dt = None
+                    if dt:
+                        if dt.tzinfo is None:
+                            dt = dt.replace(tzinfo=timezone.utc)
+                        if (datetime.now(timezone.utc) - dt).days > max_age_days:
+                            return None
+            raw_json = record.get('result_json')
+            if isinstance(raw_json, str):
+                parsed = json.loads(raw_json)
+            elif isinstance(raw_json, dict):
+                parsed = raw_json
+            else:
+                return None
+            if isinstance(parsed, dict):
+                parsed['_cached'] = True
+                parsed['_cached_at'] = str(record.get('updated_at') or record.get('created_at'))
+            return parsed
+    except Exception:
+        return False
+
+
+def clear_thematic_curation_cache(cache_key: Optional[str] = None, db_path: Optional[str] = None) -> bool:
+    """Clear specific cache entry or all thematic curations."""
+    target = get_db_target(db_path)
+    try:
+        with get_connection(target) as conn:
+            cursor = conn.cursor()
+            if cache_key:
+                ph = "%s" if is_postgres(target) else "?"
+                cursor.execute(f"DELETE FROM thematic_curation_cache WHERE cache_key = {ph}", (cache_key,))
+            else:
+                cursor.execute("DELETE FROM thematic_curation_cache")
+            return True
+    except Exception:
+        return False
+
 
 
 

@@ -7865,6 +7865,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             saved_id = int(saved_id_str) if saved_id_str.isdigit() else None
             tab = params.get('tab', ['generate'])[0].strip()
             msg = params.get('msg', [''])[0].strip()
+            refresh = params.get('refresh', ['0'])[0].strip() in ('1', 'true', 'yes')
             self.render_playlists_page(
                 mode=mode,
                 selected_artist=artist,
@@ -7881,7 +7882,8 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 custom_name=playlist_name,
                 saved_id=saved_id,
                 active_tab=tab,
-                message=msg
+                message=msg,
+                force_refresh=refresh
             )
             return
 
@@ -11170,7 +11172,8 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         custom_name: str = '',
         saved_id: Optional[int] = None,
         active_tab: str = 'generate',
-        message: str = ''
+        message: str = '',
+        force_refresh: bool = False
     ):
         current_user = self.get_current_user()
         if not current_user:
@@ -11476,7 +11479,8 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                         catalog,
                         gemini_api_key=GEMINI_API_KEY,
                         model_name=DEFAULT_GEMINI_MODEL,
-                        limit=limit
+                        limit=limit,
+                        force_refresh=force_refresh
                     )
                     songs = thematic_res.get('tracks', [])
                     themes = thematic_res.get('themes', [])
@@ -11498,6 +11502,12 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                         theme_pills.append(f'<span class="playlist-tag-chip" style="background: rgba(197, 184, 255, 0.18); border-color: rgba(197, 184, 255, 0.4); color: #C5B8FF; font-size: 0.78rem; font-weight: 700;" title="{th_desc}">{th_icon} {th_name} ({th_cnt})</span>')
 
                     engine_label = "Google Gemini AI" if thematic_res.get('engine') == 'gemini' else "Sonic & Tag Intelligence Engine"
+                    is_cached = bool(thematic_res.get('_cached'))
+                    cached_badge = ''
+                    refresh_url = f"/playlists?mode=multi_artist&artists={urllib.parse.quote(selected_artists)}&mix_mode=thematic&per_artist={selected_per_artist}&limit={limit or ''}&refresh=1"
+                    if is_cached:
+                        cached_badge = '<span style="font-size: 0.74rem; background: rgba(46, 213, 115, 0.18); border: 1px solid rgba(46, 213, 115, 0.4); color: #2ED573; padding: 2px 8px; border-radius: 10px; font-weight: 700;" title="Loaded instantly from database cache. No duplicate Gemini API call.">⚡ Cached Curation</span>'
+                    refresh_btn = f'<a href="{refresh_url}" style="font-size: 0.74rem; color: #A5C8FF; text-decoration: none; border: 1px solid rgba(165, 200, 255, 0.35); padding: 2px 8px; border-radius: 10px; background: rgba(255, 255, 255, 0.05); transition: all 0.2s ease; display: inline-flex; align-items: center; gap: 4px;" title="Re-run Gemini thematic lyric &amp; audio analysis">↻ Re-analyze with Gemini</a>'
                     thematic_synergy_card_html = f'''
                     <div style="background: linear-gradient(135deg, rgba(25, 70, 133, 0.3) 0%, rgba(11, 30, 63, 0.6) 100%); border: 1px solid rgba(197, 184, 255, 0.35); border-radius: 12px; padding: 16px 20px; margin-bottom: 20px;">
                         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 8px;">
@@ -11507,9 +11517,13 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                                     Thematic Track Analysis &amp; Detected Themes
                                 </h4>
                             </div>
-                            <span style="font-size: 0.74rem; background: rgba(197, 184, 255, 0.15); border: 1px solid rgba(197, 184, 255, 0.3); color: #C5B8FF; padding: 2px 8px; border-radius: 10px; font-weight: 600;">
-                                Powered by {engine_label}
-                            </span>
+                            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                                {cached_badge}
+                                {refresh_btn}
+                                <span style="font-size: 0.74rem; background: rgba(197, 184, 255, 0.15); border: 1px solid rgba(197, 184, 255, 0.3); color: #C5B8FF; padding: 2px 8px; border-radius: 10px; font-weight: 600;">
+                                    Powered by {engine_label}
+                                </span>
+                            </div>
                         </div>
                         <div style="font-size: 0.84rem; color: rgba(225, 232, 240, 0.85); line-height: 1.45; margin-bottom: 12px;">
                             {html_escape(curator_notes or auto_desc)}
@@ -11545,7 +11559,8 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                     tracks=all_catalog,
                     gemini_api_key=GEMINI_API_KEY,
                     model_name=DEFAULT_GEMINI_MODEL,
-                    limit=limit or 15
+                    limit=limit or 15,
+                    force_refresh=force_refresh
                 )
                 songs = curated_res.get('tracks', [])
                 detected_themes_for_save = curated_res.get('themes', [])
@@ -11564,6 +11579,12 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                     th_desc = html_escape(th.get('description', ''))
                     theme_pills.append(f'<span class="playlist-tag-chip" style="background: rgba(197, 184, 255, 0.18); border-color: rgba(197, 184, 255, 0.4); color: #C5B8FF; font-size: 0.78rem; font-weight: 700;" title="{th_desc}">{th_icon} {th_name} ({th_cnt})</span>')
 
+                is_cached = bool(curated_res.get('_cached'))
+                cached_badge = ''
+                refresh_url = f"/playlists?mode=ai_prompt&prompt={urllib.parse.quote(ai_prompt_query)}&limit={limit or 15}&refresh=1"
+                if is_cached:
+                    cached_badge = '<span style="font-size: 0.74rem; background: rgba(46, 213, 115, 0.18); border: 1px solid rgba(46, 213, 115, 0.4); color: #2ED573; padding: 2px 8px; border-radius: 10px; font-weight: 700;" title="Loaded instantly from database cache. No duplicate Gemini API call.">⚡ Cached Curation</span>'
+                refresh_btn = f'<a href="{refresh_url}" style="font-size: 0.74rem; color: #A5C8FF; text-decoration: none; border: 1px solid rgba(165, 200, 255, 0.35); padding: 2px 8px; border-radius: 10px; background: rgba(255, 255, 255, 0.05); transition: all 0.2s ease; display: inline-flex; align-items: center; gap: 4px;" title="Re-run Gemini AI mood curation">↻ Re-curate with Gemini</a>'
                 thematic_synergy_card_html = f'''
                 <div style="background: linear-gradient(135deg, rgba(75, 30, 115, 0.35) 0%, rgba(11, 30, 63, 0.7) 100%); border: 1px solid rgba(197, 184, 255, 0.4); border-radius: 12px; padding: 16px 20px; margin-bottom: 20px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 8px;">
@@ -11573,9 +11594,13 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                                 AI Curated Mood Vibe &amp; Motif Arc
                             </h4>
                         </div>
-                        <span style="font-size: 0.74rem; background: rgba(197, 184, 255, 0.15); border: 1px solid rgba(197, 184, 255, 0.3); color: #C5B8FF; padding: 2px 8px; border-radius: 10px; font-weight: 600;">
-                            Gemini AI Prompt Engine
-                        </span>
+                        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                            {cached_badge}
+                            {refresh_btn}
+                            <span style="font-size: 0.74rem; background: rgba(197, 184, 255, 0.15); border: 1px solid rgba(197, 184, 255, 0.3); color: #C5B8FF; padding: 2px 8px; border-radius: 10px; font-weight: 600;">
+                                Gemini AI Prompt Engine
+                            </span>
+                        </div>
                     </div>
                     <div style="font-size: 0.84rem; color: rgba(225, 232, 240, 0.85); line-height: 1.45; margin-bottom: 12px;">
                         {html_escape(curator_notes or auto_desc)}
@@ -12224,6 +12249,18 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                     title = params.get('name', [''])[0].strip() or f"Top Tracks Rotation ({art_parenthetical})"
                 if limit and limit > 0:
                     tracks = tracks[:limit]
+            elif mode == 'ai_prompt':
+                prompt_q = params.get('prompt', [''])[0].strip() or 'melancholy midnight drive with heavy emotional chorus'
+                all_catalog = database.get_analyzed_songs()
+                curated_res = playlist_curator.mix_ai_prompt(
+                    prompt=prompt_q,
+                    tracks=all_catalog,
+                    gemini_api_key=GEMINI_API_KEY,
+                    model_name=DEFAULT_GEMINI_MODEL,
+                    limit=limit or 15
+                )
+                tracks = curated_res.get('tracks', [])
+                title = params.get('name', [''])[0].strip() or curated_res.get('playlist_title') or f"AI Mood: {prompt_q[:25]}"
             else:
                 tracks = database.get_analyzed_songs(artist=artist, tag=tag, order_by=order, limit=limit)
 
@@ -12269,7 +12306,59 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             limit_str = params.get('limit', [''])[0].strip()
             limit = int(limit_str) if limit_str.isdigit() else None
             title = params.get('name', [''])[0].strip() or 'Calling Hours Playlist'
-            tracks = database.get_analyzed_songs(artist=artist, tag=tag, order_by=order, limit=limit)
+
+            if mode == 'setlist_fm':
+                cur_yr = str(datetime.now().year)
+                year = params.get('year', [cur_yr])[0].strip() or cur_yr
+                artist_name = artist or 'Haywire'
+                title = params.get('name', [''])[0].strip() or f'{artist_name}: {year} Average Setlist'
+                setlist_res = setlistfm.fetch_average_setlist_by_year(artist_name, year, api_key=SETLIST_FM_API_KEY)
+                tracks = setlist_res.get('tracks', [])
+                if limit and limit > 0:
+                    tracks = tracks[:limit]
+            elif mode == 'multi_artist':
+                raw_artists_str = params.get('artists', [''])[0].strip()
+                artists_list = [a.strip() for a in raw_artists_str.split(',') if a.strip()]
+                mix_mode = params.get('mix_mode', ['alternating'])[0].strip()
+                per_artist_str = params.get('per_artist', ['5'])[0].strip()
+                per_artist = int(per_artist_str) if per_artist_str.isdigit() else 5
+
+                catalog = playlist_curator.fetch_multi_artist_catalog(
+                    artists_list,
+                    limit_per_artist=per_artist,
+                    user_email=current_user.get('email') if current_user else None,
+                    db_path=DATABASE_PATH
+                )
+                if mix_mode == 'thematic':
+                    mix_res = playlist_curator.mix_thematic(
+                        catalog,
+                        gemini_api_key=GEMINI_API_KEY,
+                        model_name=DEFAULT_GEMINI_MODEL,
+                        limit=limit
+                    )
+                    tracks = mix_res.get('tracks', [])
+                    art_parenthetical = ", ".join(artists_list)
+                    title = params.get('name', [''])[0].strip() or mix_res.get('playlist_title') or f"Thematic Blend ({art_parenthetical})"
+                else:
+                    tracks = playlist_curator.mix_alternating(catalog, limit=limit)
+                    art_parenthetical = ", ".join(artists_list)
+                    title = params.get('name', [''])[0].strip() or f"Top Tracks Rotation ({art_parenthetical})"
+                if limit and limit > 0:
+                    tracks = tracks[:limit]
+            elif mode == 'ai_prompt':
+                prompt_q = params.get('prompt', [''])[0].strip() or 'melancholy midnight drive with heavy emotional chorus'
+                all_catalog = database.get_analyzed_songs()
+                curated_res = playlist_curator.mix_ai_prompt(
+                    prompt=prompt_q,
+                    tracks=all_catalog,
+                    gemini_api_key=GEMINI_API_KEY,
+                    model_name=DEFAULT_GEMINI_MODEL,
+                    limit=limit or 15
+                )
+                tracks = curated_res.get('tracks', [])
+                title = params.get('name', [''])[0].strip() or curated_res.get('playlist_title') or f"AI Mood: {prompt_q[:25]}"
+            else:
+                tracks = database.get_analyzed_songs(artist=artist, tag=tag, order_by=order, limit=limit)
 
         content = playlist_curator.export_apple_music_playlist(title, tracks)
         safe_name = "".join(c for c in title if c.isalnum() or c in (' ', '_', '-')).strip().replace(' ', '_') or 'calling_hours_playlist'
@@ -12350,6 +12439,18 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                     title = params.get('name', [''])[0].strip() or f"Top Tracks Rotation ({art_parenthetical})"
                 if limit and limit > 0:
                     tracks = tracks[:limit]
+            elif mode == 'ai_prompt':
+                prompt_q = params.get('prompt', [''])[0].strip() or 'melancholy midnight drive with heavy emotional chorus'
+                all_catalog = database.get_analyzed_songs()
+                curated_res = playlist_curator.mix_ai_prompt(
+                    prompt=prompt_q,
+                    tracks=all_catalog,
+                    gemini_api_key=GEMINI_API_KEY,
+                    model_name=DEFAULT_GEMINI_MODEL,
+                    limit=limit or 15
+                )
+                tracks = curated_res.get('tracks', [])
+                title = params.get('name', [''])[0].strip() or curated_res.get('playlist_title') or f"AI Mood: {prompt_q[:25]}"
             else:
                 tracks = database.get_analyzed_songs(artist=artist, tag=tag, order_by=order, limit=limit)
 

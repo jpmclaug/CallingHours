@@ -727,20 +727,44 @@ def mix_thematic(
     tracks_by_artist: Dict[str, List[Dict[str, Any]]],
     gemini_api_key: Optional[str] = None,
     model_name: Optional[str] = None,
-    limit: Optional[int] = None
+    limit: Optional[int] = None,
+    force_refresh: bool = False,
+    db_path: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Main entry point for thematic mixing.
+    Checks database cache first unless force_refresh is True.
     Invokes Gemini when an API key is available, otherwise uses the heuristic engine.
+    Saves successful curations to cache.
     """
+    artists_sorted = sorted([normalize_artist_name(k).lower() for k in tracks_by_artist.keys() if k and k.strip()])
+    cache_key = f"thematic_blend:{'|'.join(artists_sorted)}:lim_{limit or 'all'}"
+
+    if not force_refresh and artists_sorted:
+        cached = database.get_thematic_curation(cache_key, db_path=db_path)
+        if cached and cached.get('tracks'):
+            return cached
+
     if gemini_api_key and gemini_api_key.strip() and genai:
-        return mix_thematic_gemini(
+        result = mix_thematic_gemini(
             tracks_by_artist,
             gemini_api_key=gemini_api_key.strip(),
             model_name=model_name,
             limit=limit
         )
-    return mix_thematic_heuristic(tracks_by_artist, limit=limit)
+    else:
+        result = mix_thematic_heuristic(tracks_by_artist, limit=limit)
+
+    if result and result.get('tracks') and artists_sorted:
+        database.save_thematic_curation(
+            cache_key=cache_key,
+            mode="thematic_blend",
+            result=result,
+            artists=artists_sorted,
+            db_path=db_path
+        )
+
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -1052,9 +1076,15 @@ def mix_ai_prompt(
     tracks: List[Dict[str, Any]],
     gemini_api_key: Optional[str] = None,
     model_name: str = DEFAULT_GEMINI_MODEL,
-    limit: Optional[int] = None
+    limit: Optional[int] = None,
+    force_refresh: bool = False,
+    db_path: Optional[str] = None
 ) -> Dict[str, Any]:
-    """Curate and order library tracks matching a freeform mood or vibe prompt with Gemini AI."""
+    """Curate and order library tracks matching a freeform mood or vibe prompt with Gemini AI.
+    
+    Checks database cache first unless force_refresh is True.
+    Saves successful curations to cache.
+    """
     clean_prompt = prompt.strip()
     if not tracks:
         return {
@@ -1065,6 +1095,15 @@ def mix_ai_prompt(
             "engine": "fallback"
         }
 
+    target_count = min(limit or 15, len(tracks))
+    norm_prompt = re.sub(r'\s+', ' ', clean_prompt.lower())
+    cache_key = f"ai_mood:{norm_prompt}:lim_{target_count}"
+
+    if not force_refresh:
+        cached = database.get_thematic_curation(cache_key, db_path=db_path)
+        if cached and cached.get('tracks'):
+            return cached
+
     candidate_summaries = []
     for idx, t in enumerate(tracks[:60]):
         art = t.get("artist", "")
@@ -1072,8 +1111,6 @@ def mix_ai_prompt(
         tags = [tg.get("name", "") if isinstance(tg, dict) else str(tg) for tg in (t.get("track_tags") or [])][:4]
         tag_str = f" [Tags: {', '.join(tags)}]" if tags else ""
         candidate_summaries.append(f"{idx + 1}. {art} - {sng}{tag_str}")
-
-    target_count = min(limit or 15, len(tracks))
 
     if gemini_api_key and genai:
         try:
@@ -1088,6 +1125,7 @@ def mix_ai_prompt(
                 f'  "playlist_title": "A short, evocative title for this playlist",\n'
                 f'  "playlist_description": "A 1-2 sentence description of the vibe and sound",\n'
                 f'  "curator_notes": "A brief reflection on why these songs connect to the requested mood",\n'
+                f'  "themes": [{{"name": "Short Theme Name", "description": "1-sentence theme explanation"}}],\n'
                 f'  "selected_indices": [1, 5, 12, ...]\n'
                 f"}}"
             )
@@ -1104,13 +1142,22 @@ def mix_ai_prompt(
                     if isinstance(i, int) and 1 <= i <= len(tracks):
                         chosen.append(tracks[i - 1])
                 if chosen:
-                    return {
+                    result = {
                         "tracks": chosen[:target_count],
+                        "themes": data.get("themes", []),
                         "playlist_title": data.get("playlist_title") or f"Calling Hours: {clean_prompt}",
                         "playlist_description": data.get("playlist_description") or f"Vibe match: {clean_prompt}",
                         "curator_notes": data.get("curator_notes", ""),
                         "engine": "gemini"
                     }
+                    database.save_thematic_curation(
+                        cache_key=cache_key,
+                        mode="ai_mood",
+                        result=result,
+                        prompt=clean_prompt,
+                        db_path=db_path
+                    )
+                    return result
         except Exception as e:
             print(f"Gemini prompt curation notice (using keyword fallback): {e}")
 
@@ -1125,11 +1172,21 @@ def mix_ai_prompt(
         return sc
 
     ranked = sorted(tracks, key=_score, reverse=True)
-    return {
+    fallback_themes = [{"name": kw.capitalize(), "description": f"Keyword vibe: {kw}"} for kw in keywords[:3]]
+    result = {
         "tracks": ranked[:target_count],
+        "themes": fallback_themes,
         "playlist_title": f"Calling Hours: {clean_prompt}",
         "playlist_description": f"Curated for the vibe: {clean_prompt}",
         "curator_notes": f"Selected based on mood keywords matching '{clean_prompt}'.",
         "engine": "keyword_fallback"
     }
+    database.save_thematic_curation(
+        cache_key=cache_key,
+        mode="ai_mood",
+        result=result,
+        prompt=clean_prompt,
+        db_path=db_path
+    )
+    return result
 

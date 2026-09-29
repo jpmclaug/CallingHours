@@ -128,5 +128,45 @@ class TestEnhancementsComprehensive(unittest.TestCase):
             self.assertIn("Artist Thematic DNA &amp; Signature Motifs", html)
             self.assertIn("Curate Narrative Arc Playlist", html)
 
+    def test_08_thematic_curation_caching_and_refresh(self):
+        """Verify thematic and AI mood curations are cached in the database and re-used on reload/export."""
+        # 1. Database layer verification
+        test_key = "test:unit_cache_verification"
+        test_payload = {"tracks": [{"artist": "Test Band", "song": "Song A"}], "themes": [{"name": "Resilience"}]}
+        self.assertTrue(database.save_thematic_curation(test_key, "thematic_blend", test_payload))
+        cached = database.get_thematic_curation(test_key)
+        self.assertIsNotNone(cached)
+        self.assertTrue(cached.get('_cached'))
+        self.assertEqual(cached['themes'][0]['name'], "Resilience")
+        database.clear_thematic_curation_cache(test_key)
+
+        # 2. playlist_curator layer verification
+        catalog = {
+            "Artist Alpha": [{"artist": "Artist Alpha", "song": "Alpha Song 1", "track_tags": ["punk"]}],
+            "Artist Beta": [{"artist": "Artist Beta", "song": "Beta Song 1", "track_tags": ["hardcore"]}],
+        }
+        res1 = playlist_curator.mix_thematic(catalog, force_refresh=True)
+        self.assertFalse(res1.get('_cached', False))
+        res2 = playlist_curator.mix_thematic(catalog, force_refresh=False)
+        self.assertTrue(res2.get('_cached', False))
+
+        # 3. HTTP endpoint caching & badge verification
+        url_path = "/playlists?mode=multi_artist&artists=Artist%20Alpha,Artist%20Beta&mix_mode=thematic"
+        with self.authed_get(url_path) as resp:
+            self.assertEqual(resp.status, 200)
+            html = resp.read().decode('utf-8')
+            self.assertIn("Cached Curation", html)
+            self.assertIn("Re-analyze with Gemini", html)
+            self.assertIn("refresh=1", html)
+
+        # 4. Export verification re-using cache without error
+        export_path = "/playlists/export/m3u?mode=multi_artist&artists=Artist%20Alpha,Artist%20Beta&mix_mode=thematic"
+        with self.authed_get(export_path) as resp:
+            self.assertEqual(resp.status, 200)
+            body = resp.read().decode('utf-8')
+            self.assertTrue(body.startswith("#EXTM3U"))
+            self.assertIn("Artist Alpha", body)
+
 if __name__ == "__main__":
     unittest.main()
+
