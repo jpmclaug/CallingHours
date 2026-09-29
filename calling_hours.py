@@ -12,8 +12,10 @@ import html
 import json
 import secrets
 import difflib
+import gzip
 from datetime import datetime, timezone
 from typing import Any, Optional, Dict, List
+from collections import Counter
 import traceback
 import concurrent.futures
 
@@ -118,6 +120,47 @@ SETLIST_FM_API_KEY = os.environ.get('SETLIST_FM_API_KEY') or _local_secrets.get(
 SPOTIFY_CLIENT_ID = os.environ.get('SPOTIFY_CLIENT_ID') or _local_secrets.get('SPOTIFY_CLIENT_ID', '')
 SPOTIFY_CLIENT_SECRET = os.environ.get('SPOTIFY_CLIENT_SECRET') or _local_secrets.get('SPOTIFY_CLIENT_SECRET', '')
 SPOTIFY_REDIRECT_URI = os.environ.get('SPOTIFY_REDIRECT_URI') or _local_secrets.get('SPOTIFY_REDIRECT_URI', '')
+
+# ---------------------------------------------------------------------------
+# Gemini client singleton — initialized once, reused across all requests
+# ---------------------------------------------------------------------------
+_gemini_client: Optional[Any] = None
+
+def get_gemini_client() -> Optional[Any]:
+    """Return a cached genai.Client instance, creating it on first call."""
+    global _gemini_client
+    if _gemini_client is None and GEMINI_API_KEY:
+        try:
+            _gemini_client = genai.Client(api_key=GEMINI_API_KEY)
+        except Exception as e:
+            print(f"Warning: Could not initialize Gemini client: {e}")
+    return _gemini_client
+
+# ---------------------------------------------------------------------------
+# Band list cache — avoids GROUP BY query on every GET / page load
+# ---------------------------------------------------------------------------
+import time as _time
+_bands_cache: tuple = (0.0, None, -1, [])  # (timestamp, target_db, mutation_version, data)
+_BANDS_CACHE_TTL = 30  # seconds
+
+def get_distinct_bands_cached() -> list:
+    """Return get_distinct_bands() result, cached with version and target DB validation."""
+    global _bands_cache
+    target_db = os.environ.get('DATABASE_PATH') or DATABASE_PATH
+    cur_ver = database.get_db_mutation_version()
+    if len(_bands_cache) == 4:
+        ts, cached_db, cached_ver, data = _bands_cache
+        if cached_db == target_db and cached_ver == cur_ver and (_time.monotonic() - ts < _BANDS_CACHE_TTL):
+            return data
+    fresh = database.get_distinct_bands(db_path=target_db)
+    _bands_cache = (_time.monotonic(), target_db, cur_ver, fresh)
+    return fresh
+
+def invalidate_bands_cache() -> None:
+    """Invalidate the bands list cache (call after save/delete operations)."""
+    global _bands_cache
+    _bands_cache = (0.0, None, -1, [])
+    database.notify_db_mutation()
 
 def build_theaudiodb_widget(
     artist: str,
@@ -394,6 +437,33 @@ def build_lastfm_widget(
     '''
 
 
+def build_similar_songs_widget(artist: str, song: str) -> str:
+    """Build the Similar Songs Discovery widget HTML for the song analysis workspace."""
+    if not artist or not song:
+        return ""
+
+    art_esc = html_escape(artist)
+    sng_esc = html_escape(song)
+    return f'''
+    <div class="similar-songs-widget" id="similar-songs-widget" style="margin-top: 24px; background: rgba(14, 38, 80, 0.55); border: 1px solid rgba(165, 200, 255, 0.25); border-radius: 12px; padding: 20px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 8px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 1.25rem;">✨</span>
+                <h4 style="margin: 0; font-size: 1.02rem; font-family: 'Montserrat', sans-serif; font-weight: 800; color: #FFFFFF;">
+                    Discover Similar Songs in Library
+                </h4>
+            </div>
+            <span style="font-size: 0.74rem; color: #A5C8FF; background: rgba(165, 200, 255, 0.12); padding: 3px 10px; border-radius: 12px; font-weight: 600;">Lyrical &amp; Tag Synergy</span>
+        </div>
+        <div id="similar-songs-container" data-artist="{art_esc}" data-song="{sng_esc}">
+            <div style="text-align: center; color: #A5C8FF; font-size: 0.85rem; padding: 14px; font-style: italic;">
+                ✦ Finding thematic &amp; sound matches in your library...
+            </div>
+        </div>
+    </div>
+    '''
+
+
 ACCESS_TOKEN = GENIUS_ACCESS_TOKEN
 SERVER_PORT = None
 
@@ -548,6 +618,14 @@ def build_app_header(active_page: str = 'song', user: Optional[Dict[str, Any]] =
                     </svg>
                     <span class="app-brand-text">Calling Hours</span>
                 </a>
+                <div class="global-search-container" id="global-search-wrap">
+                    <div class="global-search-input-wrap">
+                        <span class="global-search-icon" aria-hidden="true">🔍</span>
+                        <input type="text" id="global-search-input" class="global-search-input" placeholder="Search library... (Ctrl+K)" autocomplete="off" oninput="handleGlobalSearchInput(this.value)" onfocus="handleGlobalSearchFocus()" onkeydown="handleGlobalSearchKey(event)">
+                        <button type="button" id="global-search-clear" class="global-search-clear" onclick="clearGlobalSearch()" aria-label="Clear search" style="display: none;">&times;</button>
+                    </div>
+                    <div id="global-search-dropdown" class="global-search-dropdown" style="display: none;"></div>
+                </div>
                 {user_menu_html}
             </div>
             <nav class="app-nav" aria-label="Main Navigation">
@@ -816,10 +894,176 @@ PAGE_HTML = r'''<!DOCTYPE html>
             handleActionLoadingPopState(e);
         }
 
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
         // Expose globally on window
+        window.escapeHtml = escapeHtml;
         window.showActionLoadingOverlay = showActionLoadingOverlay;
         window.hideActionLoadingOverlay = hideActionLoadingOverlay;
         window.showAnalysisLoadingOverlay = showAnalysisLoadingOverlay;
+
+        // -------------------------------------------------------------
+        // Global Quick-Search Controller
+        // -------------------------------------------------------------
+        let globalSearchTimeout = null;
+        let globalSearchSelectedIndex = -1;
+
+        function handleGlobalSearchInput(val) {
+            const clearBtn = document.getElementById('global-search-clear');
+            if (clearBtn) clearBtn.style.display = val ? 'block' : 'none';
+
+            clearTimeout(globalSearchTimeout);
+            const trimmed = (val || '').trim();
+            if (!trimmed) {
+                closeGlobalSearch();
+                return;
+            }
+
+            globalSearchTimeout = setTimeout(() => {
+                fetch('/api/search?q=' + encodeURIComponent(trimmed))
+                    .then(r => r.json())
+                    .then(data => renderGlobalSearchResults(data))
+                    .catch(() => closeGlobalSearch());
+            }, 180);
+        }
+
+        function handleGlobalSearchFocus() {
+            const input = document.getElementById('global-search-input');
+            if (input && input.value.trim()) {
+                handleGlobalSearchInput(input.value);
+            }
+        }
+
+        function closeGlobalSearch() {
+            const dd = document.getElementById('global-search-dropdown');
+            if (dd) dd.style.display = 'none';
+            globalSearchSelectedIndex = -1;
+        }
+
+        function clearGlobalSearch() {
+            const input = document.getElementById('global-search-input');
+            if (input) {
+                input.value = '';
+                input.focus();
+            }
+            const clearBtn = document.getElementById('global-search-clear');
+            if (clearBtn) clearBtn.style.display = 'none';
+            closeGlobalSearch();
+        }
+
+        function renderGlobalSearchResults(data) {
+            const dd = document.getElementById('global-search-dropdown');
+            if (!dd) return;
+
+            const artists = data.artists || [];
+            const songs = data.songs || [];
+
+            if (artists.length === 0 && songs.length === 0) {
+                dd.innerHTML = '<div style="padding: 14px; text-align: center; color: rgba(225, 232, 240, 0.6); font-size: 0.8rem; font-style: italic;">No matching artists or songs in library.</div>';
+                dd.style.display = 'block';
+                return;
+            }
+
+            let html = '';
+            if (artists.length > 0) {
+                html += '<div class="global-search-section-header">👤 Artists</div>';
+                artists.forEach(a => {
+                    const artName = escapeHtml(a.artist);
+                    const count = a.song_count || 1;
+                    html += `<a href="/artist?artist=${encodeURIComponent(a.artist)}" class="global-search-item" onclick="closeGlobalSearch()">
+                        <span style="font-weight: 700; color: #FFFFFF;">${artName}</span>
+                        <span style="font-size: 0.72rem; color: #A5C8FF; background: rgba(165, 200, 255, 0.12); padding: 2px 6px; border-radius: 8px;">${count} song${count > 1 ? 's' : ''}</span>
+                    </a>`;
+                });
+            }
+
+            if (songs.length > 0) {
+                html += '<div class="global-search-section-header">🎵 Songs</div>';
+                songs.forEach(s => {
+                    const sngName = escapeHtml(s.song);
+                    const artName = escapeHtml(s.artist);
+                    const analyzed = s.has_analysis ? '<span style="color: #C5B8FF; font-size: 0.72rem;">✦ Analyzed</span>' : '';
+                    html += `<a href="/?artist=${encodeURIComponent(s.artist)}&song=${encodeURIComponent(s.song)}" class="global-search-item" onclick="closeGlobalSearch()">
+                        <div style="min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                            <span style="font-weight: 600; color: #E1E8F0;">${sngName}</span>
+                            <span style="color: rgba(225, 232, 240, 0.5); font-size: 0.75rem; margin-left: 6px;">by ${artName}</span>
+                        </div>
+                        ${analyzed}
+                    </a>`;
+                });
+            }
+
+            dd.innerHTML = html;
+            dd.style.display = 'block';
+            globalSearchSelectedIndex = -1;
+        }
+
+        function handleGlobalSearchKey(e) {
+            const dd = document.getElementById('global-search-dropdown');
+            if (!dd || dd.style.display === 'none') {
+                if (e.key === 'Escape') {
+                    clearGlobalSearch();
+                }
+                return;
+            }
+
+            const items = dd.querySelectorAll('.global-search-item');
+            if (!items.length) return;
+
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                globalSearchSelectedIndex = (globalSearchSelectedIndex + 1) % items.length;
+                updateGlobalSearchSelection(items);
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                globalSearchSelectedIndex = (globalSearchSelectedIndex - 1 + items.length) % items.length;
+                updateGlobalSearchSelection(items);
+            } else if (e.key === 'Enter') {
+                if (globalSearchSelectedIndex >= 0 && items[globalSearchSelectedIndex]) {
+                    e.preventDefault();
+                    items[globalSearchSelectedIndex].click();
+                }
+            } else if (e.key === 'Escape') {
+                closeGlobalSearch();
+            }
+        }
+
+        function updateGlobalSearchSelection(items) {
+            items.forEach((it, idx) => {
+                if (idx === globalSearchSelectedIndex) {
+                    it.classList.add('selected');
+                    it.scrollIntoView({ block: 'nearest' });
+                } else {
+                    it.classList.remove('selected');
+                }
+            });
+        }
+
+        document.addEventListener('click', (e) => {
+            const wrap = document.getElementById('global-search-wrap');
+            if (wrap && !wrap.contains(e.target)) {
+                closeGlobalSearch();
+            }
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+                e.preventDefault();
+                const inp = document.getElementById('global-search-input');
+                if (inp) {
+                    inp.focus();
+                    inp.select();
+                }
+            }
+        });
 
         // Prevent keyboard interruption (e.g. Esc or Enter repeats) while overlay is active
         document.addEventListener('keydown', function(e) {
@@ -1153,6 +1397,104 @@ PAGE_HTML = r'''<!DOCTYPE html>
 
         .app-brand-text {
             white-space: nowrap;
+        }
+
+        .global-search-container {
+            position: relative;
+            flex: 0 1 300px;
+            min-width: 160px;
+            order: 2;
+            margin: 0 12px;
+        }
+
+        .global-search-input-wrap {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+
+        .global-search-icon {
+            position: absolute;
+            left: 10px;
+            font-size: 0.82rem;
+            color: #A5C8FF;
+            pointer-events: none;
+        }
+
+        .global-search-input {
+            width: 100%;
+            height: 34px;
+            padding: 0 28px 0 30px;
+            background: rgba(11, 30, 63, 0.75);
+            border: 1px solid rgba(165, 200, 255, 0.25);
+            border-radius: 17px;
+            color: #FFFFFF;
+            font-size: 0.8rem;
+            outline: none;
+            box-sizing: border-box;
+            transition: all 0.2s ease;
+        }
+
+        .global-search-input:focus {
+            border-color: #60A5FA;
+            background: rgba(11, 30, 63, 0.95);
+            box-shadow: 0 0 10px rgba(96, 165, 250, 0.35);
+        }
+
+        .global-search-clear {
+            position: absolute;
+            right: 10px;
+            background: none;
+            border: none;
+            color: #A5C8FF;
+            font-size: 1.1rem;
+            cursor: pointer;
+            padding: 0;
+            line-height: 1;
+        }
+
+        .global-search-dropdown {
+            position: absolute;
+            top: 40px;
+            left: 0;
+            right: 0;
+            background: #0E2248;
+            border: 1px solid rgba(165, 200, 255, 0.35);
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.65);
+            z-index: 1500;
+            max-height: 380px;
+            overflow-y: auto;
+            backdrop-filter: blur(10px);
+        }
+
+        .global-search-section-header {
+            padding: 8px 12px 4px 12px;
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: #A5C8FF;
+            border-top: 1px solid rgba(165, 200, 255, 0.1);
+        }
+        .global-search-section-header:first-child {
+            border-top: none;
+        }
+
+        .global-search-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 12px;
+            color: #E1E8F0;
+            text-decoration: none;
+            font-size: 0.82rem;
+            transition: background 0.15s ease;
+            gap: 8px;
+        }
+        .global-search-item:hover, .global-search-item.selected {
+            background: rgba(165, 200, 255, 0.18);
+            color: #FFFFFF;
         }
 
         .app-nav {
@@ -2424,6 +2766,12 @@ PAGE_HTML = r'''<!DOCTYPE html>
                 gap: 8px;
             }
 
+            .global-search-container {
+                flex: 1 1 auto;
+                max-width: 220px;
+                margin: 0 4px;
+            }
+
             .app-brand {
                 flex-shrink: 1;
                 min-width: 0;
@@ -3253,6 +3601,7 @@ PAGE_HTML = r'''<!DOCTYPE html>
             <div id="analysis-result-wrapper" style="{analysis_result_display}">
                 <div id="analysis-formatted" class="analysis-container"></div>
                 <pre id="analysis-raw" class="analysis-raw-box" style="display: none;">{analysis_result}</pre>
+                {similar_songs_widget}
                 
                 <div style="margin-top: 20px; text-align: center; display: flex; justify-content: center; gap: 10px; flex-wrap: wrap;">
                     <button type="button" onclick="showAnalysisForm()" style="background: transparent; border: 1px solid rgba(165, 200, 255, 0.4); color: #A5C8FF; padding: 10px 18px; font-size: 0.9rem; cursor: pointer; border-radius: 6px; font-family: inherit; width: auto;">Perform Another Analysis</button>
@@ -3263,15 +3612,6 @@ PAGE_HTML = r'''<!DOCTYPE html>
     </div>
 
     <script>
-        function escapeHtml(str) {
-            return String(str)
-                .replace(/&/g, '&amp;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;')
-                .replace(/"/g, '&quot;')
-                .replace(/'/g, '&#039;');
-        }
-
         // Lyrics Reader Logic
         function renderLyricsHtml(text) {
             if (!text || !text.trim()) {
@@ -3817,6 +4157,44 @@ PAGE_HTML = r'''<!DOCTYPE html>
             }
         }
 
+        function loadSimilarSongs() {
+            const container = document.getElementById('similar-songs-container');
+            if (!container) return;
+            const artist = container.getAttribute('data-artist');
+            const song = container.getAttribute('data-song');
+            if (!artist || !song) return;
+
+            fetch('/api/similar-songs?artist=' + encodeURIComponent(artist) + '&song=' + encodeURIComponent(song))
+                .then(r => r.json())
+                .then(data => {
+                    const list = data.similar || [];
+                    if (!list.length) {
+                        container.innerHTML = '<div style="text-align: center; color: rgba(225, 232, 240, 0.6); font-size: 0.82rem; padding: 12px; font-style: italic;">No closely related songs in library yet. Analyze more songs to build synergy matches!</div>';
+                        return;
+                    }
+                    let html = '<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px;">';
+                    list.forEach(item => {
+                        const itArt = escapeHtml(item.artist);
+                        const itSng = escapeHtml(item.song);
+                        const reason = escapeHtml(item.reason || '');
+                        html += `
+                        <div style="background: rgba(11, 30, 63, 0.6); border: 1px solid rgba(165, 200, 255, 0.2); border-radius: 8px; padding: 12px; display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+                            <div style="min-width: 0; flex: 1;">
+                                <div style="font-weight: 700; color: #FFFFFF; font-size: 0.88rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${itSng}</div>
+                                <div style="font-size: 0.76rem; color: #A5C8FF; margin-top: 2px;">${itArt}</div>
+                                <div style="font-size: 0.7rem; color: #5af0a5; margin-top: 4px; font-weight: 600;">${reason}</div>
+                            </div>
+                            <a href="/?artist=${encodeURIComponent(item.artist)}&song=${encodeURIComponent(item.song)}" class="pill-btn primary" style="font-size: 0.74rem; padding: 4px 10px; text-decoration: none; flex-shrink: 0;">Load</a>
+                        </div>`;
+                    });
+                    html += '</div>';
+                    container.innerHTML = html;
+                })
+                .catch(() => {
+                    container.innerHTML = '<div style="text-align: center; color: rgba(225, 232, 240, 0.5); font-size: 0.8rem; padding: 10px;">Could not load similar songs.</div>';
+                });
+        }
+
         function switchWorkspaceTab(tabName, shouldScroll = true) {
             const container = document.querySelector('.container');
             if (!container) return;
@@ -3845,6 +4223,8 @@ PAGE_HTML = r'''<!DOCTYPE html>
                 if (textarea && !textarea.value.trim()) {
                     setLyricsMode('edit');
                 }
+            } else if (tabName === 'analysis') {
+                loadSimilarSongs();
             }
 
             if (shouldScroll && window.innerWidth <= 1080) {
@@ -3930,42 +4310,6 @@ PAGE_HTML = r'''<!DOCTYPE html>
             return true;
         }
 
-        function showAnalysisLoadingOverlay() {
-            const artistInput = document.getElementById('artist');
-            const songInput = document.getElementById('song');
-            const artist = artistInput ? artistInput.value.trim() : '';
-            const song = songInput ? songInput.value.trim() : '';
-            let subtitle = 'Song Lyric Analysis';
-            if (artist && song) {
-                subtitle = `${artist} — ${song}`;
-            } else if (song) {
-                subtitle = song;
-            }
-
-            const btnSubmit = document.getElementById('btn-perform-analysis');
-            if (btnSubmit) {
-                btnSubmit.disabled = true;
-                btnSubmit.style.opacity = '0.7';
-                btnSubmit.style.cursor = 'not-allowed';
-                btnSubmit.textContent = '⏳ Analyzing Lyrics...';
-            }
-
-            if (typeof showActionLoadingOverlay === 'function') {
-                showActionLoadingOverlay({
-                    title: 'Analyzing with Gemini...',
-                    subtitle: subtitle,
-                    icon: '✦',
-                    statusSteps: (typeof ANALYSIS_STATUS_STEPS !== 'undefined') ? ANALYSIS_STATUS_STEPS : GLOBAL_ANALYSIS_STATUS_STEPS,
-                    notice: 'Please keep this page open. Leaving or navigating away will cancel the analysis.'
-                });
-            }
-        }
-
-        function handleAnalysisPopState(e) {
-            if (typeof handleActionLoadingPopState === 'function') {
-                handleActionLoadingPopState(e);
-            }
-        }
 
         // Initialize on page load
         document.addEventListener('DOMContentLoaded', () => {
@@ -6074,6 +6418,19 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
                             <div class="playlist-mode-desc">Blend top tracks from 2 or more artists by alternating round-robin or deep Gemini thematic analysis.</div>
                         </div>
                     </a>
+
+                    <!-- Option 8: AI Mood & Prompt Curator -->
+                    <a href="/playlists?mode=ai_prompt" class="playlist-mode-card{mode_ai_prompt_active}" id="option-card-ai-prompt" data-loading-title="Curating with Gemini AI..." data-loading-subtitle="AI Prompt &amp; Mood Curator" data-loading-icon="✨">
+                        <div class="playlist-mode-icon">✨</div>
+                        <div class="playlist-mode-content">
+                            <div class="playlist-mode-header">
+                                <span class="playlist-mode-title">AI Mood &amp; Prompt</span>
+                                <span class="playlist-mode-badge" style="background: rgba(90, 240, 165, 0.2); color: #5af0a5; border: 1px solid rgba(90, 240, 165, 0.4);">Option 8 • Gemini AI</span>
+                            </div>
+                            <span class="playlist-mode-count">Freeform Vibe Synthesis</span>
+                            <div class="playlist-mode-desc">Describe any vibe, mood, or setting (e.g. &quot;late night rainy drive&quot;) and Gemini will pick and sequence matching library tracks.</div>
+                        </div>
+                    </a>
                 </div>
 
                 <div class="playlist-active-banner">
@@ -6112,6 +6469,13 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
                             <select name="limit" id="select-limit" onchange="submitGeneratorForm()">
                                 {limit_options_html}
                             </select>
+                        </div>
+
+                        <div class="playlist-input-group" style="display: flex; align-items: flex-end; padding-bottom: 8px;">
+                            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; color: #E1E8F0; font-size: 0.84rem; text-transform: none; letter-spacing: normal;">
+                                <input type="checkbox" name="deep_cuts" value="1" id="check-deep-cuts" onchange="submitGeneratorForm()" {deep_cuts_checked} style="width: 16px; height: 16px; cursor: pointer; accent-color: #A5C8FF;">
+                                <span>💎 <strong>Deep Cuts Only</strong> <span style="font-size: 0.74rem; color: #A5C8FF;">(Hide hits)</span></span>
+                            </label>
                         </div>
 
                         <div class="playlist-input-group" style="grid-column: span 2;">
@@ -6163,6 +6527,9 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
                         <button type="button" class="btn-playlist-action btn-playlist-spotify" onclick="triggerSpotifyExport()" id="btn-export-spotify">
                             <span>🎧</span> Export to Spotify
                         </button>
+                        <a href="{export_apple_url}" class="btn-playlist-action btn-playlist-outline" onclick="showToast('Exporting Apple Music playlist...')" title="Download Apple Music / iTunes playlist">
+                            <span>🍎</span> Apple Music
+                        </a>
                         <a href="{export_m3u_url}" class="btn-playlist-action btn-playlist-outline" onclick="showToast('Exporting .m3u8 playlist file...')" title="Download .m3u8 playlist file">
                             <span>📥</span> .M3U8
                         </a>
@@ -7135,19 +7502,11 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         content = LOGIN_PAGE_HTML.replace('{error_banner}', error_banner)\
                                  .replace('{login_button_or_notice}', button_or_notice)
 
-        self.send_response(200)
-        self.send_header('Content-Type', 'text/html; charset=utf-8')
-        self.send_header('Content-Length', str(len(content.encode('utf-8'))))
-        self.end_headers()
-        self.wfile.write(content.encode('utf-8'))
+        self._send_html(content)
 
     def render_unauthorized_page(self, email: str = ''):
         content = UNAUTHORIZED_PAGE_HTML.replace('{email}', html_escape(email or 'Your account'))
-        self.send_response(403)
-        self.send_header('Content-Type', 'text/html; charset=utf-8')
-        self.send_header('Content-Length', str(len(content.encode('utf-8'))))
-        self.end_headers()
-        self.wfile.write(content.encode('utf-8'))
+        self._send_html(content, status_code=403)
 
     def render_admin_page(self, message: str = '', user: Optional[Dict[str, Any]] = None):
         users = database.get_all_users()
@@ -7230,11 +7589,51 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                                  .replace('{admin_users_count}', str(admin_count))\
                                  .replace('{users_table_rows}', table_rows_html)
 
-        self.send_response(200)
+        self._send_html(content)
+
+    def _send_html(self, content: str, status_code: int = 200, extra_headers: Optional[List[tuple]] = None):
+        """Send an HTML response with automatic gzip compression if supported by client and payload > 1024 bytes."""
+        encoded = content.encode('utf-8')
+        accept_encoding = self.headers.get('Accept-Encoding') or self.headers.get('accept-encoding') or ''
+
+        self.send_response(status_code)
         self.send_header('Content-Type', 'text/html; charset=utf-8')
-        self.send_header('Content-Length', str(len(content.encode('utf-8'))))
-        self.end_headers()
-        self.wfile.write(content.encode('utf-8'))
+        if extra_headers:
+            for k, v in extra_headers:
+                self.send_header(k, v)
+
+        if 'gzip' in accept_encoding and len(encoded) > 1024:
+            compressed = gzip.compress(encoded)
+            self.send_header('Content-Encoding', 'gzip')
+            self.send_header('Content-Length', str(len(compressed)))
+            self.end_headers()
+            self.wfile.write(compressed)
+        else:
+            self.send_header('Content-Length', str(len(encoded)))
+            self.end_headers()
+            self.wfile.write(encoded)
+
+    def _send_json(self, data: Any, status_code: int = 200, extra_headers: Optional[List[tuple]] = None):
+        """Send a JSON response with automatic gzip compression if supported by client and payload > 1024 bytes."""
+        encoded = json.dumps(data, default=str).encode('utf-8')
+        accept_encoding = self.headers.get('Accept-Encoding') or self.headers.get('accept-encoding') or ''
+
+        self.send_response(status_code)
+        self.send_header('Content-Type', 'application/json; charset=utf-8')
+        if extra_headers:
+            for k, v in extra_headers:
+                self.send_header(k, v)
+
+        if 'gzip' in accept_encoding and len(encoded) > 1024:
+            compressed = gzip.compress(encoded)
+            self.send_header('Content-Encoding', 'gzip')
+            self.send_header('Content-Length', str(len(compressed)))
+            self.end_headers()
+            self.wfile.write(compressed)
+        else:
+            self.send_header('Content-Length', str(len(encoded)))
+            self.end_headers()
+            self.wfile.write(encoded)
 
     def _handle_internal_error(self, err: Exception, is_post: bool = False):
         traceback.print_exc()
@@ -7457,6 +7856,8 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             order = params.get('order', ['updated_at DESC'])[0].strip()
             mood = params.get('mood', [''])[0].strip()
             year = params.get('year', [''])[0].strip()
+            prompt = params.get('prompt', [''])[0].strip()
+            deep_cuts = params.get('deep_cuts', ['0'])[0].strip() in ('1', 'true', 'on', 'yes')
             limit_str = params.get('limit', [''])[0].strip()
             limit = int(limit_str) if limit_str.isdigit() else None
             playlist_name = params.get('name', [''])[0].strip()
@@ -7473,6 +7874,8 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 selected_tag=tag,
                 selected_mood=mood,
                 selected_year=year,
+                selected_prompt=prompt,
+                deep_cuts=deep_cuts,
                 order_by=order,
                 limit=limit,
                 custom_name=playlist_name,
@@ -7484,6 +7887,10 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
 
         if parsed.path == '/playlists/export/m3u':
             self.handle_export_m3u(parsed.query)
+            return
+
+        if parsed.path in ('/playlists/export/apple', '/playlists/export/apple-music'):
+            self.handle_export_apple_music(parsed.query)
             return
 
         if parsed.path == '/playlists/export/csv':
@@ -7539,7 +7946,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             return
 
         if parsed.path == '/api/bands':
-            bands = database.get_distinct_bands()
+            bands = get_distinct_bands_cached()
             self.send_response(200)
             self.send_header('Content-Type', 'application/json; charset=utf-8')
             self.end_headers()
@@ -7558,12 +7965,76 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
 
         if parsed.path == '/api/search':
             params = urllib.parse.parse_qs(parsed.query)
+            q = params.get('q', [''])[0].strip()
+            if q:
+                results = database.global_search(q, limit=15)
+                self._send_json(results)
+                return
             search_id = params.get('id', [''])[0].strip()
             record = database.get_search_by_id(int(search_id)) if search_id.isdigit() else None
-            self.send_response(200)
-            self.send_header('Content-Type', 'application/json; charset=utf-8')
-            self.end_headers()
-            self.wfile.write(json.dumps({'search': record}).encode('utf-8'))
+            self._send_json({'search': record})
+            return
+
+        if parsed.path == '/api/similar-songs':
+            params = urllib.parse.parse_qs(parsed.query)
+            artist = params.get('artist', [''])[0].strip()
+            song = params.get('song', [''])[0].strip()
+            if not artist or not song:
+                self._send_json({'target': {}, 'similar': []})
+                return
+
+            track_tags = lastfm.get_or_fetch_track_tags(artist, song, api_key=LASTFM_API_KEY) or []
+            tag_names = set(t.get('name', '').lower() for t in track_tags if isinstance(t, dict) and t.get('name'))
+
+            artist_meta = lastfm.get_or_fetch_artist_metadata(artist, api_key=LASTFM_API_KEY) or {}
+            similar_artist_names = set(
+                s.get('name', '').lower() if isinstance(s, dict) else str(s).lower()
+                for s in (artist_meta.get('similar_artists') or [])
+            )
+
+            all_analyzed = database.get_analyzed_songs(limit=120)
+            target_norm_artist = artist.lower()
+            target_norm_song = song.lower()
+
+            scored = []
+            for s_item in all_analyzed:
+                s_art = (s_item.get('artist') or '').strip()
+                s_sng = (s_item.get('song') or '').strip()
+                if s_art.lower() == target_norm_artist and s_sng.lower() == target_norm_song:
+                    continue
+
+                score = 0
+                reasons = []
+
+                s_tags = s_item.get('track_tags') or []
+                s_tag_names = set(t.get('name', '').lower() for t in s_tags if isinstance(t, dict) and t.get('name'))
+                common_tags = tag_names.intersection(s_tag_names)
+                if common_tags:
+                    score += len(common_tags) * 3
+                    reasons.append(f"Shares #{', #'.join(list(common_tags)[:2])}")
+
+                if s_art.lower() in similar_artist_names:
+                    score += 5
+                    reasons.append(f"Related artist to {artist}")
+                elif s_art.lower() == target_norm_artist:
+                    score += 2
+                    reasons.append(f"By {artist}")
+
+                if score > 0:
+                    scored.append({
+                        "id": s_item.get('id'),
+                        "artist": s_art,
+                        "song": s_sng,
+                        "score": score,
+                        "reason": " • ".join(reasons),
+                        "tags": list(s_tag_names)[:3]
+                    })
+
+            scored.sort(key=lambda x: x['score'], reverse=True)
+            self._send_json({
+                "target": {"artist": artist, "song": song},
+                "similar": scored[:6]
+            })
             return
 
         if parsed.path == '/api/lastfm/track-tags':
@@ -7773,6 +8244,8 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                             )
                         except Exception as sse:
                             print(f"Save search in load_id error: {sse}")
+                        else:
+                            invalidate_bands_cache()
 
                 # Auto-analyze if requested and lyrics exist but no analysis yet
                 did_analyze = False
@@ -7781,7 +8254,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                         prompts = load_prompts()
                         p_template = prompts[0]['text'] if prompts else "Analyze lyrics:\n{lyrics_text}"
                         p_text = p_template.replace('{song}', song).replace('{artist}', artist).replace('{lyrics_text}', html.unescape(lyrics))
-                        client = genai.Client(api_key=GEMINI_API_KEY)
+                        client = get_gemini_client()
                         inter = client.interactions.create(model=model_name, input=p_text)
                         analysis = inter.output_text or ''
                         database.save_analysis(
@@ -7858,7 +8331,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                         prompts = load_prompts()
                         p_template = prompts[0]['text'] if prompts else "Analyze lyrics:\n{lyrics_text}"
                         p_text = p_template.replace('{song}', song).replace('{artist}', artist).replace('{lyrics_text}', html.unescape(lyrics))
-                        client = genai.Client(api_key=GEMINI_API_KEY)
+                        client = get_gemini_client()
                         inter = client.interactions.create(model=model_name, input=p_text)
                         analysis = inter.output_text or ''
                         database.save_analysis(
@@ -7980,7 +8453,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                             prompts = load_prompts()
                             p_template = prompts[0]['text'] if prompts else "Analyze lyrics:\n{lyrics_text}"
                             p_text = p_template.replace('{song}', effective_song).replace('{artist}', effective_artist).replace('{lyrics_text}', html.unescape(lyrics))
-                            client = genai.Client(api_key=GEMINI_API_KEY)
+                            client = get_gemini_client()
                             inter = client.interactions.create(model=DEFAULT_GEMINI_MODEL, input=p_text)
                             analysis = inter.output_text or ''
                             database.save_analysis(
@@ -8004,8 +8477,16 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                         msg_text = f'Loaded <strong>{html_escape(effective_artist)}</strong> - <strong>{html_escape(effective_song)}</strong>.'
                     msg = f'<div class="message">{msg_text}{genius_link}</div>'
                 else:
-                    genius_link = f' <a href="{html_escape(song_url)}" target="_blank" rel="noopener noreferrer" style="color:#A8D2FF; text-decoration:underline;">View on Genius</a>' if song_url else ''
-                    msg = f'<div class="message">Could not automatically retrieve lyrics for <strong>{html_escape(effective_artist)}</strong> - <strong>{html_escape(effective_song)}</strong>.{genius_link}<br>You can paste or edit lyrics in the box below to run Gemini analysis.</div>'
+                    genius_link = f' <a href="{html_escape(song_url)}" target="_blank" rel="noopener noreferrer" style="color:#A8D2FF; text-decoration:underline;">View on Genius &rarr;</a>' if song_url else ''
+                    msg = (
+                        '<div class="message" style="border-left: 4px solid #F59E0B; background: rgba(245, 158, 11, 0.12); padding: 12px 16px; border-radius: 8px; margin-bottom: 16px;">'
+                        '<div style="display: flex; align-items: center; gap: 8px; font-weight: 700; color: #FCD34D; margin-bottom: 4px;">'
+                        '<span>📝</span> Lyrics Not Automatically Found'
+                        '</div>'
+                        f'Could not automatically retrieve lyrics for <strong>{html_escape(effective_artist)}</strong> — <strong>{html_escape(effective_song)}</strong> from Genius or LRCLIB.{genius_link}<br>'
+                        '<span style="font-size: 0.9em; color: #E1E8F0;">Paste or type lyrics into the editor below, then click <strong>✦ Analyze Lyrics</strong> to run Gemini analysis.</span>'
+                        '</div>'
+                    )
 
                 self.render_page(
                     message=msg,
@@ -8340,12 +8821,14 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 else:
                     show_editor = True
                     reason_msg = f" (Genius returned: {html_escape(genius_error)})" if genius_error else ""
-                    genius_link = f' <a href="{html_escape(song_url)}" target="_blank" style="color:#A8D2FF; text-decoration:underline;">View on Genius</a>' if song_url else ''
+                    genius_link = f' <a href="{html_escape(song_url)}" target="_blank" style="color:#A8D2FF; text-decoration:underline;">View on Genius &rarr;</a>' if song_url else ''
                     message = (
-                        '<div class="message">'
-                        f'Could not automatically retrieve lyrics for <strong>{html_escape(artist)}</strong> - <strong>{html_escape(song)}</strong>{reason_msg}.'
-                        f'{genius_link}<br>'
-                        'You can paste or edit the lyrics in the box below to run Gemini analysis.'
+                        '<div class="message" style="border-left: 4px solid #F59E0B; background: rgba(245, 158, 11, 0.12); padding: 12px 16px; border-radius: 8px; margin-bottom: 16px;">'
+                        '<div style="display: flex; align-items: center; gap: 8px; font-weight: 700; color: #FCD34D; margin-bottom: 4px;">'
+                        '<span>📝</span> Lyrics Not Automatically Found'
+                        '</div>'
+                        f'Could not automatically retrieve lyrics for <strong>{html_escape(artist)}</strong> — <strong>{html_escape(song)}</strong>{reason_msg}.{genius_link}<br>'
+                        '<span style="font-size: 0.9em; color: #E1E8F0;">Paste or type lyrics into the editor below, then click <strong>✦ Analyze Lyrics</strong> to run Gemini analysis.</span>'
                         '</div>'
                     )
 
@@ -8409,7 +8892,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 message = '<div class="message">Please paste or enter lyrics in the lyrics box before running analysis.</div>'
             else:
                 try:
-                    client = genai.Client(api_key=GEMINI_API_KEY)
+                    client = get_gemini_client()
                     prompt = prompt_template.replace('{song}', song).replace('{artist}', artist).replace('{lyrics_text}', html.unescape(lyrics_text))
                     interaction = client.interactions.create(
                         model=model_name,
@@ -8544,6 +9027,11 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             artist_metadata=artist_metadata,
             has_api_key=bool(LASTFM_API_KEY)
         )
+        similar_songs_widget = build_similar_songs_widget(
+            artist=artist_value,
+            song=song_value
+        )
+
         artist_info_btn_display = '' if artist_value else 'display: none;'
         
         model_options = ''
@@ -8557,7 +9045,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             selected_attr = ' selected' if idx == selected_prompt else ''
             prompt_options += f'<option value="{idx}"{selected_attr}>{html_escape(p["name"])}</option>\n'
 
-        bands = database.get_distinct_bands()
+        bands = get_distinct_bands_cached()
         band_options = ''
         band_datalist_options = ''
         if bands:
@@ -8589,6 +9077,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                            .replace('{analysis_result}', html_escape(analysis_result))\
                            .replace('{theaudiodb_widget}', theaudiodb_widget)\
                            .replace('{lastfm_widget}', lastfm_widget)\
+                           .replace('{similar_songs_widget}', similar_songs_widget)\
                            .replace('{artist_info_btn_display}', artist_info_btn_display)\
                            .replace('{model_options}', model_options)\
                            .replace('{prompt_options}', prompt_options)\
@@ -8599,11 +9088,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                            .replace('{lyrics_badge_display}', lyrics_badge_display)\
                            .replace('{analysis_badge_display}', analysis_badge_display)\
                            .replace('{app_header}', build_app_header('song', user=self.get_current_user()))
-        self.send_response(200)
-        self.send_header('Content-Type', 'text/html; charset=utf-8')
-        self.send_header('Content-Length', str(len(content.encode('utf-8'))))
-        self.end_headers()
-        self.wfile.write(content.encode('utf-8'))
+        self._send_html(content)
 
     def render_prompts_page(self, message=''):
         prompts = load_prompts()
@@ -8626,15 +9111,11 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                                    .replace('{prompts_list}', prompts_list_html)\
                                    .replace('{app_header}', build_app_header('prompts', user=self.get_current_user()))
                                    
-        self.send_response(200)
-        self.send_header('Content-Type', 'text/html; charset=utf-8')
-        self.send_header('Content-Length', str(len(content.encode('utf-8'))))
-        self.end_headers()
-        self.wfile.write(content.encode('utf-8'))
+        self._send_html(content)
 
     def render_history_page(self, selected_artist: str = ''):
         searches = database.get_recent_searches(limit=200)
-        bands = database.get_distinct_bands()
+        bands = get_distinct_bands_cached()
         total_songs_count = len(searches)
         total_artists_count = len(bands)
         artist_norm_target = selected_artist.strip().lower()
@@ -8711,11 +9192,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                                    .replace('{total_artists_count}', str(total_artists_count))\
                                    .replace('{initial_artist_filter}', html_escape(selected_artist))\
                                    .replace('{app_header}', build_app_header('history', user=self.get_current_user()))
-        self.send_response(200)
-        self.send_header('Content-Type', 'text/html; charset=utf-8')
-        self.send_header('Content-Length', str(len(content.encode('utf-8'))))
-        self.end_headers()
-        self.wfile.write(content.encode('utf-8'))
+        self._send_html(content)
 
     def render_artist_page(self, selected_artist: str = '', refresh: bool = False, state_code: str = 'NC'):
         current_user = self.get_current_user()
@@ -8724,7 +9201,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
 
         if not clean_artist:
             # Render Artist Directory / Index
-            bands = database.get_distinct_bands()
+            bands = get_distinct_bands_cached()
             bands_count = len(bands)
 
             band_cards = []
@@ -8751,6 +9228,76 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
 
             cards_html = "".join(band_cards) if band_cards else '<div style="text-align: center; color: rgba(225, 232, 240, 0.6); padding: 40px; font-style: italic;">No artists in library yet. Search for a song or look up an artist below!</div>'
 
+            # Build Artists You Might Like recommendations from library bands
+            library_artist_names = {b['artist'].strip().lower() for b in bands if b.get('artist')}
+            recommended_artists = []
+            seen_recommended = set()
+
+            for b in bands[:6]:
+                src_art = b['artist']
+                meta = database.get_artist_metadata(src_art, db_path=DATABASE_PATH)
+                if not meta or not meta.get('similar_artists'):
+                    continue
+                sim_list = meta['similar_artists']
+                if isinstance(sim_list, str):
+                    try:
+                        sim_list = json.loads(sim_list)
+                    except Exception:
+                        sim_list = []
+                for sim in sim_list:
+                    sim_name = (sim.get('name') if isinstance(sim, dict) else str(sim)).strip()
+                    if not sim_name:
+                        continue
+                    sim_lower = sim_name.lower()
+                    if sim_lower in library_artist_names or sim_lower in seen_recommended:
+                        continue
+                    seen_recommended.add(sim_lower)
+                    recommended_artists.append({
+                        'name': sim_name,
+                        'source_artist': src_art,
+                        'url': f"/artist?artist={urllib.parse.quote(sim_name)}"
+                    })
+                    if len(recommended_artists) >= 8:
+                        break
+                if len(recommended_artists) >= 8:
+                    break
+
+            rec_cards_html = ""
+            if recommended_artists:
+                rec_items = []
+                for rec in recommended_artists:
+                    r_name = html_escape(rec['name'])
+                    r_src = html_escape(rec['source_artist'])
+                    r_url = rec['url']
+                    rec_items.append(f'''
+                    <div style="background: rgba(14, 38, 80, 0.5); border: 1px solid rgba(165, 200, 255, 0.2); border-radius: 10px; padding: 14px 16px; display: flex; justify-content: space-between; align-items: center; gap: 12px;">
+                        <div>
+                            <div style="font-size: 1rem; font-weight: 700; color: #FFFFFF;">👥 {r_name}</div>
+                            <div style="font-size: 0.76rem; color: #A5C8FF; margin-top: 2px;">Similar to <strong style="color: #DDD6FE;">{r_src}</strong></div>
+                        </div>
+                        <div style="display: flex; gap: 6px;">
+                            <a href="{r_url}" class="pill-btn primary" style="font-size: 0.76rem; padding: 5px 12px;">Explore &rarr;</a>
+                            <a href="/?artist={urllib.parse.quote(rec['name'])}" class="pill-btn secondary" style="font-size: 0.76rem; padding: 5px 10px;">⚡ Analyze</a>
+                        </div>
+                    </div>
+                    ''')
+                rec_cards_html = f'''
+                <div style="background: linear-gradient(135deg, rgba(25, 70, 133, 0.3) 0%, rgba(11, 30, 63, 0.6) 100%); border: 1px solid rgba(165, 200, 255, 0.25); border-radius: 14px; padding: 22px 26px; margin-bottom: 24px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; border-bottom: 1px solid rgba(165, 200, 255, 0.15); padding-bottom: 10px;">
+                        <div>
+                            <span style="font-family: 'Montserrat', sans-serif; font-size: 1.15rem; font-weight: 800; color: #E1E8F0;">✨ Artists You Might Like</span>
+                            <div style="font-size: 0.8rem; color: #A5C8FF; margin-top: 2px;">Curated from Last.fm scene networks based on bands in your library</div>
+                        </div>
+                        <span style="font-size: 0.74rem; background: rgba(197, 184, 255, 0.15); border: 1px solid rgba(197, 184, 255, 0.3); color: #C5B8FF; padding: 2px 8px; border-radius: 10px; font-weight: 600;">
+                            Scene Intelligence
+                        </span>
+                    </div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px;">
+                        {"".join(rec_items)}
+                    </div>
+                </div>
+                '''
+
             directory_html = f'''
             <div class="artist-top-bar">
                 <div>
@@ -8762,6 +9309,8 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                     <button type="submit" class="pill-btn primary" style="padding: 10px 18px; font-size: 0.9rem;">Explore</button>
                 </form>
             </div>
+
+            {rec_cards_html}
 
             <div style="background: rgba(11, 30, 63, 0.65); border: 1px solid rgba(165, 200, 255, 0.2); border-radius: 14px; padding: 24px 28px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid rgba(165, 200, 255, 0.15); padding-bottom: 12px;">
@@ -8776,11 +9325,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
 
             content = ARTIST_PAGE_HTML.replace('{app_header}', build_app_header('artist', user=current_user))\
                                       .replace('{artist_page_content}', directory_html)
-            self.send_response(200)
-            self.send_header('Content-Type', 'text/html; charset=utf-8')
-            self.send_header('Content-Length', str(len(content.encode('utf-8'))))
-            self.end_headers()
-            self.wfile.write(content.encode('utf-8'))
+            self._send_html(content)
             return
 
         # Fetch intelligence across all APIs concurrently
@@ -8823,6 +9368,10 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 clean_artist,
                 db_path=DATABASE_PATH
             )
+            f_analyzed_songs = executor.submit(
+                database.get_analyzed_songs,
+                artist=clean_artist
+            )
 
             try:
                 setlist_data = f_setlist.result() or {}
@@ -8853,6 +9402,12 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             except Exception as dbe:
                 print(f"Database get_songs_by_band error for {clean_artist}: {dbe}")
                 db_songs = []
+
+            try:
+                analyzed_songs = f_analyzed_songs.result() or []
+            except Exception as ase:
+                print(f"Database get_analyzed_songs error for {clean_artist}: {ase}")
+                analyzed_songs = []
 
         # Build Hero Section
         banner_url = audiodb_data.get('banner_url') or audiodb_data.get('fanart_url')
@@ -8955,6 +9510,185 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             </div>
         </div>
         '''
+
+        # Build Artist Thematic DNA & Signature Motifs Card
+        thematic_dna_card_html = ""
+        if analyzed_songs:
+            motifs_counter = Counter()
+            all_tags_counter = Counter()
+            total_energy = 0
+            total_valence = 0
+            total_danceability = 0
+            total_tempo = 0
+            audio_count = 0
+
+            for s in analyzed_songs:
+                # 1. Extract recurring themes and motifs from Gemini analysis markdown
+                analysis_text = s.get('analysis') or ''
+                for line in analysis_text.splitlines():
+                    line_s = line.strip()
+                    if line_s.startswith('* **') and '**:' in line_s:
+                        m_name = line_s[4:].split('**:')[0].strip().strip('\"\'*')
+                        m_lower = m_name.lower()
+                        # Filter out common markdown section keywords or structural terms
+                        if (m_name and 3 < len(m_name) < 55 and
+                            not any(m_lower.startswith(w) for w in ('device', 'effect', 'context', 'line', 'stanza', 'verse', 'chorus', 'bridge', 'outro', 'intro', 'sound', 'tone', 'structure', 'rhythm', 'note'))):
+                            motifs_counter[m_name] += 1
+
+                # 2. Extract track tags
+                t_tags = s.get('track_tags') or []
+                if isinstance(t_tags, str):
+                    try:
+                        t_tags = json.loads(t_tags)
+                    except Exception:
+                        t_tags = []
+                for t in t_tags:
+                    t_name = t.get('name') if isinstance(t, dict) else str(t)
+                    if t_name:
+                        all_tags_counter[t_name.lower().strip()] += 1
+
+                # 3. AudioDB sonic metrics
+                aud = s.get('theaudiodb_data') or {}
+                if isinstance(aud, str):
+                    try:
+                        aud = json.loads(aud)
+                    except Exception:
+                        aud = {}
+                if aud and isinstance(aud, dict):
+                    e = aud.get('energy') or 0
+                    v = aud.get('valence') or 0
+                    d = aud.get('danceability') or 0
+                    bpm = aud.get('tempo') or 0
+                    if e or v or d or bpm:
+                        total_energy += e
+                        total_valence += v
+                        total_danceability += d
+                        total_tempo += bpm
+                        audio_count += 1
+
+            # Top motifs and tags
+            top_motifs = [m for m, _ in motifs_counter.most_common(12)]
+            top_track_tags = [t for t, _ in all_tags_counter.most_common(8)]
+
+            # Averages
+            avg_energy = round(total_energy / audio_count) if audio_count > 0 else None
+            avg_valence = round(total_valence / audio_count) if audio_count > 0 else None
+            avg_dance = round(total_danceability / audio_count) if audio_count > 0 else None
+            avg_bpm = round(total_tempo / audio_count) if audio_count > 0 else None
+
+            # Sonic metric bars HTML
+            metrics_html = []
+            if avg_energy is not None and avg_energy > 0:
+                metrics_html.append(f'''
+                    <div style="background: rgba(14, 38, 80, 0.45); border: 1px solid rgba(165, 200, 255, 0.15); border-radius: 10px; padding: 10px 14px; flex: 1; min-width: 140px;">
+                        <div style="display: flex; justify-content: space-between; font-size: 0.74rem; color: #A5C8FF; font-weight: 700; text-transform: uppercase;">
+                            <span>⚡ Sonic Intensity</span>
+                            <span style="color: #FCD34D;">{avg_energy}%</span>
+                        </div>
+                        <div style="background: rgba(225, 232, 240, 0.1); height: 6px; border-radius: 3px; margin-top: 6px; overflow: hidden;">
+                            <div style="background: linear-gradient(90deg, #F59E0B, #EF4444); width: {min(100, avg_energy)}%; height: 100%;"></div>
+                        </div>
+                    </div>
+                ''')
+            if avg_valence is not None and avg_valence > 0:
+                valence_mood = "Euphoric" if avg_valence >= 65 else ("Melancholic" if avg_valence <= 45 else "Balanced")
+                metrics_html.append(f'''
+                    <div style="background: rgba(14, 38, 80, 0.45); border: 1px solid rgba(165, 200, 255, 0.15); border-radius: 10px; padding: 10px 14px; flex: 1; min-width: 140px;">
+                        <div style="display: flex; justify-content: space-between; font-size: 0.74rem; color: #A5C8FF; font-weight: 700; text-transform: uppercase;">
+                            <span>🌧️ Emotional Tone</span>
+                            <span style="color: #6EE7B7;">{valence_mood} ({avg_valence}%)</span>
+                        </div>
+                        <div style="background: rgba(225, 232, 240, 0.1); height: 6px; border-radius: 3px; margin-top: 6px; overflow: hidden;">
+                            <div style="background: linear-gradient(90deg, #3B82F6, #10B981); width: {min(100, avg_valence)}%; height: 100%;"></div>
+                        </div>
+                    </div>
+                ''')
+            if avg_bpm is not None and avg_bpm > 0:
+                metrics_html.append(f'''
+                    <div style="background: rgba(14, 38, 80, 0.45); border: 1px solid rgba(165, 200, 255, 0.15); border-radius: 10px; padding: 10px 14px; flex: 1; min-width: 140px;">
+                        <div style="display: flex; justify-content: space-between; font-size: 0.74rem; color: #A5C8FF; font-weight: 700; text-transform: uppercase;">
+                            <span>⏱️ Average Tempo</span>
+                            <span style="color: #DDD6FE;">{avg_bpm} BPM</span>
+                        </div>
+                        <div style="background: rgba(225, 232, 240, 0.1); height: 6px; border-radius: 3px; margin-top: 6px; overflow: hidden;">
+                            <div style="background: linear-gradient(90deg, #8B5CF6, #EC4899); width: {min(100, int(avg_bpm / 1.8))}%; height: 100%;"></div>
+                        </div>
+                    </div>
+                ''')
+
+            # Render Motif Chips
+            motif_chips = []
+            for m in top_motifs:
+                motif_chips.append(f'''
+                    <span style="background: rgba(120, 90, 255, 0.18); border: 1px solid rgba(165, 140, 255, 0.4); color: #DDD6FE; font-size: 0.8rem; font-weight: 700; padding: 4px 12px; border-radius: 16px; display: inline-flex; align-items: center; gap: 5px;">
+                        ✦ {html_escape(m)}
+                    </span>
+                ''')
+
+            # Render Tag Chips
+            tag_chips = []
+            for t in top_track_tags:
+                tag_chips.append(f'<span class="playlist-tag-chip" style="font-size: 0.76rem; padding: 2px 8px;">#{html_escape(t)}</span>')
+
+            thematic_dna_card_html = f'''
+            <div style="background: linear-gradient(135deg, rgba(20, 45, 95, 0.6) 0%, rgba(11, 25, 55, 0.85) 100%); border: 1px solid rgba(165, 140, 255, 0.35); border-radius: 14px; padding: 24px 28px; margin-bottom: 24px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; border-bottom: 1px solid rgba(165, 200, 255, 0.15); padding-bottom: 12px;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="font-size: 1.3rem;">🧬</span>
+                        <div>
+                            <h2 style="font-family: \'Montserrat\', sans-serif; font-size: 1.25rem; font-weight: 800; color: #FFFFFF; margin: 0;">
+                                Artist Thematic DNA &amp; Signature Motifs
+                            </h2>
+                            <div style="font-size: 0.8rem; color: #A5C8FF; margin-top: 2px;">
+                                Synthesized across {len(analyzed_songs)} analyzed songs in Calling Hours
+                            </div>
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <a href="/playlists?mode=artist&artist={artist_url_param}&order=narrative_arc" class="pill-btn primary" style="font-size: 0.8rem; padding: 6px 14px; text-decoration: none;" title="Curate a narrative arc playlist for this artist">
+                            📈 Curate Narrative Arc Playlist &rarr;
+                        </a>
+                    </div>
+                </div>
+
+                {f'<div style="display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 18px;">{"".join(metrics_html)}</div>' if metrics_html else ''}
+
+                <div style="margin-bottom: 14px;">
+                    <div style="font-size: 0.78rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; color: #DDD6FE; margin-bottom: 8px;">
+                        Signature Lyrical Motifs &amp; Poetic Devices
+                    </div>
+                    <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                        {"".join(motif_chips) if motif_chips else '<span style="font-size: 0.82rem; color: rgba(225, 232, 240, 0.6); font-style: italic;">Detailed lyrical motifs extracted from full Gemini song analyses.</span>'}
+                    </div>
+                </div>
+
+                {f"""
+                <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 12px; padding-top: 10px; border-top: 1px dashed rgba(165, 200, 255, 0.15);">
+                    <span style="font-size: 0.74rem; color: #A5C8FF; font-weight: 700;">Community Genre Descriptors:</span>
+                    {"".join(tag_chips)}
+                </div>
+                """ if tag_chips else ''}
+            </div>
+            '''
+        else:
+            thematic_dna_card_html = f'''
+            <div style="background: rgba(11, 30, 63, 0.55); border: 1px dashed rgba(165, 200, 255, 0.25); border-radius: 14px; padding: 20px 24px; margin-bottom: 24px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;">
+                <div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-size: 1.2rem;">🧬</span>
+                        <h3 style="font-family: \'Montserrat\', sans-serif; font-size: 1.05rem; font-weight: 800; color: #FFFFFF; margin: 0;">
+                            Unlock {artist_esc}\'s Thematic DNA
+                        </h3>
+                    </div>
+                    <div style="font-size: 0.82rem; color: #A5C8FF; margin-top: 4px;">
+                        Analyze songs below with Gemini to generate lyrical motif maps, emotional valence meters, and sonic spectrum intelligence.
+                    </div>
+                </div>
+                <a href="/?artist={artist_url_param}" class="pill-btn primary" style="font-size: 0.82rem; padding: 7px 16px; text-decoration: none;">
+                    ⚡ Analyze First Song
+                </a>
+            </div>
+            '''
 
         # Spotify Streaming & Catalog Analytics Card
         spot_pop_val = int(spotify_data.get('popularity') or 0)
@@ -9573,7 +10307,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         # Biography & Similar Artists / Scene Discovery (TheAudioDB & Last.fm)
         bio_text = audiodb_data.get('biography') or lastfm_data.get('bio') or ''
         similar_artists = lastfm_data.get('similar_artists') or []
-        library_bands_map = {b['artist'].strip().lower(): b.get('song_count', 0) for b in (database.get_distinct_bands() or [])}
+        library_bands_map = {b['artist'].strip().lower(): b.get('song_count', 0) for b in (get_distinct_bands_cached() or [])}
 
         similar_cards = []
         for s in similar_artists[:12]:
@@ -9652,6 +10386,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         </div>
 
         {hero_html}
+        {thematic_dna_card_html}
         {bio_card_html}
         {spotify_analytics_html}
         {top_bands_played_with_html}
@@ -9664,11 +10399,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
 
         content = ARTIST_PAGE_HTML.replace('{app_header}', build_app_header('artist', user=current_user))\
                                   .replace('{artist_page_content}', page_content)
-        self.send_response(200)
-        self.send_header('Content-Type', 'text/html; charset=utf-8')
-        self.send_header('Content-Length', str(len(content.encode('utf-8'))))
-        self.end_headers()
-        self.wfile.write(content.encode('utf-8'))
+        self._send_html(content)
 
     def handle_spotify_auth(self):
         if not spotify.is_spotify_configured():
@@ -10420,11 +11151,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         content = SPOTIFY_PAGE_HTML.replace('{app_header}', build_app_header('spotify', user=current_user))\
                                    .replace('{spotify_page_content}', full_content)
 
-        self.send_response(200)
-        self.send_header('Content-Type', 'text/html; charset=utf-8')
-        self.send_header('Content-Length', str(len(content.encode('utf-8'))))
-        self.end_headers()
-        self.wfile.write(content.encode('utf-8'))
+        self._send_html(content)
 
     def render_playlists_page(
         self,
@@ -10436,6 +11163,8 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         selected_tag: str = '',
         selected_mood: str = '',
         selected_year: str = '',
+        selected_prompt: str = '',
+        deep_cuts: bool = False,
         order_by: str = 'updated_at DESC',
         limit: Optional[int] = None,
         custom_name: str = '',
@@ -10458,7 +11187,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         total_tags_count = len(analyzed_tags)
 
         # Collect distinct library bands combining analyzed artists and search history
-        distinct_bands_list = database.get_distinct_bands()
+        distinct_bands_list = get_distinct_bands_cached()
         library_band_names = set()
         for a in analyzed_artists:
             if a.get('artist'):
@@ -10493,7 +11222,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         else:
             spotify_status_badge = '<span style="background: rgba(225, 232, 240, 0.1); color: rgba(225, 232, 240, 0.5); padding: 2px 8px; border-radius: 12px; font-size: 0.74rem;">M3U/CSV Available</span>'
 
-        active_mode = mode if mode in ('all_analyzed', 'artist', 'multi_artist', 'tag', 'mood', 'spotify', 'setlist_fm') else 'all_analyzed'
+        active_mode = mode if mode in ('all_analyzed', 'artist', 'multi_artist', 'tag', 'mood', 'spotify', 'setlist_fm', 'ai_prompt') else 'all_analyzed'
         songs: List[Dict[str, Any]] = []
         active_playlist_title = custom_name.strip()
         active_playlist_desc = ""
@@ -10518,6 +11247,10 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                     selected_artists = crit['artists']
                 if crit.get('mix_mode'):
                     selected_mix_mode = crit['mix_mode']
+                if crit.get('prompt'):
+                    selected_prompt = crit['prompt']
+                if crit.get('deep_cuts'):
+                    deep_cuts = bool(crit['deep_cuts'])
                 if crit.get('per_artist'):
                     try:
                         selected_per_artist = int(crit['per_artist'])
@@ -10804,6 +11537,55 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                     songs.sort(key=lambda x: x.get('song', '').lower())
                 elif order_by == 'popularity DESC':
                     songs.sort(key=lambda x: int(x.get('popularity', 0) or x.get('playcount', 0)), reverse=True)
+            elif active_mode == 'ai_prompt':
+                all_catalog = database.get_analyzed_songs()
+                ai_prompt_query = selected_prompt or 'melancholy midnight drive with heavy emotional chorus'
+                curated_res = playlist_curator.mix_ai_prompt(
+                    prompt=ai_prompt_query,
+                    tracks=all_catalog,
+                    gemini_api_key=GEMINI_API_KEY,
+                    model_name=DEFAULT_GEMINI_MODEL,
+                    limit=limit or 15
+                )
+                songs = curated_res.get('tracks', [])
+                detected_themes_for_save = curated_res.get('themes', [])
+                curator_notes = curated_res.get('curator_notes', '')
+                auto_title = curated_res.get('playlist_title') or f"AI Mood: {ai_prompt_query[:25]}"
+                auto_desc = curated_res.get('playlist_description') or f"AI-curated playlist for mood: {ai_prompt_query}"
+                if not active_playlist_title or active_playlist_title.startswith("Calling Hours:") or active_playlist_title.endswith("Average Setlist"):
+                    active_playlist_title = auto_title
+                active_playlist_desc = auto_desc
+
+                theme_pills = []
+                for th in detected_themes_for_save:
+                    th_name = html_escape(th.get('name', ''))
+                    th_cnt = th.get('track_count', 0)
+                    th_icon = th.get('icon', '✨')
+                    th_desc = html_escape(th.get('description', ''))
+                    theme_pills.append(f'<span class="playlist-tag-chip" style="background: rgba(197, 184, 255, 0.18); border-color: rgba(197, 184, 255, 0.4); color: #C5B8FF; font-size: 0.78rem; font-weight: 700;" title="{th_desc}">{th_icon} {th_name} ({th_cnt})</span>')
+
+                thematic_synergy_card_html = f'''
+                <div style="background: linear-gradient(135deg, rgba(75, 30, 115, 0.35) 0%, rgba(11, 30, 63, 0.7) 100%); border: 1px solid rgba(197, 184, 255, 0.4); border-radius: 12px; padding: 16px 20px; margin-bottom: 20px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 8px;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span style="font-size: 1.1rem;">✨</span>
+                            <h4 style="margin: 0; font-size: 0.98rem; font-weight: 800; font-family: 'Montserrat', sans-serif; color: #FFFFFF;">
+                                AI Curated Mood Vibe &amp; Motif Arc
+                            </h4>
+                        </div>
+                        <span style="font-size: 0.74rem; background: rgba(197, 184, 255, 0.15); border: 1px solid rgba(197, 184, 255, 0.3); color: #C5B8FF; padding: 2px 8px; border-radius: 10px; font-weight: 600;">
+                            Gemini AI Prompt Engine
+                        </span>
+                    </div>
+                    <div style="font-size: 0.84rem; color: rgba(225, 232, 240, 0.85); line-height: 1.45; margin-bottom: 12px;">
+                        {html_escape(curator_notes or auto_desc)}
+                    </div>
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+                        <span style="font-size: 0.75rem; color: #A5C8FF; font-weight: 700;">Vibe Tags:</span>
+                        {"".join(theme_pills) if theme_pills else '<span style="font-size: 0.78rem; color: rgba(225, 232, 240, 0.6); font-style: italic;">Adaptive Mood Synthesis</span>'}
+                    </div>
+                </div>
+                '''
             else:
                 active_mode = 'all_analyzed'
                 songs = database.get_analyzed_songs(order_by=order_by, limit=limit)
@@ -10812,10 +11594,19 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                     active_playlist_title = default_title
                 active_playlist_desc = "Master collection of all tracks analyzed for poetic and thematic lyrics in Calling Hours."
 
+        # Filter Deep Cuts if requested
+        if deep_cuts and songs:
+            songs = playlist_curator.filter_deep_cuts(songs)
+
+        # Sequence by Narrative Arc if requested
+        if order_by == 'narrative_arc' and songs:
+            songs = playlist_curator.sequence_narrative_arc(songs)
+
         # Build Sort Options
         if active_mode == 'setlist_fm':
             sort_choices = [
                 ('stage_order', 'Setlist Stage Order (Concert Flow)'),
+                ('narrative_arc', '📈 Narrative Arc (Build → Peak → Resolution)'),
                 ('play_count DESC', 'Concert Frequency (Most Played)'),
                 ('song ASC', 'Song Title (A-Z)'),
                 ('artist ASC', 'Artist (A-Z)'),
@@ -10824,6 +11615,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             if selected_mix_mode == 'thematic':
                 sort_choices = [
                     ('thematic_flow', '🎭 Thematic Flow (Narrative & Vibe Arc)'),
+                    ('narrative_arc', '📈 Narrative Arc (Build → Peak → Resolution)'),
                     ('artist ASC', 'Artist (A-Z)'),
                     ('song ASC', 'Song Title (A-Z)'),
                     ('popularity DESC', 'Popularity (High to Low)'),
@@ -10831,13 +11623,23 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             else:
                 sort_choices = [
                     ('alternating', '🔀 Alternating Sequence (Fair Rotation)'),
+                    ('narrative_arc', '📈 Narrative Arc (Build → Peak → Resolution)'),
                     ('artist ASC', 'Artist (A-Z)'),
                     ('song ASC', 'Song Title (A-Z)'),
                     ('popularity DESC', 'Popularity (High to Low)'),
                 ]
+        elif active_mode == 'ai_prompt':
+            sort_choices = [
+                ('thematic_flow', '✨ AI Thematic Arc (Recommended)'),
+                ('narrative_arc', '📈 Narrative Arc (Build → Peak → Resolution)'),
+                ('updated_at DESC', 'Recently Analyzed (Newest First)'),
+                ('artist ASC', 'Artist (A-Z)'),
+                ('song ASC', 'Song Title (A-Z)'),
+            ]
         else:
             sort_choices = [
                 ('updated_at DESC', 'Recently Analyzed (Newest First)'),
+                ('narrative_arc', '📈 Narrative Arc (Build → Peak → Resolution)'),
                 ('updated_at ASC', 'Earliest Analyzed (Oldest First)'),
                 ('artist ASC', 'Artist (A-Z)'),
                 ('song ASC', 'Song Title (A-Z)'),
@@ -11021,6 +11823,34 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                     </select>
                 </div>
             '''
+        elif active_mode == 'ai_prompt':
+            prompt_chips = [
+                "Midnight highway with rain & heavy nostalgia",
+                "Energetic 2000s post-hardcore & emo singalongs",
+                "Acoustic vulnerability & late night contemplation",
+                "Anthemic stadium crescendos & existential triumph",
+                "Bittersweet autumn memories & melodic guitars",
+            ]
+            chips_html = "".join(
+                f'<button type="button" class="playlist-tag-chip" style="cursor:pointer; background:rgba(197,184,255,0.1); border:1px dashed rgba(197,184,255,0.4); color:#C5B8FF; font-size:0.72rem; padding:2px 8px;" onclick="document.getElementById(\'input-ai-prompt\').value = this.getAttribute(\'data-val\'); submitGeneratorForm();" data-val="{html_escape(chip)}">{html_escape(chip)}</button>'
+                for chip in prompt_chips
+            )
+            mode_specific_inputs = f'''
+                <div class="playlist-input-group" style="grid-column: span 2;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+                        <label for="input-ai-prompt">Describe Your Desired Mood, Theme, or Vibe</label>
+                        <span style="font-size: 0.72rem; color: #C5B8FF;">Powered by Gemini</span>
+                    </div>
+                    <div style="display: flex; gap: 8px;">
+                        <input type="text" name="prompt" id="input-ai-prompt" value="{html_escape(selected_prompt)}" placeholder="e.g. driving through neon rain at 2 AM thinking about the past..." style="flex: 1;" onkeydown="if(event.key===\'Enter\'){{event.preventDefault();submitGeneratorForm();}}">
+                        <button type="button" onclick="submitGeneratorForm()" class="btn-playlist-action" style="padding: 7px 16px; font-size: 0.82rem; background: linear-gradient(135deg, #7A5AF8 0%, #194685 100%); color: #fff; font-weight: 700;">Curate ✨</button>
+                    </div>
+                    <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; align-items: center;">
+                        <span style="font-size: 0.72rem; color: rgba(225, 232, 240, 0.6); font-weight: 600;">Example Prompts:</span>
+                        {chips_html}
+                    </div>
+                </div>
+            '''
         else:
             mode_specific_inputs = f'''
                 <div class="playlist-input-group">
@@ -11199,6 +12029,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                             <a href="/playlists?id={p_id}" class="btn-playlist-action btn-playlist-outline" style="font-size: 0.78rem; padding: 5px 12px; text-decoration: none;" data-loading-title="Loading Saved Playlist..." data-loading-subtitle="{p_name}" data-loading-icon="📂">📂 Load</a>
                             <a href="/playlists/export/m3u?id={p_id}" class="btn-playlist-action btn-playlist-outline" style="font-size: 0.78rem; padding: 5px 10px; text-decoration: none;" onclick="showToast('Exporting .m3u8 file...')" title="Download M3U">📥 M3U</a>
                             <a href="/playlists/export/csv?id={p_id}" class="btn-playlist-action btn-playlist-outline" style="font-size: 0.78rem; padding: 5px 10px; text-decoration: none;" onclick="showToast('Exporting .csv spreadsheet...')" title="Download CSV">📄 CSV</a>
+                            <a href="/playlists/export/apple?id={p_id}" class="btn-playlist-action btn-playlist-outline" style="font-size: 0.78rem; padding: 5px 10px; text-decoration: none;" onclick="showToast('Exporting Apple Music playlist...')" title="Apple Music">🍎 Apple</a>
                             <a href="/playlists/delete?id={p_id}" onclick="if (confirm('Delete this saved playlist?')) {{ showActionLoadingOverlay({{ title: 'Deleting Playlist...', subtitle: '{p_name}', icon: '🗑️', statusSteps: ['Removing playlist from database...', 'Refreshing library...'] }}); return true; }} return false;" class="btn-playlist-action btn-playlist-outline" style="font-size: 0.78rem; padding: 5px 10px; border-color: rgba(240,140,90,0.4); color: #f08c5a; text-decoration: none;" title="Delete">&times;</a>
                         </div>
                     </div>
@@ -11226,6 +12057,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         if saved_id:
             export_m3u_url = f"/playlists/export/m3u?id={saved_id}"
             export_csv_url = f"/playlists/export/csv?id={saved_id}"
+            export_apple_url = f"/playlists/export/apple?id={saved_id}"
         else:
             q_params = {
                 'mode': active_mode,
@@ -11236,12 +12068,16 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 'tag': selected_tag,
                 'mood': selected_mood,
                 'year': selected_year,
+                'prompt': selected_prompt,
+                'deep_cuts': '1' if deep_cuts else '',
                 'order': order_by,
                 'limit': str(limit) if limit else '',
                 'name': active_playlist_title,
             }
-            export_m3u_url = f"/playlists/export/m3u?{urllib.parse.urlencode({k: v for k, v in q_params.items() if v})}"
-            export_csv_url = f"/playlists/export/csv?{urllib.parse.urlencode({k: v for k, v in q_params.items() if v})}"
+            clean_q = urllib.parse.urlencode({k: v for k, v in q_params.items() if v})
+            export_m3u_url = f"/playlists/export/m3u?{clean_q}"
+            export_csv_url = f"/playlists/export/csv?{clean_q}"
+            export_apple_url = f"/playlists/export/apple?{clean_q}"
 
         current_playlist_dict = {
             'name': active_playlist_title,
@@ -11255,6 +12091,8 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 'tag': selected_tag,
                 'mood': selected_mood,
                 'year': selected_year,
+                'prompt': selected_prompt,
+                'deep_cuts': deep_cuts,
                 'order': order_by,
                 'limit': limit,
                 'themes': detected_themes_for_save if 'detected_themes_for_save' in locals() else [],
@@ -11277,6 +12115,8 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         mode_mood_active = ' active' if active_mode == 'mood' else ''
         mode_spotify_active = ' active' if active_mode == 'spotify' else ''
         mode_setlist_fm_active = ' active' if active_mode == 'setlist_fm' else ''
+        mode_ai_prompt_active = ' active' if active_mode == 'ai_prompt' else ''
+        deep_cuts_checked = ' checked' if deep_cuts else ''
 
         message_banner_html = f'<div class="message" style="margin-bottom: 20px;">{html_escape(message)}</div>' if message else ''
 
@@ -11293,6 +12133,8 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                                      .replace('{mode_mood_active}', mode_mood_active)\
                                      .replace('{mode_spotify_active}', mode_spotify_active)\
                                      .replace('{mode_setlist_fm_active}', mode_setlist_fm_active)\
+                                     .replace('{mode_ai_prompt_active}', mode_ai_prompt_active)\
+                                     .replace('{deep_cuts_checked}', deep_cuts_checked)\
                                      .replace('{current_mode}', html_escape(active_mode))\
                                      .replace('{mode_specific_inputs}', mode_specific_inputs)\
                                      .replace('{thematic_synergy_card_html}', thematic_synergy_card_html)\
@@ -11306,6 +12148,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                                      .replace('{tracklist_html}', tracklist_html)\
                                      .replace('{export_m3u_url}', export_m3u_url)\
                                      .replace('{export_csv_url}', export_csv_url)\
+                                     .replace('{export_apple_url}', export_apple_url)\
                                      .replace('{saved_playlists_count}', str(len(saved_playlists)))\
                                      .replace('{generate_tab_active}', generate_tab_active)\
                                      .replace('{saved_playlists_tab_active}', saved_playlists_tab_active)\
@@ -11315,11 +12158,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                                      .replace('{current_playlist_json}', json.dumps(current_playlist_dict))\
                                      .replace('{is_spotify_connected_json}', 'true' if is_spotify_connected else 'false')
 
-        self.send_response(200)
-        self.send_header('Content-Type', 'text/html; charset=utf-8')
-        self.send_header('Content-Length', str(len(content.encode('utf-8'))))
-        self.end_headers()
-        self.wfile.write(content.encode('utf-8'))
+        self._send_html(content)
 
     def handle_export_m3u(self, query_string: str):
         current_user = self.get_current_user()
@@ -11401,6 +12240,43 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header('Content-Type', 'audio/x-mpegurl; charset=utf-8')
         self.send_header('Content-Disposition', f'attachment; filename="{safe_name}.m3u8"')
+        self.send_header('Content-Length', str(len(content.encode('utf-8'))))
+        self.end_headers()
+        self.wfile.write(content.encode('utf-8'))
+
+    def handle_export_apple_music(self, query_string: str):
+        current_user = self.get_current_user()
+        if not current_user:
+            self.send_response(302)
+            self.send_header('Location', '/login')
+            self.end_headers()
+            return
+
+        params = urllib.parse.parse_qs(query_string)
+        saved_id = params.get('id', [''])[0].strip()
+        if saved_id.isdigit():
+            saved_p = database.get_saved_playlist(int(saved_id))
+            if saved_p:
+                tracks = saved_p.get('items', [])
+                title = saved_p.get('name', 'Calling Hours Playlist')
+            else:
+                tracks, title = [], 'Calling Hours Playlist'
+        else:
+            mode = params.get('mode', ['all_analyzed'])[0].strip()
+            artist = params.get('artist', [''])[0].strip() or None
+            tag = params.get('tag', [''])[0].strip() or None
+            order = params.get('order', ['updated_at DESC'])[0].strip()
+            limit_str = params.get('limit', [''])[0].strip()
+            limit = int(limit_str) if limit_str.isdigit() else None
+            title = params.get('name', [''])[0].strip() or 'Calling Hours Playlist'
+            tracks = database.get_analyzed_songs(artist=artist, tag=tag, order_by=order, limit=limit)
+
+        content = playlist_curator.export_apple_music_playlist(title, tracks)
+        safe_name = "".join(c for c in title if c.isalnum() or c in (' ', '_', '-')).strip().replace(' ', '_') or 'calling_hours_playlist'
+
+        self.send_response(200)
+        self.send_header('Content-Type', 'audio/x-mpegurl; charset=utf-8')
+        self.send_header('Content-Disposition', f'attachment; filename="{safe_name}_apple_music.m3u"')
         self.send_header('Content-Length', str(len(content.encode('utf-8'))))
         self.end_headers()
         self.wfile.write(content.encode('utf-8'))

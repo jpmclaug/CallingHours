@@ -54,6 +54,17 @@ def get_db_target(custom_target: Optional[str] = None) -> str:
 # Backwards compatibility alias
 get_db_path = get_db_target
 
+_db_mutation_version: int = 0
+
+def get_db_mutation_version() -> int:
+    """Return monotonic version incremented on database writes."""
+    return _db_mutation_version
+
+def notify_db_mutation() -> None:
+    """Increment the mutation version counter."""
+    global _db_mutation_version
+    _db_mutation_version += 1
+
 def is_postgres(target: Optional[str] = None) -> bool:
     """Return True if the resolved database target is a PostgreSQL/Neon connection string."""
     resolved = get_db_target(target)
@@ -719,6 +730,7 @@ def save_search(
                         updated_at = CURRENT_TIMESTAMP
                     WHERE id = %s
                 """, (artist_clean, song_clean, new_lyrics, new_source, new_url, new_tags, new_audiodb, record_id))
+                notify_db_mutation()
                 return record_id
             else:
                 cursor.execute("""
@@ -728,7 +740,9 @@ def save_search(
                     ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                     RETURNING id;
                 """, (artist_clean, song_clean, artist_norm, song_norm, lyrics, source, song_url, tags_json, audiodb_json))
-                return cursor.fetchone()['id']
+                new_id = cursor.fetchone()['id']
+                notify_db_mutation()
+                return new_id
         else:
             cursor = conn.cursor()
             cursor.execute(
@@ -756,6 +770,7 @@ def save_search(
                         updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now')
                     WHERE id = ?
                 """, (artist_clean, song_clean, new_lyrics, new_source, new_url, new_tags, new_audiodb, record_id))
+                notify_db_mutation()
                 return record_id
             else:
                 cursor.execute("""
@@ -764,7 +779,9 @@ def save_search(
                         lyrics, source, song_url, track_tags, theaudiodb_data, created_at, updated_at
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'), strftime('%Y-%m-%d %H:%M:%f', 'now'))
                 """, (artist_clean, song_clean, artist_norm, song_norm, lyrics, source, song_url, tags_json, audiodb_json))
-                return cursor.lastrowid
+                new_id = cursor.lastrowid
+                notify_db_mutation()
+                return new_id
 
 def save_analysis(
     artist: str,
@@ -1339,7 +1356,57 @@ def delete_search(search_id: int, db_path: Optional[str] = None) -> bool:
         cursor = conn.cursor()
         ph = "%s" if is_postgres(target) else "?"
         cursor.execute(f"DELETE FROM searches WHERE id = {ph}", (search_id,))
-        return cursor.rowcount > 0
+        success = cursor.rowcount > 0
+        if success:
+            notify_db_mutation()
+        return success
+
+
+def global_search(query: str, limit: int = 15, db_path: Optional[str] = None) -> Dict[str, Any]:
+    """Search artists, songs, and tags across the database."""
+    clean_q = query.strip()
+    if not clean_q:
+        return {"artists": [], "songs": []}
+
+    target = get_db_target(db_path)
+    like_pat = f"%{clean_q}%"
+    with get_connection(target) as conn:
+        if is_postgres(target):
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            ph = "%s"
+            ilike = "ILIKE"
+        else:
+            cursor = conn.cursor()
+            ph = "?"
+            ilike = "LIKE"
+
+        # 1. Matching songs
+        cursor.execute(f"""
+            SELECT id, artist, song, track_tags,
+                   (analysis IS NOT NULL AND LENGTH(TRIM(analysis)) > 0) as has_analysis
+            FROM searches
+            WHERE artist {ilike} {ph} OR song {ilike} {ph} OR track_tags {ilike} {ph}
+            ORDER BY has_analysis DESC, updated_at DESC
+            LIMIT {ph}
+        """, (like_pat, like_pat, like_pat, limit))
+        song_rows = [_format_search_record(r) for r in cursor.fetchall()]
+
+        # 2. Distinct matching artists
+        cursor.execute(f"""
+            SELECT artist, COUNT(id) as song_count
+            FROM searches
+            WHERE artist {ilike} {ph}
+            GROUP BY artist
+            ORDER BY song_count DESC
+            LIMIT {ph}
+        """, (like_pat, 8))
+        artist_rows = [{"artist": r["artist"], "song_count": r["song_count"]} for r in cursor.fetchall()]
+
+        return {
+            "query": clean_q,
+            "artists": artist_rows,
+            "songs": song_rows,
+        }
 
 
 # ==========================================

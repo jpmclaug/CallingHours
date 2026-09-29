@@ -10,6 +10,7 @@ import base64
 import json
 import os
 import re
+import threading
 import urllib.parse
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -1200,6 +1201,7 @@ def export_songs_to_spotify_playlist(
 
 
 _app_token_cache: Dict[str, Any] = {"token": None, "expires_at": 0.0}
+_app_token_lock = threading.Lock()
 
 
 def get_spotify_app_token(force_refresh: bool = False) -> Optional[str]:
@@ -1209,30 +1211,31 @@ def get_spotify_app_token(force_refresh: bool = False) -> Optional[str]:
         return None
 
     now = datetime.now(timezone.utc).timestamp()
-    if not force_refresh and _app_token_cache.get("token") and _app_token_cache.get("expires_at", 0) > now + 60:
-        return _app_token_cache["token"]
+    with _app_token_lock:
+        if not force_refresh and _app_token_cache.get("token") and _app_token_cache.get("expires_at", 0) > now + 60:
+            return _app_token_cache["token"]
 
-    auth_header = base64.b64encode(f"{client_id}:{client_secret}".encode("utf-8")).decode("utf-8")
-    headers = {
-        "Authorization": f"Basic {auth_header}",
-        "Content-Type": "application/x-www-form-urlencoded",
-    }
-    data = {"grant_type": "client_credentials"}
+        auth_header = base64.b64encode(f"{client_id}:{client_secret}".encode("utf-8")).decode("utf-8")
+        headers = {
+            "Authorization": f"Basic {auth_header}",
+            "Content-Type": "application/x-www-form-urlencoded",
+        }
+        data = {"grant_type": "client_credentials"}
 
-    try:
-        resp = requests.post(SPOTIFY_TOKEN_URL, headers=headers, data=data, timeout=DEFAULT_TIMEOUT)
-        if resp.status_code == 200:
-            payload = resp.json()
-            tok = payload.get("access_token")
-            expires_in = payload.get("expires_in", 3600)
-            _app_token_cache["token"] = tok
-            _app_token_cache["expires_at"] = now + expires_in
-            return tok
-        else:
-            print(f"Spotify client credentials token error: {resp.status_code} {resp.text}")
-    except Exception as e:
-        print(f"Spotify client credentials request error: {e}")
-    return None
+        try:
+            resp = requests.post(SPOTIFY_TOKEN_URL, headers=headers, data=data, timeout=DEFAULT_TIMEOUT)
+            if resp.status_code == 200:
+                payload = resp.json()
+                tok = payload.get("access_token")
+                expires_in = payload.get("expires_in", 3600)
+                _app_token_cache["token"] = tok
+                _app_token_cache["expires_at"] = now + expires_in
+                return tok
+            else:
+                print(f"Spotify client credentials token error: {resp.status_code} {resp.text}")
+        except Exception as e:
+            print(f"Spotify client credentials request error: {e}")
+        return None
 
 
 def get_artist_api_token(user_email: Optional[str] = None, db_module: Any = None) -> Optional[str]:

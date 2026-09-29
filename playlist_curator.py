@@ -86,7 +86,7 @@ def fetch_artist_top_tracks_pool(
     # 2. If Spotify returned nothing or unconfigured, try Last.fm
     if not tracks:
         try:
-            lastfm_key = getattr(lastfm, "get_lastfm_api_key", lambda: None)()
+            lastfm_key = lastfm.get_lastfm_api_key()
             lfm_tracks = lastfm.fetch_artist_top_tracks(clean_artist, api_key=lastfm_key, limit=limit)
             if lfm_tracks:
                 for t in lfm_tracks[:limit]:
@@ -782,10 +782,19 @@ def _generate_procedural_cover_art(
     draw.rectangle([24, 24, width - 24, height - 24], outline=(165, 200, 255), width=2)
     draw.rectangle([28, 28, width - 28, height - 28], outline=(25, 70, 133), width=1)
 
-    # Load font
-    font_bold_path = "C:/Windows/Fonts/arialbd.ttf"
+    # Resolve bold font cross-platform: Windows → macOS → Linux → PIL default
+    _FONT_CANDIDATES = [
+        "C:/Windows/Fonts/arialbd.ttf",       # Windows
+        "C:/Windows/Fonts/arial.ttf",          # Windows fallback
+        "/Library/Fonts/Arial Bold.ttf",       # macOS
+        "/Library/Fonts/Arial.ttf",            # macOS fallback
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",   # Linux (Debian/Ubuntu)
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",  # Linux
+        "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",    # Linux fallback
+    ]
+    font_bold_path = next((p for p in _FONT_CANDIDATES if os.path.exists(p)), None)
     try:
-        if os.path.exists(font_bold_path):
+        if font_bold_path:
             font_title = ImageFont.truetype(font_bold_path, 34)
             font_artists = ImageFont.truetype(font_bold_path, 20)
             font_badge = ImageFont.truetype(font_bold_path, 13)
@@ -797,6 +806,7 @@ def _generate_procedural_cover_art(
         font_title = ImageFont.load_default()
         font_artists = ImageFont.load_default()
         font_badge = ImageFont.load_default()
+
 
     # 2. Header badge
     badge_text = "CALLING HOURS  •  CURATED BLEND"
@@ -938,3 +948,188 @@ def generate_playlist_cover_art(
         "engine": engine_used,
         "size_bytes": len(jpeg_bytes),
     }
+
+
+def sequence_narrative_arc(tracks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Sequence tracks along an emotional narrative arc:
+    Act 1: Atmospheric Build & Anticipation (intro)
+    Act 2: Energetic & Emotional Climax (peak intensity)
+    Act 3: Resonant & Reflective Resolution (outro)
+    """
+    if len(tracks) <= 2:
+        return list(tracks)
+
+    def _get_intensity(t: Dict[str, Any]) -> float:
+        score = 50.0
+        audiodb = t.get("theaudiodb_data") or {}
+        if isinstance(audiodb, str):
+            try:
+                audiodb = json.loads(audiodb)
+            except Exception:
+                audiodb = {}
+        if audiodb.get("energy"):
+            score = float(audiodb["energy"])
+        elif audiodb.get("bpm"):
+            try:
+                bpm = float(audiodb["bpm"])
+                score = min(100.0, max(20.0, (bpm - 60) * 0.8))
+            except (ValueError, TypeError):
+                pass
+        else:
+            # Infer from Last.fm tags or popularity
+            tags = t.get("track_tags") or []
+            tag_str = " ".join([t.get("name", "") if isinstance(t, dict) else str(t) for t in tags]).lower()
+            if any(w in tag_str for w in ("fast", "heavy", "punk", "hardcore", "upbeat", "dance")):
+                score = 80.0
+            elif any(w in tag_str for w in ("acoustic", "slow", "ambient", "ballad", "mellow", "sad")):
+                score = 30.0
+            elif t.get("popularity"):
+                score = float(t["popularity"])
+        return score
+
+    scored = sorted(tracks, key=_get_intensity)
+    n = len(scored)
+
+    # Low-to-mid intensity for build (Act 1: ~25%)
+    # Highest intensity for climax (Act 2: ~50%)
+    # Gentle/medium intensity for resolution (Act 3: ~25%)
+    n_act1 = max(1, n // 4)
+    n_act3 = max(1, n // 4)
+    n_act2 = n - n_act1 - n_act3
+
+    act1 = scored[:n_act1]
+    act2 = scored[n - n_act2:]
+    act3 = scored[n_act1:n_act1 + n_act3]
+
+    return act1 + act2 + act3
+
+
+def filter_deep_cuts(tracks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Filter out top 25% most popular tracks to prioritize deep cuts and B-sides."""
+    if len(tracks) <= 4:
+        return list(tracks)
+
+    def _get_pop(t: Dict[str, Any]) -> int:
+        return int(t.get("popularity", 0) or t.get("playcount", 0) or 0)
+
+    has_pop_data = any(_get_pop(t) > 0 for t in tracks)
+    if not has_pop_data:
+        return list(tracks)
+
+    sorted_by_pop = sorted(tracks, key=_get_pop, reverse=True)
+    cutoff = max(1, len(sorted_by_pop) // 4)
+    deep_cuts = sorted_by_pop[cutoff:]
+    return deep_cuts if deep_cuts else tracks
+
+
+def export_apple_music_playlist(playlist_name: str, tracks: List[Dict[str, Any]]) -> str:
+    """Generate Apple Music and iTunes importable Extended M3U playlist format."""
+    lines = ["#EXTM3U", f"#PLAYLIST:{playlist_name.strip()}"]
+    for t in tracks:
+        art = t.get("artist", "").strip()
+        sng = t.get("song", "").strip()
+        if not sng:
+            continue
+        dur = 200
+        audiodb = t.get("theaudiodb_data") or {}
+        if isinstance(audiodb, str):
+            try:
+                audiodb = json.loads(audiodb)
+            except Exception:
+                audiodb = {}
+        if audiodb.get("duration"):
+            try:
+                dur = int(float(audiodb["duration"]) / 1000) if float(audiodb["duration"]) > 1000 else int(audiodb["duration"])
+            except Exception:
+                pass
+        lines.append(f"#EXTINF:{dur},{art} - {sng}")
+        lines.append(f"{art} - {sng}")
+    return "\n".join(lines)
+
+
+def mix_ai_prompt(
+    prompt: str,
+    tracks: List[Dict[str, Any]],
+    gemini_api_key: Optional[str] = None,
+    model_name: str = DEFAULT_GEMINI_MODEL,
+    limit: Optional[int] = None
+) -> Dict[str, Any]:
+    """Curate and order library tracks matching a freeform mood or vibe prompt with Gemini AI."""
+    clean_prompt = prompt.strip()
+    if not tracks:
+        return {
+            "tracks": [],
+            "playlist_title": f"Calling Hours: {clean_prompt}",
+            "playlist_description": f"Curated for: {clean_prompt}",
+            "curator_notes": "No tracks available to curate.",
+            "engine": "fallback"
+        }
+
+    candidate_summaries = []
+    for idx, t in enumerate(tracks[:60]):
+        art = t.get("artist", "")
+        sng = t.get("song", "")
+        tags = [tg.get("name", "") if isinstance(tg, dict) else str(tg) for tg in (t.get("track_tags") or [])][:4]
+        tag_str = f" [Tags: {', '.join(tags)}]" if tags else ""
+        candidate_summaries.append(f"{idx + 1}. {art} - {sng}{tag_str}")
+
+    target_count = min(limit or 15, len(tracks))
+
+    if gemini_api_key and genai:
+        try:
+            client = genai.Client(api_key=gemini_api_key.strip())
+            ai_instruction = (
+                f"You are an expert music curator. The listener wants a playlist based on this vibe: '{clean_prompt}'.\n"
+                f"From the following library of tracks, select up to {target_count} tracks that best match this vibe, "
+                f"and order them in a compelling, emotionally coherent listening sequence.\n\n"
+                f"Library tracks:\n" + "\n".join(candidate_summaries) + "\n\n"
+                f"Respond ONLY with valid JSON in this exact structure:\n"
+                f"{{\n"
+                f'  "playlist_title": "A short, evocative title for this playlist",\n'
+                f'  "playlist_description": "A 1-2 sentence description of the vibe and sound",\n'
+                f'  "curator_notes": "A brief reflection on why these songs connect to the requested mood",\n'
+                f'  "selected_indices": [1, 5, 12, ...]\n'
+                f"}}"
+            )
+            response = client.models.generate_content(
+                model=model_name,
+                contents=[ai_instruction],
+                config={"response_mime_type": "application/json"}
+            )
+            if response.text:
+                data = json.loads(response.text.strip())
+                indices = data.get("selected_indices", [])
+                chosen = []
+                for i in indices:
+                    if isinstance(i, int) and 1 <= i <= len(tracks):
+                        chosen.append(tracks[i - 1])
+                if chosen:
+                    return {
+                        "tracks": chosen[:target_count],
+                        "playlist_title": data.get("playlist_title") or f"Calling Hours: {clean_prompt}",
+                        "playlist_description": data.get("playlist_description") or f"Vibe match: {clean_prompt}",
+                        "curator_notes": data.get("curator_notes", ""),
+                        "engine": "gemini"
+                    }
+        except Exception as e:
+            print(f"Gemini prompt curation notice (using keyword fallback): {e}")
+
+    # Fallback: keyword similarity scoring
+    keywords = [w.lower() for w in re.findall(r'\b\w+\b', clean_prompt) if len(w) > 2]
+    def _score(t: Dict[str, Any]) -> int:
+        sc = 0
+        text = f"{t.get('artist', '')} {t.get('song', '')} {json.dumps(t.get('track_tags', ''))}".lower()
+        for kw in keywords:
+            if kw in text:
+                sc += 3
+        return sc
+
+    ranked = sorted(tracks, key=_score, reverse=True)
+    return {
+        "tracks": ranked[:target_count],
+        "playlist_title": f"Calling Hours: {clean_prompt}",
+        "playlist_description": f"Curated for the vibe: {clean_prompt}",
+        "curator_notes": f"Selected based on mood keywords matching '{clean_prompt}'.",
+        "engine": "keyword_fallback"
+    }
+
