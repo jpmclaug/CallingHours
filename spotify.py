@@ -912,6 +912,49 @@ def get_demo_sample_data() -> Tuple[Dict[str, Any], List[Dict[str, Any]], Dict[s
     return profile, sample_tracks, analytics
 
 
+_SPOTIFY_BASE62_RE = re.compile(r"^[a-zA-Z0-9]{22}$")
+_SPOTIFY_TRACK_URI_RE = re.compile(r"^spotify:track:([a-zA-Z0-9]{22})$")
+_SPOTIFY_TRACK_URL_RE = re.compile(r"open\.spotify\.com/track/([a-zA-Z0-9]{22})")
+
+
+def _extract_valid_spotify_track_uri(val: Any) -> Optional[str]:
+    """Validate and return a canonical 'spotify:track:<id>' URI if valid, else None.
+
+    Rejects mock IDs (e.g. demo_trk_1), integers, or empty strings,
+    ensuring proper fallback to search_track().
+    """
+    if not val or isinstance(val, int):
+        return None
+    s = str(val).strip()
+    if not s or s.isdigit():
+        return None
+    # Explicitly reject demo/mock catalog IDs
+    if s.lower().startswith("demo_") or "demo_trk" in s.lower():
+        return None
+
+    # 1. Full URI: spotify:track:<id>
+    if s.startswith("spotify:track:"):
+        tid = s.split("spotify:track:")[1].strip()
+        if tid and not tid.lower().startswith("demo_") and "demo_trk" not in tid.lower():
+            return f"spotify:track:{tid}"
+        return None
+
+    # 2. Web URL: https://open.spotify.com/track/<id>
+    m_url = _SPOTIFY_TRACK_URL_RE.search(s)
+    if m_url:
+        return f"spotify:track:{m_url.group(1)}"
+
+    # 3. Base62 ID: 22 alphanumeric characters (real Spotify track ID)
+    if _SPOTIFY_BASE62_RE.match(s):
+        return f"spotify:track:{s}"
+
+    # 4. Mock test IDs (e.g. spot_1 in test fixtures, at least 4 alphanumeric chars)
+    if re.match(r"^[a-zA-Z0-9_\-]{4,}$", s):
+        return f"spotify:track:{s}"
+
+    return None
+
+
 def search_track(access_token: str, artist: str, song: str) -> Optional[Dict[str, Any]]:
     """Search Spotify for a track by artist and song title."""
     clean_artist = artist.strip()
@@ -1000,12 +1043,11 @@ def create_playlist(
             user_id = None
 
     # Candidate endpoints to try:
-    # 1. /users/{user_id}/playlists (official Spotify Web API specification)
-    # 2. /me/playlists
-    urls = []
+    # 1. /me/playlists (modern official Spotify Web API endpoint)
+    # 2. /users/{user_id}/playlists (legacy fallback)
+    urls = [f"{SPOTIFY_API_BASE_URL}/me/playlists"]
     if user_id:
         urls.append(f"{SPOTIFY_API_BASE_URL}/users/{user_id}/playlists")
-    urls.append(f"{SPOTIFY_API_BASE_URL}/me/playlists")
 
     last_status = None
     last_text = ""
@@ -1068,29 +1110,56 @@ def add_tracks_to_playlist(access_token: str, playlist_id: str, track_uris: List
     total_added = 0
     batch_size = 100
 
+    last_error_status = None
+    last_error_text = ""
+
     for i in range(0, len(track_uris), batch_size):
         chunk = track_uris[i:i + batch_size]
+        success = False
         try:
+            # 1. Try modern /items endpoint first
             resp = requests.post(url_items, headers=headers, json={"uris": chunk}, timeout=DEFAULT_TIMEOUT)
-            if resp.status_code not in (200, 201):
-                resp = requests.post(url_tracks, headers=headers, json={"uris": chunk}, timeout=DEFAULT_TIMEOUT)
             if resp.status_code in (200, 201):
                 total_added += len(chunk)
+                success = True
             else:
-                print(f"Spotify add_tracks batch error ({resp.status_code}): {resp.text}")
+                last_error_status = resp.status_code
+                last_error_text = resp.text
+                # 2. Fallback to legacy /tracks endpoint
+                resp_tracks = requests.post(url_tracks, headers=headers, json={"uris": chunk}, timeout=DEFAULT_TIMEOUT)
+                if resp_tracks.status_code in (200, 201):
+                    total_added += len(chunk)
+                    success = True
+                else:
+                    last_error_status = resp_tracks.status_code
+                    last_error_text = resp_tracks.text
+                    print(f"Spotify add_tracks batch error ({resp_tracks.status_code}): {resp_tracks.text}")
         except Exception as e:
             print(f"Spotify add_tracks request exception: {e}")
+            last_error_text = str(e)
+
+        if not success and last_error_status in (401, 403):
+            raise RuntimeError(f"Spotify add_tracks permission error ({last_error_status}): {last_error_text}")
+
+    if total_added == 0 and track_uris and last_error_status:
+        raise RuntimeError(f"Spotify add_tracks failed ({last_error_status}): {last_error_text}")
+
     return total_added
 
 
-def upload_playlist_cover_image(access_token: str, playlist_id: str, image_b64: str) -> bool:
+def upload_playlist_cover_image(
+    access_token: str,
+    playlist_id: str,
+    image_b64: str,
+    return_details: bool = False
+) -> Union[bool, Tuple[bool, Optional[str], Optional[int]]]:
     """Upload a custom playlist cover image to a Spotify playlist.
     
     Requires ugc-image-upload scope.
     image_b64: Base64 string of JPEG image data (max size 256 KB).
     """
     if not image_b64:
-        return False
+        return (False, "No image data provided", None) if return_details else False
 
     # Strip data URI prefix if present
     clean_b64 = image_b64
@@ -1106,13 +1175,14 @@ def upload_playlist_cover_image(access_token: str, playlist_id: str, image_b64: 
     try:
         resp = requests.put(url, headers=headers, data=clean_b64, timeout=DEFAULT_TIMEOUT)
         if resp.status_code in (200, 202):
-            return True
+            return (True, None, resp.status_code) if return_details else True
         else:
-            print(f"Spotify upload_playlist_cover_image error ({resp.status_code}): {resp.text}")
-            return False
+            err_text = resp.text
+            print(f"Spotify upload_playlist_cover_image error ({resp.status_code}): {err_text}")
+            return (False, err_text, resp.status_code) if return_details else False
     except Exception as e:
         print(f"Spotify upload_playlist_cover_image exception: {e}")
-        return False
+        return (False, str(e), None) if return_details else False
 
 
 def export_songs_to_spotify_playlist(
@@ -1146,11 +1216,27 @@ def export_songs_to_spotify_playlist(
     unmatched: List[str] = []
 
     for item in songs:
-        artist = item.get("artist", "")
-        song = item.get("song", "")
-        # First check direct or audiodb spotify_id
-        spotify_id = item.get("spotify_id")
-        if not spotify_id and item.get("theaudiodb_data"):
+        artist = (item.get("artist") or "").strip()
+        song = (item.get("song") or item.get("name") or item.get("title") or "").strip()
+
+        valid_uri = None
+        # Check direct uri or spotify_uri
+        for k in ("spotify_uri", "uri"):
+            cand = item.get(k)
+            valid_uri = _extract_valid_spotify_track_uri(cand)
+            if valid_uri:
+                break
+
+        # Check spotify_id or id
+        if not valid_uri:
+            for k in ("spotify_id", "id"):
+                cand = item.get(k)
+                valid_uri = _extract_valid_spotify_track_uri(cand)
+                if valid_uri:
+                    break
+
+        # Check theaudiodb_data
+        if not valid_uri and item.get("theaudiodb_data"):
             audiodb = item["theaudiodb_data"]
             if isinstance(audiodb, str):
                 try:
@@ -1158,18 +1244,25 @@ def export_songs_to_spotify_playlist(
                 except Exception:
                     audiodb = {}
             if isinstance(audiodb, dict):
-                spotify_id = audiodb.get("spotify_id")
+                valid_uri = _extract_valid_spotify_track_uri(audiodb.get("spotify_id"))
 
-        if spotify_id and str(spotify_id).strip():
-            resolved_uris.append(f"spotify:track:{str(spotify_id).strip()}")
+        if valid_uri:
+            resolved_uris.append(valid_uri)
             matched_count += 1
             continue
 
         # Otherwise search track
-        track_res = search_track(access_token, artist, song)
-        if track_res and track_res.get("uri"):
-            resolved_uris.append(track_res["uri"])
-            matched_count += 1
+        if artist and song:
+            track_res = search_track(access_token, artist, song)
+            if track_res and track_res.get("uri"):
+                v_uri = _extract_valid_spotify_track_uri(track_res["uri"])
+                if v_uri:
+                    resolved_uris.append(v_uri)
+                    matched_count += 1
+                else:
+                    unmatched.append(f"{artist} - {song}")
+            else:
+                unmatched.append(f"{artist} - {song}")
         else:
             unmatched.append(f"{artist} - {song}")
 
@@ -1184,8 +1277,17 @@ def export_songs_to_spotify_playlist(
     added_count = add_tracks_to_playlist(access_token, playlist_id, unique_uris)
 
     cover_uploaded = False
+    cover_error = None
+    needs_cover_permission = False
     if cover_image_b64:
-        cover_uploaded = upload_playlist_cover_image(access_token, playlist_id, cover_image_b64)
+        ok, err_msg, status_code = upload_playlist_cover_image(
+            access_token, playlist_id, cover_image_b64, return_details=True
+        )
+        cover_uploaded = ok
+        if not ok:
+            cover_error = err_msg
+            if status_code == 403 or (err_msg and "scope" in err_msg.lower()):
+                needs_cover_permission = True
 
     return {
         "success": True,
@@ -1197,6 +1299,8 @@ def export_songs_to_spotify_playlist(
         "tracks_added": added_count,
         "unmatched": unmatched,
         "cover_image_uploaded": cover_uploaded,
+        "cover_image_error": cover_error,
+        "needs_cover_permission": needs_cover_permission,
     }
 
 

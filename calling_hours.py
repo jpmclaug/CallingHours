@@ -6739,7 +6739,6 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
 
         function onMixModeChange() {
             updatePlaylistName('mix_mode');
-            submitGeneratorForm();
         }
 
         function onSetlistArtistChange(selectEl) {
@@ -7072,6 +7071,30 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
                             ${data.cover_image_uploaded ? '<div style="font-size: 0.76rem; color: #5af0a5; font-weight: 600; margin-top: 6px;">🎨 Custom Album Art Uploaded to Spotify</div>' : ''}
                         </div>
                     ` : '';
+                    let coverNotice = '';
+                    if (!data.cover_image_uploaded && (data.needs_cover_permission || (data.cover_image_error && data.cover_image_error.includes('scope')))) {
+                        coverNotice = `
+                            <div style="background: rgba(165, 200, 255, 0.08); border: 1px solid rgba(165, 200, 255, 0.25); border-radius: 8px; padding: 10px 14px; margin: 14px 0 16px 0; text-align: left;">
+                                <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap;">
+                                    <div style="flex: 1; min-width: 180px;">
+                                        <div style="color: #A5C8FF; font-weight: 600; font-size: 0.82rem;">🎨 Custom Cover Art Scope Needed</div>
+                                        <div style="color: rgba(225, 232, 240, 0.75); font-size: 0.75rem; margin-top: 2px;">Spotify requires image upload authorization to apply custom playlist artwork.</div>
+                                    </div>
+                                    <a href="/auth/spotify?next=/playlists" class="btn-playlist-action btn-playlist-spotify" style="padding: 4px 10px; font-size: 0.74rem; text-decoration: none; white-space: nowrap;">
+                                        Enable Art (1-Click) ↗
+                                    </a>
+                                </div>
+                            </div>
+                        `;
+                    }
+                    let trackSummaryText = `Successfully created <strong>${data.playlist_name}</strong> with <strong>${data.tracks_added} tracks</strong> added to your Spotify account.`;
+                    if (data.tracks_added === 0 && data.tracks_requested > 0) {
+                        trackSummaryText = `Created <strong>${data.playlist_name}</strong>, but tracks could not be added automatically. Please check permissions or re-authorize Spotify.`;
+                    }
+                    let unmatchedNote = '';
+                    if (data.unmatched && data.unmatched.length > 0) {
+                        unmatchedNote = `<div style="font-size: 0.74rem; color: rgba(225, 232, 240, 0.6); margin-top: 8px;">Note: ${data.unmatched.length} track(s) could not be matched on Spotify.</div>`;
+                    }
                     content.innerHTML = `
                         <div style="padding: 10px 0;">
                             ${coverHtml}
@@ -7080,8 +7103,10 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
                                 Playlist Created on Spotify!
                             </h4>
                             <p style="color: rgba(225, 232, 240, 0.8); font-size: 0.88rem; line-height: 1.5; text-align: center;">
-                                Successfully created <strong>${data.playlist_name}</strong> with <strong>${data.tracks_added} tracks</strong> added to your Spotify account.
+                                ${trackSummaryText}
                             </p>
+                            ${unmatchedNote}
+                            ${coverNotice}
                             <div style="margin-top: 24px; display: flex; gap: 10px; justify-content: center;">
                                 <a href="${data.playlist_url}" target="_blank" rel="noopener noreferrer" class="btn-playlist-action btn-playlist-spotify" style="text-decoration: none;">
                                     Open in Spotify ↗
@@ -11219,7 +11244,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         is_spotify_connected = bool(spotify_access_token)
 
         if is_spotify_connected:
-            spotify_status_badge = '<span style="background: rgba(29, 185, 84, 0.2); color: #1DB954; border: 1px solid rgba(29, 185, 84, 0.4); padding: 2px 8px; border-radius: 12px; font-size: 0.74rem; font-weight: 700;">🟢 Connected</span>'
+            spotify_status_badge = '<span style="display: inline-flex; align-items: center; gap: 6px;"><span style="background: rgba(29, 185, 84, 0.2); color: #1DB954; border: 1px solid rgba(29, 185, 84, 0.4); padding: 2px 8px; border-radius: 12px; font-size: 0.74rem; font-weight: 700;">🟢 Connected</span><a href="/auth/spotify?next=/playlists" title="Refresh Spotify scopes and permissions" style="font-size: 0.72rem; color: #A5C8FF; text-decoration: underline; opacity: 0.85;">↻ Re-authorize</a></span>'
         elif spotify.is_spotify_configured():
             spotify_status_badge = '<a href="/auth/spotify" style="background: rgba(165, 200, 255, 0.15); color: #A5C8FF; border: 1px solid rgba(165, 200, 255, 0.3); padding: 2px 8px; border-radius: 12px; font-size: 0.74rem; font-weight: 700; text-decoration: none;">Connect Spotify</a>'
         else:
@@ -11843,7 +11868,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 </div>
                 <div class="playlist-input-group">
                     <label for="select-per-artist">Tracks Per Artist</label>
-                    <select name="per_artist" id="select-per-artist" onchange="submitGeneratorForm()">
+                    <select name="per_artist" id="select-per-artist">
                         {per_artist_opts}
                     </select>
                 </div>
