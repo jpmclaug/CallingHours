@@ -6817,6 +6817,77 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
                 padding-top: 10px;
             }
         }
+        .slicer-card {
+            background: linear-gradient(135deg, rgba(14, 38, 80, 0.7) 0%, rgba(7, 20, 48, 0.85) 100%);
+            border: 1px solid rgba(110, 231, 183, 0.25);
+            border-radius: 14px;
+            padding: 22px 24px;
+            margin-bottom: 24px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+        }
+        .slicer-controls-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 14px;
+            margin: 16px 0;
+        }
+        .slicer-field-label {
+            font-size: 0.76rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #A5C8FF;
+            font-weight: 700;
+            margin-bottom: 6px;
+            display: flex;
+            justify-content: space-between;
+        }
+        .slicer-select, .slicer-input {
+            width: 100%;
+            background: rgba(5, 14, 34, 0.85);
+            border: 1px solid rgba(165, 200, 255, 0.25);
+            border-radius: 8px;
+            color: #FFFFFF;
+            padding: 8px 12px;
+            font-size: 0.88rem;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .slicer-select:focus, .slicer-input:focus {
+            border-color: #1DB954;
+        }
+        .slicer-results-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 10px;
+            margin-top: 14px;
+        }
+        .slicer-result-item {
+            background: rgba(14, 38, 80, 0.45);
+            border: 1px solid rgba(165, 200, 255, 0.12);
+            border-radius: 8px;
+            padding: 10px 14px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: all 0.2s ease;
+        }
+        .slicer-result-item:hover {
+            background: rgba(29, 185, 84, 0.1);
+            border-color: rgba(29, 185, 84, 0.35);
+            transform: translateY(-1px);
+        }
+        .enrichment-banner {
+            background: rgba(20, 24, 45, 0.7);
+            border: 1px solid rgba(165, 200, 255, 0.2);
+            border-radius: 12px;
+            padding: 14px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 14px;
+            margin-bottom: 20px;
+        }
     </style>
 
     <div class="spotify-page-container">
@@ -6876,6 +6947,111 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
                 noMatch.style.display = (visibleCount === 0 && cards.length > 0) ? 'block' : 'none';
             }
         }
+
+        async function runSpotifySlice() {
+            const period = document.getElementById('slice-period')?.value || 'all';
+            const tod = document.getElementById('slice-tod')?.value || 'all';
+            const dow = document.getElementById('slice-dow')?.value || 'all';
+            const genre = document.getElementById('slice-genre')?.value || '';
+            const view = document.getElementById('slice-view')?.value || 'artists';
+            const container = document.getElementById('slicer-results-container');
+            const summaryEl = document.getElementById('slicer-summary');
+
+            if (!container) return;
+            container.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; color: #A5C8FF; padding: 24px;">⏳ Slicing your personal archive...</div>';
+
+            try {
+                const url = `/api/spotify/slice?period=${encodeURIComponent(period)}&tod=${encodeURIComponent(tod)}&dow=${encodeURIComponent(dow)}&genre=${encodeURIComponent(genre)}&view=${encodeURIComponent(view)}&limit=24`;
+                const res = await fetch(url);
+                const data = await res.json();
+
+                if (summaryEl) {
+                    summaryEl.innerHTML = `Found <strong style="color:#6EE7B7;">${(data.total_streams || 0).toLocaleString()}</strong> streams matching this slice`;
+                }
+
+                if (view === 'tracks') {
+                    if (!data.tracks || data.tracks.length === 0) {
+                        container.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; color: rgba(225, 232, 240, 0.5); padding: 20px;">No tracks found for these filter settings.</div>';
+                        return;
+                    }
+                    container.innerHTML = data.tracks.map((t, idx) => `
+                        <div class="slicer-result-item">
+                            <div style="min-width: 0; flex: 1; margin-right: 10px;">
+                                <div style="font-weight: 700; color: #FFFFFF; font-size: 0.88rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                                    <span style="color: #6EE7B7; font-size: 0.75rem; margin-right: 4px;">#${idx + 1}</span>${t.name}
+                                </div>
+                                <div style="font-size: 0.76rem; color: #A5C8FF; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${t.artist}</div>
+                            </div>
+                            <div style="text-align: right; flex-shrink: 0;">
+                                <span style="font-size: 0.8rem; color: #1DB954; font-weight: 700; background: rgba(29, 185, 84, 0.15); padding: 3px 8px; border-radius: 8px;">${t.play_count.toLocaleString()} plays</span>
+                            </div>
+                        </div>
+                    `).join('');
+                } else {
+                    if (!data.artists || data.artists.length === 0) {
+                        container.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; color: rgba(225, 232, 240, 0.5); padding: 20px;">No artists found for these filter settings.</div>';
+                        return;
+                    }
+                    container.innerHTML = data.artists.map((a, idx) => {
+                        const genreTag = a.genre ? `<span style="font-size: 0.68rem; color: #A5C8FF; background: rgba(165, 200, 255, 0.1); padding: 2px 6px; border-radius: 4px; margin-left: 6px;">${a.genre}</span>` : '';
+                        return `
+                            <div class="slicer-result-item">
+                                <div style="min-width: 0; flex: 1; margin-right: 10px;">
+                                    <div style="font-weight: 700; font-size: 0.88rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                                        <a href="/artist?artist=${encodeURIComponent(a.artist)}" style="color: #FFFFFF; text-decoration: none;" title="Explore Artist Intelligence">
+                                            <span style="color: #6EE7B7; font-size: 0.75rem; margin-right: 4px;">#${idx + 1}</span>${a.artist}
+                                        </a>
+                                        ${genreTag}
+                                    </div>
+                                    <div style="font-size: 0.74rem; color: rgba(225, 232, 240, 0.55);">${a.hours} hrs continuous</div>
+                                </div>
+                                <div style="text-align: right; flex-shrink: 0;">
+                                    <span style="font-size: 0.8rem; color: #1DB954; font-weight: 700; background: rgba(29, 185, 84, 0.15); padding: 3px 8px; border-radius: 8px;">${a.play_count.toLocaleString()} plays</span>
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                }
+            } catch (err) {
+                container.innerHTML = `<div style="grid-column: 1 / -1; text-align: center; color: #F87171; padding: 20px;">Failed to load sliced data: ${err.message}</div>`;
+            }
+        }
+
+        async function triggerEnrichment(batchSize) {
+            const btn = document.getElementById('btn-enrich');
+            const statusEl = document.getElementById('enrichment-status-text');
+            if (btn) btn.disabled = true;
+            if (statusEl) statusEl.innerHTML = '⚡ Fetching artist metadata in background...';
+            try {
+                const res = await fetch(`/api/spotify/enrich-artists?batch=${batchSize || 25}`);
+                const data = await res.json();
+                if (statusEl) {
+                    statusEl.innerHTML = `✅ Queued ${data.queued} artists for enrichment (${data.artists?.slice(0, 3).join(', ')}...)`;
+                }
+                setTimeout(updateEnrichmentBadge, 4000);
+            } catch (err) {
+                if (statusEl) statusEl.innerHTML = `⚠️ Enrichment trigger error: ${err.message}`;
+            } finally {
+                if (btn) btn.disabled = false;
+            }
+        }
+
+        async function updateEnrichmentBadge() {
+            try {
+                const res = await fetch('/api/spotify/enrichment-status');
+                const data = await res.json();
+                const badge = document.getElementById('enrichment-badge');
+                if (badge) {
+                    badge.innerHTML = `🏷️ ${data.fetched.toLocaleString()} / ${data.total_artists_in_history.toLocaleString()} artists enriched (${data.coverage_pct}%)`;
+                }
+            } catch (e) {
+                console.log('Error updating enrichment badge', e);
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            updateEnrichmentBadge();
+        });
     </script>
 </body>
 </html>'''
@@ -10985,6 +11161,18 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             self.handle_api_spotify_sync()
             return
 
+        if parsed.path == '/api/spotify/slice':
+            self.handle_api_spotify_slice(parsed.query)
+            return
+
+        if parsed.path == '/api/spotify/enrich-artists':
+            self.handle_api_spotify_enrich_artists(parsed.query)
+            return
+
+        if parsed.path == '/api/spotify/enrichment-status':
+            self.handle_api_spotify_enrichment_status()
+            return
+
         if parsed.path in ('/playlists', '/playlist-generator'):
             params = urllib.parse.parse_qs(parsed.query)
             mode = params.get('mode', ['all_analyzed'])[0].strip()
@@ -14174,6 +14362,151 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(json.dumps({'error': str(e)}).encode('utf-8'))
 
+    def handle_api_spotify_slice(self, query_string: str):
+        """API handler to dynamically slice Spotify listening history by period, time of day, day of week, and genre."""
+        current_user = self.get_current_user()
+        if not current_user:
+            self.send_response(401)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(json.dumps({'error': 'Unauthorized'}).encode('utf-8'))
+            return
+
+        params = urllib.parse.parse_qs(query_string)
+        period = params.get('period', ['all'])[0].strip()
+        tod = params.get('tod', ['all'])[0].strip()
+        dow = params.get('dow', ['all'])[0].strip()
+        genre = params.get('genre', [''])[0].strip()
+        view = params.get('view', ['artists'])[0].strip().lower()
+        limit_str = params.get('limit', ['20'])[0].strip()
+        limit = max(1, min(int(limit_str) if limit_str.isdigit() else 20, 100))
+
+        try:
+            if view == 'tracks':
+                artist_filter = params.get('artist', [''])[0].strip()
+                tracks, total_streams = database.get_filtered_top_tracks(
+                    current_user['email'],
+                    period=period,
+                    time_of_day=tod,
+                    day_of_week=dow,
+                    artist=artist_filter,
+                    limit=limit
+                )
+                payload = {
+                    'view': 'tracks',
+                    'tracks': tracks,
+                    'total_streams': total_streams,
+                    'filters': {'period': period, 'tod': tod, 'dow': dow, 'artist': artist_filter}
+                }
+            else:
+                artists, total_streams = database.get_filtered_top_artists(
+                    current_user['email'],
+                    period=period,
+                    time_of_day=tod,
+                    day_of_week=dow,
+                    genre=genre,
+                    limit=limit
+                )
+                payload = {
+                    'view': 'artists',
+                    'artists': artists,
+                    'total_streams': total_streams,
+                    'filters': {'period': period, 'tod': tod, 'dow': dow, 'genre': genre}
+                }
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(json.dumps(payload).encode('utf-8'))
+        except Exception as e:
+            self.send_response(500)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(json.dumps({'error': str(e)}).encode('utf-8'))
+
+    def handle_api_spotify_enrichment_status(self):
+        """API handler returning current coverage stats of artist enrichment."""
+        current_user = self.get_current_user()
+        if not current_user:
+            self.send_response(401)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(json.dumps({'error': 'Unauthorized'}).encode('utf-8'))
+            return
+
+        try:
+            stats = database.get_enrichment_status()
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(json.dumps(stats).encode('utf-8'))
+        except Exception as e:
+            self.send_response(500)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(json.dumps({'error': str(e)}).encode('utf-8'))
+
+    def handle_api_spotify_enrich_artists(self, query_string: str):
+        """API handler to trigger a batch enrichment run for un-enriched artists in the background or small sync chunk."""
+        current_user = self.get_current_user()
+        if not current_user:
+            self.send_response(401)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(json.dumps({'error': 'Unauthorized'}).encode('utf-8'))
+            return
+
+        params = urllib.parse.parse_qs(query_string)
+        batch_size = max(1, min(int(params.get('batch', ['10'])[0]), 50))
+        artists_to_enrich = database.get_artists_needing_enrichment(current_user['email'], limit=batch_size)
+
+        def _enrich_worker(artist_list):
+            import lastfm, theaudiodb
+            lf_key = lastfm.get_lastfm_api_key()
+            adb_key = theaudiodb.get_theaudiodb_api_key()
+            for item in artist_list:
+                name = item['artist']
+                try:
+                    meta = lastfm.get_or_fetch_artist_metadata(name, api_key=lf_key) if lf_key else {}
+                    adb = theaudiodb.get_or_fetch_artist_details(name, api_key=adb_key) if adb_key else {}
+
+                    genre = (adb.get('genre') if adb else None)
+                    if not genre and meta and meta.get('tags'):
+                        genre = meta['tags'][0].get('name', '').title()
+
+                    bio = (meta.get('bio') if meta else None) or (adb.get('biography') if adb else None)
+                    if bio and len(bio) > 500:
+                        bio = bio[:497] + '...'
+
+                    payload = {
+                        'tags': meta.get('tags', []) if meta else [],
+                        'similar': meta.get('similar_artists', []) if meta else [],
+                        'genre': genre,
+                        'style': adb.get('style') if adb else None,
+                        'mood': adb.get('mood') if adb else None,
+                        'formed_year': adb.get('formed_year') if adb else None,
+                        'country': adb.get('country') if adb else None,
+                        'bio_summary': bio,
+                        'image_url': (adb.get('thumbnail_url') if adb else None) or (meta.get('image_url') if meta else None),
+                        'listeners': meta.get('listeners') if meta else None,
+                        'playcount': meta.get('playcount') if meta else None,
+                        'fetch_status': 'fetched' if (meta or adb) else 'not_found'
+                    }
+                    database.upsert_artist_enrichment(name, payload)
+                    time.sleep(0.2)
+                except Exception as ex:
+                    database.upsert_artist_enrichment(name, {'fetch_status': 'error', 'error_msg': str(ex)})
+
+        threading.Thread(target=_enrich_worker, args=(artists_to_enrich,), daemon=True).start()
+
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/json; charset=utf-8')
+        self.end_headers()
+        self.wfile.write(json.dumps({
+            'queued': len(artists_to_enrich),
+            'artists': [a['artist'] for a in artists_to_enrich],
+            'status': 'started'
+        }).encode('utf-8'))
+
     def render_spotify_page(
         self,
         demo: bool = False,
@@ -14782,6 +15115,121 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         </div>
         '''
 
+        # Interactive Slicer and Artist Metadata Enrichment Section
+        slicer_html = f'''
+        <!-- Enrichment Controls & Status Banner -->
+        <div class="enrichment-banner">
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <span style="font-size: 1.5rem;">🧬</span>
+                <div>
+                    <div style="font-weight: 800; color: #FFFFFF; font-size: 0.95rem;">Artist Metadata & Related Artists Engine</div>
+                    <div id="enrichment-status-text" style="font-size: 0.8rem; color: #A5C8FF; margin-top: 2px;">
+                        Fetch Last.fm genre tags, bios, and similar/related artists for your 3,900+ streamed bands.
+                    </div>
+                </div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                <span id="enrichment-badge" style="background: rgba(29, 185, 84, 0.15); border: 1px solid rgba(29, 185, 84, 0.4); color: #6EE7B7; font-size: 0.76rem; font-weight: 700; padding: 4px 12px; border-radius: 12px;">
+                    🏷️ Calculating coverage...
+                </span>
+                <button type="button" id="btn-enrich" onclick="triggerEnrichment(25)" class="pill-btn primary" style="font-size: 0.8rem; padding: 6px 14px; cursor: pointer;">
+                    ⚡ Enrich Top 25 Bands
+                </button>
+            </div>
+        </div>
+
+        <!-- Custom Slice & Dice Filter Tool -->
+        <div class="slicer-card">
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 8px;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span style="font-size: 1.5rem;">🔬</span>
+                    <div>
+                        <h2 style="font-family: 'Montserrat', sans-serif; font-size: 1.2rem; font-weight: 800; margin: 0; color: #FFFFFF;">
+                            Archive Slicer: Custom Habits & Top Bands Explorer
+                        </h2>
+                        <div style="font-size: 0.82rem; color: #A5C8FF; margin-top: 2px;">
+                            Slice your 98,000+ plays across any combination of time of day, day of week, timeframe, or genre
+                        </div>
+                    </div>
+                </div>
+                <div id="slicer-summary" style="font-size: 0.82rem; color: #6EE7B7; font-weight: 700;">
+                    Select criteria to slice
+                </div>
+            </div>
+
+            <div class="slicer-controls-grid">
+                <div>
+                    <label class="slicer-field-label">Time Window</label>
+                    <select id="slice-period" class="slicer-select" onchange="runSpotifySlice()">
+                        <option value="all">All Time (15-Year Archive)</option>
+                        <option value="7d">Last 7 Days</option>
+                        <option value="30d">Last 30 Days</option>
+                        <option value="90d">Last 90 Days</option>
+                        <option value="1y">Past 1 Year</option>
+                        <option value="2026">2026 Only</option>
+                        <option value="2025">2025 Only</option>
+                        <option value="2024">2024 Only</option>
+                        <option value="2023">2023 Only (Peak Year)</option>
+                        <option value="2022">2022 Only</option>
+                        <option value="2021">2021 Only</option>
+                        <option value="2020">2020 Only</option>
+                        <option value="2019">2019 Only</option>
+                        <option value="2018">2018 Only</option>
+                        <option value="2017">2017 Only</option>
+                        <option value="2016">2016 Only</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="slicer-field-label">Time of Day</label>
+                    <select id="slice-tod" class="slicer-select" onchange="runSpotifySlice()">
+                        <option value="all">Any Hour (24h)</option>
+                        <option value="morning">🌅 Morning (5am – 11am)</option>
+                        <option value="afternoon">☀️ Afternoon (12pm – 5pm)</option>
+                        <option value="evening">🌆 Evening (6pm – 10pm)</option>
+                        <option value="night">🌙 Late Night (11pm – 4am)</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="slicer-field-label">Day of Week</label>
+                    <select id="slice-dow" class="slicer-select" onchange="runSpotifySlice()">
+                        <option value="all">Any Day (7 Days)</option>
+                        <option value="weekday">💼 Weekdays Only (Mon-Fri)</option>
+                        <option value="weekend">🎉 Weekends Only (Sat-Sun)</option>
+                        <option value="Mon">Monday</option>
+                        <option value="Tue">Tuesday</option>
+                        <option value="Wed">Wednesday</option>
+                        <option value="Thu">Thursday</option>
+                        <option value="Fri">Friday</option>
+                        <option value="Sat">Saturday (Most Active)</option>
+                        <option value="Sun">Sunday</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="slicer-field-label">Genre Filter</label>
+                    <input type="text" id="slice-genre" class="slicer-input" placeholder="e.g. Hardcore, Emo, Metal..." oninput="runSpotifySlice()">
+                </div>
+
+                <div>
+                    <label class="slicer-field-label">Display Mode</label>
+                    <select id="slice-view" class="slicer-select" onchange="runSpotifySlice()">
+                        <option value="artists">👥 Top Bands / Artists</option>
+                        <option value="tracks">🎵 Top Played Tracks</option>
+                    </select>
+                </div>
+            </div>
+
+            <div id="slicer-results-container" class="slicer-results-grid">
+                <!-- Loaded dynamically by runSpotifySlice() -->
+                <div style="grid-column: 1 / -1; text-align: center; color: rgba(225, 232, 240, 0.6); padding: 18px 0; font-size: 0.88rem;">
+                    💡 Adjust any filter above or click <strong>Top Bands / Artists</strong> to slice your personal history in real time.
+                </div>
+            </div>
+        </div>
+        '''
+
         # 6. Listening History Feed (with archive search & pagination)
         history_cards = []
         for idx, t in enumerate(history_tracks):
@@ -14910,6 +15358,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         {now_playing_html}
         {kpi_grid_html if (is_connected or is_demo or has_history) else ''}
         {analytics_grid_html if (is_connected or is_demo or has_history) else ''}
+        {slicer_html if (is_connected or is_demo or has_history) else ''}
         {history_feed_html if (is_connected or is_demo or has_history) else ''}
         '''
 

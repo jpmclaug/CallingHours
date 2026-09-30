@@ -373,6 +373,75 @@ class TestSpotifyExtendedHistoryAndAutoSync(unittest.TestCase):
         # Best hour should be one of 14, 21, 22
         self.assertIn(adv["best_hour"], [14, 21, 22])
 
+    def test_filtered_top_artists_and_enrichment(self):
+        """Verify get_filtered_top_artists, get_filtered_top_tracks, and enrichment table helpers."""
+        user = "test_slicer@example.com"
+        items = [
+            {
+                "track_id": "sl_1",
+                "played_at": "2023-05-15T08:00:00Z",  # Morning, Mon, 2023
+                "name": "Morning Track",
+                "artist": "Alpha Band",
+                "album": "Alb 1",
+                "duration_ms": 180000,
+            },
+            {
+                "track_id": "sl_2",
+                "played_at": "2023-05-15T20:00:00Z",  # Evening, Mon, 2023
+                "name": "Evening Track",
+                "artist": "Beta Band",
+                "album": "Alb 2",
+                "duration_ms": 200000,
+            },
+            {
+                "track_id": "sl_3",
+                "played_at": "2024-01-20T23:30:00Z",  # Night, Sat, 2024
+                "name": "Night Track",
+                "artist": "Beta Band",
+                "album": "Alb 2",
+                "duration_ms": 210000,
+            },
+        ]
+        database.save_spotify_history_items(user, items, db_path=self.db_path)
+
+        # 1. Filter by period = 2023
+        artists_2023, count_2023 = database.get_filtered_top_artists(user, period='2023', db_path=self.db_path)
+        self.assertEqual(count_2023, 2)
+        self.assertEqual(len(artists_2023), 2)
+
+        # 2. Filter by time_of_day = morning
+        artists_morn, count_morn = database.get_filtered_top_artists(user, time_of_day='morning', db_path=self.db_path)
+        self.assertEqual(count_morn, 1)
+        self.assertEqual(artists_morn[0]['artist'], 'Alpha Band')
+
+        # 3. Filter by day_of_week = weekend (Sat)
+        artists_wknd, count_wknd = database.get_filtered_top_artists(user, day_of_week='weekend', db_path=self.db_path)
+        self.assertEqual(count_wknd, 1)
+        self.assertEqual(artists_wknd[0]['artist'], 'Beta Band')
+
+        # 4. Filter tracks
+        tracks_night, count_tr_night = database.get_filtered_top_tracks(user, time_of_day='night', db_path=self.db_path)
+        self.assertEqual(count_tr_night, 1)
+        self.assertEqual(tracks_night[0]['name'], 'Night Track')
+
+        # 5. Test artist enrichment helpers
+        database.upsert_artist_enrichment("Alpha Band", {
+            "genre": "Melodic Hardcore",
+            "similar": [{"name": "Have Heart"}],
+            "tags": [{"name": "hardcore"}]
+        }, db_path=self.db_path)
+
+        enrichment = database.get_artist_enrichment("Alpha Band", db_path=self.db_path)
+        self.assertIsNotNone(enrichment)
+        self.assertEqual(enrichment["genre"], "Melodic Hardcore")
+        self.assertEqual(len(enrichment["similar"]), 1)
+        self.assertEqual(enrichment["similar"][0]["name"], "Have Heart")
+
+        # 6. Slicing with genre filter
+        artists_genre, count_genre = database.get_filtered_top_artists(user, genre="hardcore", db_path=self.db_path)
+        self.assertEqual(count_genre, 1)
+        self.assertEqual(artists_genre[0]['artist'], 'Alpha Band')
+
 
 if __name__ == "__main__":
     unittest.main()

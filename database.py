@@ -902,6 +902,81 @@ def init_db(db_path: Optional[str] = None) -> None:
             except Exception as bfe:
                 print(f"Warning: SQLite song_analyses backfill skipped ({bfe})")
 
+        # Initialize the spotify_artist_enrichment table for both backends
+        init_spotify_artist_enrichment_table(db_path=db_path)
+
+
+def init_spotify_artist_enrichment_table(db_path: Optional[str] = None) -> None:
+    """Create the spotify_artist_enrichment table and index if they don't exist."""
+    target = get_db_target(db_path)
+    with get_connection(target) as conn:
+        cursor = conn.cursor()
+        if is_postgres(target):
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS spotify_artist_enrichment (
+                    id SERIAL PRIMARY KEY,
+                    artist_name TEXT NOT NULL,
+                    artist_name_lower TEXT NOT NULL UNIQUE,
+                    lastfm_tags TEXT,
+                    lastfm_similar TEXT,
+                    genre TEXT,
+                    style TEXT,
+                    mood TEXT,
+                    formed_year INTEGER,
+                    country TEXT,
+                    bio_summary TEXT,
+                    image_url TEXT,
+                    listeners BIGINT,
+                    playcount BIGINT,
+                    fetch_status TEXT DEFAULT 'pending',
+                    fetched_at TIMESTAMP,
+                    error_msg TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_sae_name_lower
+                ON spotify_artist_enrichment(artist_name_lower);
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_sae_fetch_status
+                ON spotify_artist_enrichment(fetch_status);
+            """)
+        else:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS spotify_artist_enrichment (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    artist_name TEXT NOT NULL,
+                    artist_name_lower TEXT NOT NULL UNIQUE,
+                    lastfm_tags TEXT,
+                    lastfm_similar TEXT,
+                    genre TEXT,
+                    style TEXT,
+                    mood TEXT,
+                    formed_year INTEGER,
+                    country TEXT,
+                    bio_summary TEXT,
+                    image_url TEXT,
+                    listeners INTEGER,
+                    playcount INTEGER,
+                    fetch_status TEXT DEFAULT 'pending',
+                    fetched_at TIMESTAMP,
+                    error_msg TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_sae_name_lower
+                ON spotify_artist_enrichment(artist_name_lower);
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_sae_fetch_status
+                ON spotify_artist_enrichment(fetch_status);
+            """)
+
+
 def normalize_text(text: str) -> str:
     return text.strip().lower() if text else ""
 
@@ -2766,6 +2841,490 @@ def get_spotify_advanced_analytics(user_email: str, db_path: Optional[str] = Non
     }
     _spotify_advanced_cache[cache_key] = (now_ts, mut_ver, result)
     return result
+
+
+def get_filtered_top_artists(
+    user_email: str,
+    period: str = 'all',
+    time_of_day: str = 'all',
+    day_of_week: str = 'all',
+    genre: str = '',
+    limit: int = 20,
+    db_path: Optional[str] = None
+) -> Tuple[List[Dict[str, Any]], int]:
+    """
+    Return top artists (and total stream count) for any combination of filters.
+
+    period:      'all' | '7d' | '30d' | '90d' | '1y' | '2011'..'2026'
+    time_of_day: 'all' | 'morning' | 'afternoon' | 'evening' | 'night'
+    day_of_week: 'all' | 'weekday' | 'weekend' | 'Mon'..'Sun'
+    genre:       free-text genre substring filter (requires spotify_artist_enrichment join)
+    limit:       max rows returned
+
+    Returns (list_of_artists, total_matching_streams_count)
+    Each artist dict: {artist, play_count, hours, genre, tags}
+    """
+    clean_email = user_email.lower().strip()
+    if not clean_email:
+        return [], 0
+
+    target = get_db_target(db_path)
+    pg = is_postgres(target)
+    ph = "%s" if pg else "?"
+
+    where_clauses = [f"LOWER(sh.user_email) = {ph}"]
+    params: List[Any] = [clean_email]
+
+    # --- Period filter ---
+    period = (period or 'all').strip()
+    if period == '7d':
+        if pg:
+            where_clauses.append("sh.played_at >= NOW() - INTERVAL '7 days'")
+        else:
+            where_clauses.append("sh.played_at >= datetime('now', '-7 days')")
+    elif period == '30d':
+        if pg:
+            where_clauses.append("sh.played_at >= NOW() - INTERVAL '30 days'")
+        else:
+            where_clauses.append("sh.played_at >= datetime('now', '-30 days')")
+    elif period == '90d':
+        if pg:
+            where_clauses.append("sh.played_at >= NOW() - INTERVAL '90 days'")
+        else:
+            where_clauses.append("sh.played_at >= datetime('now', '-90 days')")
+    elif period == '1y':
+        if pg:
+            where_clauses.append("sh.played_at >= NOW() - INTERVAL '1 year'")
+        else:
+            where_clauses.append("sh.played_at >= datetime('now', '-365 days')")
+    elif period.isdigit() and 2000 <= int(period) <= 2100:
+        if pg:
+            where_clauses.append(f"EXTRACT(YEAR FROM sh.played_at::timestamp) = {ph}")
+        else:
+            where_clauses.append(f"CAST(strftime('%Y', sh.played_at) AS INTEGER) = {ph}")
+        params.append(int(period))
+
+    # --- Time of day filter ---
+    tod = (time_of_day or 'all').strip().lower()
+    if tod == 'morning':
+        if pg:
+            where_clauses.append("EXTRACT(HOUR FROM sh.played_at::timestamp) BETWEEN 5 AND 11")
+        else:
+            where_clauses.append("CAST(strftime('%H', sh.played_at) AS INTEGER) BETWEEN 5 AND 11")
+    elif tod == 'afternoon':
+        if pg:
+            where_clauses.append("EXTRACT(HOUR FROM sh.played_at::timestamp) BETWEEN 12 AND 17")
+        else:
+            where_clauses.append("CAST(strftime('%H', sh.played_at) AS INTEGER) BETWEEN 12 AND 17")
+    elif tod == 'evening':
+        if pg:
+            where_clauses.append("EXTRACT(HOUR FROM sh.played_at::timestamp) BETWEEN 18 AND 22")
+        else:
+            where_clauses.append("CAST(strftime('%H', sh.played_at) AS INTEGER) BETWEEN 18 AND 22")
+    elif tod == 'night':
+        if pg:
+            where_clauses.append("(EXTRACT(HOUR FROM sh.played_at::timestamp) >= 23 OR EXTRACT(HOUR FROM sh.played_at::timestamp) <= 4)")
+        else:
+            where_clauses.append("(CAST(strftime('%H', sh.played_at) AS INTEGER) >= 23 OR CAST(strftime('%H', sh.played_at) AS INTEGER) <= 4)")
+
+    # --- Day of week filter ---
+    dow = (day_of_week or 'all').strip()
+    _dow_map = {'Sun': 0, 'Mon': 1, 'Tue': 2, 'Wed': 3, 'Thu': 4, 'Fri': 5, 'Sat': 6}
+    if dow == 'weekday':
+        if pg:
+            where_clauses.append("EXTRACT(DOW FROM sh.played_at::timestamp) BETWEEN 1 AND 5")
+        else:
+            where_clauses.append("CAST(strftime('%w', sh.played_at) AS INTEGER) BETWEEN 1 AND 5")
+    elif dow == 'weekend':
+        if pg:
+            where_clauses.append("EXTRACT(DOW FROM sh.played_at::timestamp) IN (0, 6)")
+        else:
+            where_clauses.append("CAST(strftime('%w', sh.played_at) AS INTEGER) IN (0, 6)")
+    elif dow in _dow_map:
+        dow_num = _dow_map[dow]
+        if pg:
+            where_clauses.append(f"EXTRACT(DOW FROM sh.played_at::timestamp)::int = {ph}")
+        else:
+            where_clauses.append(f"CAST(strftime('%w', sh.played_at) AS INTEGER) = {ph}")
+        params.append(dow_num)
+
+    # --- Genre filter (requires enrichment join) ---
+    clean_genre = (genre or '').strip()
+    join_clause = "LEFT JOIN spotify_artist_enrichment sae ON LOWER(sh.artist_name) = sae.artist_name_lower"
+    if clean_genre:
+        if pg:
+            where_clauses.append(f"sae.genre ILIKE {ph}")
+            params.append(f"%{clean_genre}%")
+        else:
+            where_clauses.append(f"LOWER(sae.genre) LIKE LOWER({ph})")
+            params.append(f"%{clean_genre}%")
+
+    where_sql = " AND ".join(where_clauses)
+
+    with get_connection(target) as conn:
+        cursor = conn.cursor()
+
+        # Total streams count for the filter
+        cursor.execute(f"""
+            SELECT COUNT(*) FROM spotify_history sh
+            {join_clause}
+            WHERE {where_sql}
+        """, params)
+        total_streams = int((cursor.fetchone() or [0])[0])
+
+        # Top artists
+        cursor.execute(f"""
+            SELECT
+                sh.artist_name,
+                COUNT(*) AS play_count,
+                COALESCE(SUM(sh.duration_ms), 0) AS total_ms,
+                MAX(sae.genre) AS genre,
+                MAX(sae.lastfm_tags) AS tags_json
+            FROM spotify_history sh
+            {join_clause}
+            WHERE {where_sql}
+            GROUP BY sh.artist_name
+            ORDER BY play_count DESC
+            LIMIT {ph}
+        """, params + [limit])
+        rows = cursor.fetchall()
+
+    results = []
+    for r in rows:
+        tags_preview = ''
+        tags_json = r[4]
+        if tags_json:
+            try:
+                import json as _json
+                tags_list = _json.loads(tags_json)
+                tags_preview = ', '.join(t.get('name', '') for t in tags_list[:3] if t.get('name'))
+            except Exception:
+                pass
+        results.append({
+            'artist': r[0] or '',
+            'play_count': int(r[1] or 0),
+            'hours': round((r[2] or 0) / (1000 * 3600), 1),
+            'genre': r[3] or '',
+            'tags': tags_preview,
+        })
+    return results, total_streams
+
+
+def get_filtered_top_tracks(
+    user_email: str,
+    period: str = 'all',
+    time_of_day: str = 'all',
+    day_of_week: str = 'all',
+    artist: str = '',
+    limit: int = 20,
+    db_path: Optional[str] = None
+) -> Tuple[List[Dict[str, Any]], int]:
+    """
+    Return top tracks for any combination of filters.
+
+    period/time_of_day/day_of_week: same semantics as get_filtered_top_artists
+    artist: filter to a specific artist (substring match)
+    Returns (list_of_tracks, total_stream_count_in_filter)
+    Each track dict: {name, artist, play_count, hours}
+    """
+    clean_email = user_email.lower().strip()
+    if not clean_email:
+        return [], 0
+
+    target = get_db_target(db_path)
+    pg = is_postgres(target)
+    ph = "%s" if pg else "?"
+
+    where_clauses = [f"LOWER(user_email) = {ph}"]
+    params: List[Any] = [clean_email]
+
+    period = (period or 'all').strip()
+    if period == '7d':
+        where_clauses.append("played_at >= NOW() - INTERVAL '7 days'" if pg else "played_at >= datetime('now', '-7 days')")
+    elif period == '30d':
+        where_clauses.append("played_at >= NOW() - INTERVAL '30 days'" if pg else "played_at >= datetime('now', '-30 days')")
+    elif period == '90d':
+        where_clauses.append("played_at >= NOW() - INTERVAL '90 days'" if pg else "played_at >= datetime('now', '-90 days')")
+    elif period == '1y':
+        where_clauses.append("played_at >= NOW() - INTERVAL '1 year'" if pg else "played_at >= datetime('now', '-365 days')")
+    elif period.isdigit() and 2000 <= int(period) <= 2100:
+        if pg:
+            where_clauses.append(f"EXTRACT(YEAR FROM played_at::timestamp) = {ph}")
+        else:
+            where_clauses.append(f"CAST(strftime('%Y', played_at) AS INTEGER) = {ph}")
+        params.append(int(period))
+
+    tod = (time_of_day or 'all').strip().lower()
+    if tod == 'morning':
+        where_clauses.append("EXTRACT(HOUR FROM played_at::timestamp) BETWEEN 5 AND 11" if pg else "CAST(strftime('%H', played_at) AS INTEGER) BETWEEN 5 AND 11")
+    elif tod == 'afternoon':
+        where_clauses.append("EXTRACT(HOUR FROM played_at::timestamp) BETWEEN 12 AND 17" if pg else "CAST(strftime('%H', played_at) AS INTEGER) BETWEEN 12 AND 17")
+    elif tod == 'evening':
+        where_clauses.append("EXTRACT(HOUR FROM played_at::timestamp) BETWEEN 18 AND 22" if pg else "CAST(strftime('%H', played_at) AS INTEGER) BETWEEN 18 AND 22")
+    elif tod == 'night':
+        where_clauses.append("(EXTRACT(HOUR FROM played_at::timestamp) >= 23 OR EXTRACT(HOUR FROM played_at::timestamp) <= 4)" if pg else "(CAST(strftime('%H', played_at) AS INTEGER) >= 23 OR CAST(strftime('%H', played_at) AS INTEGER) <= 4)")
+
+    dow = (day_of_week or 'all').strip()
+    _dow_map = {'Sun': 0, 'Mon': 1, 'Tue': 2, 'Wed': 3, 'Thu': 4, 'Fri': 5, 'Sat': 6}
+    if dow == 'weekday':
+        where_clauses.append("EXTRACT(DOW FROM played_at::timestamp) BETWEEN 1 AND 5" if pg else "CAST(strftime('%w', played_at) AS INTEGER) BETWEEN 1 AND 5")
+    elif dow == 'weekend':
+        where_clauses.append("EXTRACT(DOW FROM played_at::timestamp) IN (0, 6)" if pg else "CAST(strftime('%w', played_at) AS INTEGER) IN (0, 6)")
+    elif dow in _dow_map:
+        dow_num = _dow_map[dow]
+        where_clauses.append(f"EXTRACT(DOW FROM played_at::timestamp)::int = {ph}" if pg else f"CAST(strftime('%w', played_at) AS INTEGER) = {ph}")
+        params.append(dow_num)
+
+    clean_artist = (artist or '').strip()
+    if clean_artist:
+        where_clauses.append(f"LOWER(artist_name) LIKE LOWER({ph})")
+        params.append(f"%{clean_artist}%")
+
+    where_sql = " AND ".join(where_clauses)
+
+    with get_connection(target) as conn:
+        cursor = conn.cursor()
+        cursor.execute(f"SELECT COUNT(*) FROM spotify_history WHERE {where_sql}", params)
+        total_streams = int((cursor.fetchone() or [0])[0])
+
+        cursor.execute(f"""
+            SELECT track_name, artist_name, COUNT(*) AS play_count, COALESCE(SUM(duration_ms), 0) AS total_ms
+            FROM spotify_history
+            WHERE {where_sql}
+            GROUP BY track_name, artist_name
+            ORDER BY play_count DESC
+            LIMIT {ph}
+        """, params + [limit])
+        rows = cursor.fetchall()
+
+    results = [{'name': r[0] or '', 'artist': r[1] or '', 'play_count': int(r[2] or 0), 'hours': round((r[3] or 0) / (1000 * 3600), 1)} for r in rows]
+    return results, total_streams
+
+
+def get_enrichment_status(db_path: Optional[str] = None) -> Dict[str, Any]:
+    """Return counts of enrichment status: pending, fetched, not_found, error, total."""
+    target = get_db_target(db_path)
+    with get_connection(target) as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT fetch_status, COUNT(*) 
+            FROM spotify_artist_enrichment 
+            GROUP BY fetch_status
+        """)
+        counts = {r[0]: int(r[1]) for r in cursor.fetchall()}
+
+        cursor.execute("SELECT COUNT(DISTINCT LOWER(artist_name)) FROM spotify_history")
+        total_spotify_artists = int((cursor.fetchone() or [0])[0])
+
+    total_enriched = sum(counts.values())
+    fetched = counts.get('fetched', 0)
+    pending = counts.get('pending', 0)
+    not_found = counts.get('not_found', 0)
+    error = counts.get('error', 0)
+    coverage_pct = round((fetched / max(total_spotify_artists, 1)) * 100, 1)
+
+    return {
+        'total_artists_in_history': total_spotify_artists,
+        'total_in_enrichment': total_enriched,
+        'fetched': fetched,
+        'pending': pending,
+        'not_found': not_found,
+        'error': error,
+        'coverage_pct': coverage_pct
+    }
+
+
+def get_artists_needing_enrichment(user_email: str = '', limit: int = 50, db_path: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Return top artists from history that have not been enriched yet, ordered by play count DESC."""
+    target = get_db_target(db_path)
+    pg = is_postgres(target)
+    ph = "%s" if pg else "?"
+    clean_email = user_email.lower().strip() if user_email else ''
+
+    with get_connection(target) as conn:
+        cursor = conn.cursor()
+        if clean_email:
+            cursor.execute(f"""
+                SELECT sh.artist_name, COUNT(*) as play_count
+                FROM spotify_history sh
+                LEFT JOIN spotify_artist_enrichment sae 
+                    ON LOWER(sh.artist_name) = sae.artist_name_lower
+                WHERE LOWER(sh.user_email) = {ph}
+                  AND (sae.fetch_status IS NULL OR sae.fetch_status NOT IN ('fetched', 'not_found'))
+                GROUP BY sh.artist_name
+                ORDER BY play_count DESC
+                LIMIT {ph}
+            """, (clean_email, limit))
+        else:
+            cursor.execute(f"""
+                SELECT sh.artist_name, COUNT(*) as play_count
+                FROM spotify_history sh
+                LEFT JOIN spotify_artist_enrichment sae 
+                    ON LOWER(sh.artist_name) = sae.artist_name_lower
+                WHERE (sae.fetch_status IS NULL OR sae.fetch_status NOT IN ('fetched', 'not_found'))
+                GROUP BY sh.artist_name
+                ORDER BY play_count DESC
+                LIMIT {ph}
+            """, (limit,))
+        rows = cursor.fetchall()
+
+    return [{'artist': r[0], 'play_count': int(r[1])} for r in rows]
+
+
+def upsert_artist_enrichment(artist_name: str, data: Dict[str, Any], db_path: Optional[str] = None) -> None:
+    """Upsert enrichment metadata for a single artist."""
+    clean_name = artist_name.strip()
+    clean_lower = clean_name.lower()
+    if not clean_name:
+        return
+
+    target = get_db_target(db_path)
+    pg = is_postgres(target)
+    ph = "%s" if pg else "?"
+
+    tags_json = json.dumps(data.get('tags')) if isinstance(data.get('tags'), (list, dict)) else data.get('tags')
+    similar_json = json.dumps(data.get('similar')) if isinstance(data.get('similar'), (list, dict)) else data.get('similar')
+    genre = data.get('genre') or None
+    style = data.get('style') or None
+    mood = data.get('mood') or None
+    formed_year = data.get('formed_year') or None
+    country = data.get('country') or None
+    bio_summary = data.get('bio_summary') or None
+    image_url = data.get('image_url') or None
+    listeners = data.get('listeners') or None
+    playcount = data.get('playcount') or None
+    status = data.get('fetch_status', 'fetched')
+    error_msg = data.get('error_msg') or None
+
+    with get_connection(target) as conn:
+        cursor = conn.cursor()
+        if pg:
+            cursor.execute(f"""
+                INSERT INTO spotify_artist_enrichment (
+                    artist_name, artist_name_lower, lastfm_tags, lastfm_similar,
+                    genre, style, mood, formed_year, country, bio_summary,
+                    image_url, listeners, playcount, fetch_status, fetched_at,
+                    error_msg, updated_at
+                ) VALUES (
+                    {ph}, {ph}, {ph}, {ph},
+                    {ph}, {ph}, {ph}, {ph}, {ph}, {ph},
+                    {ph}, {ph}, {ph}, {ph}, CURRENT_TIMESTAMP,
+                    {ph}, CURRENT_TIMESTAMP
+                )
+                ON CONFLICT (artist_name_lower) DO UPDATE SET
+                    artist_name = EXCLUDED.artist_name,
+                    lastfm_tags = COALESCE(EXCLUDED.lastfm_tags, spotify_artist_enrichment.lastfm_tags),
+                    lastfm_similar = COALESCE(EXCLUDED.lastfm_similar, spotify_artist_enrichment.lastfm_similar),
+                    genre = COALESCE(EXCLUDED.genre, spotify_artist_enrichment.genre),
+                    style = COALESCE(EXCLUDED.style, spotify_artist_enrichment.style),
+                    mood = COALESCE(EXCLUDED.mood, spotify_artist_enrichment.mood),
+                    formed_year = COALESCE(EXCLUDED.formed_year, spotify_artist_enrichment.formed_year),
+                    country = COALESCE(EXCLUDED.country, spotify_artist_enrichment.country),
+                    bio_summary = COALESCE(EXCLUDED.bio_summary, spotify_artist_enrichment.bio_summary),
+                    image_url = COALESCE(EXCLUDED.image_url, spotify_artist_enrichment.image_url),
+                    listeners = COALESCE(EXCLUDED.listeners, spotify_artist_enrichment.listeners),
+                    playcount = COALESCE(EXCLUDED.playcount, spotify_artist_enrichment.playcount),
+                    fetch_status = EXCLUDED.fetch_status,
+                    fetched_at = CURRENT_TIMESTAMP,
+                    error_msg = EXCLUDED.error_msg,
+                    updated_at = CURRENT_TIMESTAMP;
+            """, (
+                clean_name, clean_lower, tags_json, similar_json,
+                genre, style, mood, formed_year, country, bio_summary,
+                image_url, listeners, playcount, status, error_msg
+            ))
+        else:
+            cursor.execute(f"""
+                INSERT INTO spotify_artist_enrichment (
+                    artist_name, artist_name_lower, lastfm_tags, lastfm_similar,
+                    genre, style, mood, formed_year, country, bio_summary,
+                    image_url, listeners, playcount, fetch_status, fetched_at,
+                    error_msg, updated_at
+                ) VALUES (
+                    {ph}, {ph}, {ph}, {ph},
+                    {ph}, {ph}, {ph}, {ph}, {ph}, {ph},
+                    {ph}, {ph}, {ph}, {ph}, CURRENT_TIMESTAMP,
+                    {ph}, CURRENT_TIMESTAMP
+                )
+                ON CONFLICT (artist_name_lower) DO UPDATE SET
+                    artist_name = excluded.artist_name,
+                    lastfm_tags = COALESCE(excluded.lastfm_tags, spotify_artist_enrichment.lastfm_tags),
+                    lastfm_similar = COALESCE(excluded.lastfm_similar, spotify_artist_enrichment.lastfm_similar),
+                    genre = COALESCE(excluded.genre, spotify_artist_enrichment.genre),
+                    style = COALESCE(excluded.style, spotify_artist_enrichment.style),
+                    mood = COALESCE(excluded.mood, spotify_artist_enrichment.mood),
+                    formed_year = COALESCE(excluded.formed_year, spotify_artist_enrichment.formed_year),
+                    country = COALESCE(excluded.country, spotify_artist_enrichment.country),
+                    bio_summary = COALESCE(excluded.bio_summary, spotify_artist_enrichment.bio_summary),
+                    image_url = COALESCE(excluded.image_url, spotify_artist_enrichment.image_url),
+                    listeners = COALESCE(excluded.listeners, spotify_artist_enrichment.listeners),
+                    playcount = COALESCE(excluded.playcount, spotify_artist_enrichment.playcount),
+                    fetch_status = excluded.fetch_status,
+                    fetched_at = CURRENT_TIMESTAMP,
+                    error_msg = excluded.error_msg,
+                    updated_at = CURRENT_TIMESTAMP;
+            """, (
+                clean_name, clean_lower, tags_json, similar_json,
+                genre, style, mood, formed_year, country, bio_summary,
+                image_url, listeners, playcount, status, error_msg
+            ))
+    notify_db_mutation()
+
+
+def get_artist_enrichment(artist_name: str, db_path: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """Retrieve enrichment metadata for an artist."""
+    clean_lower = artist_name.strip().lower()
+    if not clean_lower:
+        return None
+
+    target = get_db_target(db_path)
+    pg = is_postgres(target)
+    ph = "%s" if pg else "?"
+
+    with get_connection(target) as conn:
+        cursor = conn.cursor()
+        cursor.execute(f"""
+            SELECT 
+                artist_name, genre, style, mood, formed_year, country, 
+                bio_summary, image_url, lastfm_tags, lastfm_similar,
+                listeners, playcount, fetch_status, fetched_at
+            FROM spotify_artist_enrichment
+            WHERE artist_name_lower = {ph}
+        """, (clean_lower,))
+        r = cursor.fetchone()
+        if not r:
+            return None
+
+    tags = []
+    if r[8]:
+        try:
+            tags = json.loads(r[8]) if isinstance(r[8], str) else r[8]
+        except Exception:
+            tags = []
+
+    similar = []
+    if r[9]:
+        try:
+            similar = json.loads(r[9]) if isinstance(r[9], str) else r[9]
+        except Exception:
+            similar = []
+
+    return {
+        'artist_name': r[0],
+        'genre': r[1],
+        'style': r[2],
+        'mood': r[3],
+        'formed_year': r[4],
+        'country': r[5],
+        'bio_summary': r[6],
+        'image_url': r[7],
+        'tags': tags,
+        'similar': similar,
+        'listeners': r[10],
+        'playcount': r[11],
+        'fetch_status': r[12],
+        'fetched_at': _format_datetime(r[13]) if r[13] else None
+    }
 
 
 def get_analyzed_songs(
