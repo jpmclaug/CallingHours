@@ -15,6 +15,11 @@ import band_recommender
 class TestBandRatingsUIAndRecommender(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        cls._orig_env_db = os.environ.get('DATABASE_PATH')
+        cls._has_orig_db_path = hasattr(database, 'DATABASE_PATH')
+        cls._orig_db_path = getattr(database, 'DATABASE_PATH', None)
+        cls._has_orig_ch_db_path = hasattr(calling_hours, 'DATABASE_PATH')
+        cls._orig_ch_db_path = getattr(calling_hours, 'DATABASE_PATH', None)
         cls.temp_dir = tempfile.TemporaryDirectory()
         cls.db_path = os.path.join(cls.temp_dir.name, "test_band_ratings.db")
         os.environ['DATABASE_PATH'] = cls.db_path
@@ -42,6 +47,20 @@ class TestBandRatingsUIAndRecommender(unittest.TestCase):
         cls.server.shutdown()
         cls.server.server_close()
         cls.temp_dir.cleanup()
+        if cls._orig_env_db is not None:
+            os.environ['DATABASE_PATH'] = cls._orig_env_db
+        elif 'DATABASE_PATH' in os.environ:
+            del os.environ['DATABASE_PATH']
+        if cls._has_orig_db_path:
+            database.DATABASE_PATH = cls._orig_db_path
+        elif hasattr(database, 'DATABASE_PATH'):
+            delattr(database, 'DATABASE_PATH')
+        if cls._has_orig_ch_db_path:
+            calling_hours.DATABASE_PATH = cls._orig_ch_db_path
+        elif hasattr(calling_hours, 'DATABASE_PATH'):
+            calling_hours.DATABASE_PATH = None
+        if hasattr(calling_hours, 'invalidate_bands_cache'):
+            calling_hours.invalidate_bands_cache()
 
     def authed_get(self, path: str):
         req = urllib.request.Request(f"{self.base_url}{path}", headers={"Cookie": f"session_id={self.session_id}"})
@@ -323,6 +342,58 @@ class TestBandRatingsUIAndRecommender(unittest.TestCase):
             self.assertIn("analyzed-catalog-section", html)
             self.assertIn("toggleAnalyzedView", html)
             self.assertIn("window.INITIAL_ANALYZED_QUEUE", html)
+
+    def test_recommendations_tab_and_route(self):
+        # Seed test user rating and metadata
+        database.save_band_rating("Gorilla Biscuits", 5, user_email=self.test_email, db_path=self.db_path)
+        database.save_artist_metadata(
+            artist="Gorilla Biscuits",
+            similar_artists=[
+                {"name": "Youth of Today", "match": 0.92},
+                {"name": "Judge", "match": 0.88},
+                {"name": "Civ", "match": 0.85},
+                {"name": "Bold", "match": 0.82},
+                {"name": "Side by Side", "match": 0.80},
+            ],
+            db_path=self.db_path
+        )
+
+        # 1. Test /ratings?tab=recommendations
+        with self.authed_get("/ratings?tab=recommendations") as resp:
+            self.assertEqual(resp.status, 200)
+            html = resp.read().decode('utf-8')
+            self.assertIn("Recommended Bands", html)
+            self.assertIn("Active Recommendation Seeds", html)
+            self.assertIn("Gorilla Biscuits", html)
+            self.assertIn("Youth of Today", html)
+            self.assertIn("Judge", html)
+            self.assertIn("rec-card", html)
+            self.assertIn("rec-match-badge", html)
+            self.assertIn("rec-filter-btn", html)
+            self.assertIn("rec-search-input", html)
+            self.assertIn("rec-sort-select", html)
+
+        # 2. Test direct /recommendations route
+        with self.authed_get("/recommendations") as resp:
+            self.assertEqual(resp.status, 200)
+            html = resp.read().decode('utf-8')
+            self.assertIn("Recommended Bands", html)
+            self.assertIn("Youth of Today", html)
+
+        # 3. Test single seed filtering
+        with self.authed_get("/ratings?tab=recommendations&seed=Gorilla+Biscuits") as resp:
+            self.assertEqual(resp.status, 200)
+            html = resp.read().decode('utf-8')
+            self.assertIn("Single Artist Seed:", html)
+            self.assertIn("Clear Filter", html)
+            self.assertIn("Youth of Today", html)
+
+    def test_artists_page_personalized_recommendations(self):
+        with self.authed_get("/artist") as resp:
+            self.assertEqual(resp.status, 200)
+            html = resp.read().decode('utf-8')
+            self.assertIn("Recommended Artists You Might Like", html)
+            self.assertIn("View All Recommendations", html)
 
 
 if __name__ == '__main__':

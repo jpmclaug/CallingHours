@@ -25,20 +25,25 @@ Calling Hours is a web application that fetches song lyrics via the Genius API a
     - *Alternating Rotation*: Fair-share round-robin cycling across each artist track by track (`1st Artist A` &rarr; `1st Artist B` &rarr; `2nd Artist A` &rarr; `2nd Artist B`).
     - *Thematic Deep Analysis*: Powered by Google Gemini (`gemini-3.8-flash`) to detect emergent thematic synergies across disparate artists (narrative mood arcs, lyrical motifs, emotional release), grouping tracks into thematic movements with song-by-song connection rationale notes (with acoustic heuristic fallback).
   Provides interactive tracklist previews, direct one-click Spotify Playlist creation (with automatic Genius-to-Spotify track resolution), standard `.m3u8` and `.csv` downloads, quick clipboard export, and database-persisted playlist management.
-- **Band Rankings & Scene Discovery (`/ratings`)**:
-  - Rank bands on a clear **0 to 5** scale:
-    - `0`: Know nothing about them (*unranked / unknown marker for discovery*)
-    - `1`: Dislike (*excludes band from seeds and suppresses related recommendations*)
-    - `2`: Is ok (*minor recommendation affinity, 0.3x weight*)
-    - `3`: Likes (*positive recommendation driver, 1.2x weight*)
-    - `4`: Really enjoy them (*strong recommendation driver, 2.5x weight*)
-    - `5`: Absolute favorite (*primary recommendation driver, 3.5x weight*)
-  - **⚡ One-at-a-Time Spotlight Card Flow**: High-velocity rating interface that displays one band at a time with prominent rating buttons and instant pop-up transitions (<50ms). Zero full page reloads: ratings save asynchronously in the background while dynamically updating live stats counters.
+- **Personalized Band Recommendations & Scene Discovery (`/ratings`, `/recommendations`)**:
+  - **High-Affinity Recommendation Engine**: Generates tailored band recommendations driven by user band rankings on a 0–5 scale:
+    - `5★ Absolute Favorite`: Primary recommendation driver (3.5x weight).
+    - `4★ Really Enjoy`: Strong recommendation driver (2.5x weight).
+    - `3★ Likes`: Positive recommendation driver (1.2x weight).
+    - `2★ Is OK`: Minor recommendation driver (0.3x weight).
+    - `1★ Dislike`: Excluded from seeds and candidate matches are suppressed.
+    - `0 Unknown / Unranked`: Candidate for discovery.
+  - **Multi-Seed Synergy & Transparent Rationale**: Detects when candidate bands are related to multiple bands you rank highly (e.g. Turnstile 5★ and Touché Amoré 4★), applying a multi-seed synergy boost and providing natural, transparent rationale explanations (`Related to Turnstile (5★) and Touché Amoré (4★)`).
+  - **Dedicated Recommendations View (`/ratings?tab=recommendations` or `/recommendations`)**:
+    - **Active Seed Chips**: Displays your top-rated seed bands driving current recommendations with 1-click single-artist seed filtering.
+    - **Interactive Filtering & Sorting**: Filter instantly by *All*, *🔥 High Synergy*, *✨ New Discoveries* (bands not yet in your library), and *📚 In Library* (bands with analyzed songs). Search by band name or genre tag, and sort by Match Score or Name.
+    - **Interactive Rating Widgets**: Rate any recommended band from 0 to 5 directly on its recommendation card with real-time UI and stats synchronization.
+    - **Direct Actions**: 1-click artist deep dives (`/artist`), lyrics analysis (`/`), playlist creation (`/playlists`), and Last.fm exploration.
+  - **⚡ One-at-a-Time Spotlight Card Flow (`/ratings?tab=discover`)**: High-velocity rating interface displaying one band at a time with instant pop-up transitions (<50ms). Zero full page reloads: ratings save asynchronously in the background while dynamically updating live stats counters.
   - **Keyboard Accelerators**: Rate bands using keys `0`–`5`, skip to the next band with `Space` or `→`, and backtrack with `←` for frictionless rapid-fire catalog tuning.
   - **Auto-Expanding Discovery Stream**: Rating any band 3★, 4★, or 5★ triggers non-blocking background discovery to continuously feed new related artists into the deck.
-  - **Rate Analyzed Bands**: Review and rate all artists that have lyrics analyzed with Gemini via the one-at-a-time deck or searchable catalog table.
-  - **Quick Rate & Jump Bar**: Instantly rank or jump to any band by name.
-  - Interactive rating widget embedded on song search analysis, `/artist` deep dives, and history index.
+  - **Rate Analyzed Bands (`/ratings?tab=analyzed`)**: Review and rate all artists that have lyrics analyzed with Gemini via the one-at-a-time deck or searchable catalog table.
+  - **Cross-App Integration**: Personalized band recommendations are surfaced directly on the Artists directory (`/artist`), with embedded ratings widgets and instant links to view full recommendations.
 - **Search History Dashboard**: Dedicated `/history` view to browse, filter, quick-load, and manage previously searched songs and analyses, complete with Last.fm tag chips and artist intelligence links.
 - **Editable & Custom Lyrics**: An editable lyrics workspace allowing users to review, edit, or paste lyrics manually if needed.
 - **Gemini-Powered Analysis**: Deep lyric analysis analyzing themes, narrative, emotional tone, and poetic devices.

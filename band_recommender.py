@@ -157,15 +157,15 @@ def get_related_band_recommendations(
             "fallback_used": False,
         }
 
-    # Select top seeds (up to 8 to maintain quick response times and high relevance)
-    top_seeds = positive_seeds[:8]
+    # Select top seeds (up to 10 to maintain quick response times and high relevance)
+    top_seeds = positive_seeds[:10]
     seed_names_norm: Set[str] = {database.normalize_text(s["artist"]) for s in top_seeds}
 
     # Query similar artists in parallel across seeds
     api_key = _get_lastfm_key()
     seed_similarities: Dict[str, List[Dict[str, Any]]] = {}
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=min(8, len(top_seeds))) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=min(10, len(top_seeds))) as executor:
         future_to_seed = {
             executor.submit(_fetch_similar_for_artist, s["artist"], api_key, db_path): s
             for s in top_seeds
@@ -195,8 +195,8 @@ def get_related_band_recommendations(
 
             norm_name = database.normalize_text(raw_name)
 
-            # Suppress disliked artists and the seed artist itself
-            if norm_name in disliked_names or norm_name == database.normalize_text(s_artist):
+            # Suppress disliked artists and any seed artist itself
+            if norm_name in disliked_names or norm_name in seed_names_norm or norm_name == database.normalize_text(s_artist):
                 continue
 
             # Check if user already rated this band
@@ -241,7 +241,11 @@ def get_related_band_recommendations(
         sources.sort(key=lambda s: (s["rating"], s["match"]), reverse=True)
 
         # Multi-seed bonus: if related to 2+ bands you like, boost score
-        if len(sources) > 1:
+        is_synergy = len(sources) > 1
+        cand["is_synergy"] = is_synergy
+        cand["synergy_count"] = len(sources)
+
+        if is_synergy:
             cand["score"] *= (1.0 + 0.4 * (len(sources) - 1))
 
         # Check library presence
@@ -251,7 +255,10 @@ def get_related_band_recommendations(
         cand["analyzed_songs"] = analyzed_songs
 
         # Build natural human rationale
-        if len(sources) >= 2:
+        if len(sources) >= 3:
+            s1, s2, s3 = sources[0], sources[1], sources[2]
+            cand["reason"] = f"Top synergy with {s1['artist']} ({s1['rating']}★), {s2['artist']} ({s2['rating']}★), and {s3['artist']} ({s3['rating']}★)"
+        elif len(sources) == 2:
             s1, s2 = sources[0], sources[1]
             cand["reason"] = f"Related to {s1['artist']} ({s1['rating']}★) and {s2['artist']} ({s2['rating']}★)"
         elif sources:
@@ -261,6 +268,18 @@ def get_related_band_recommendations(
             cand["reason"] = "Recommended from your music profile"
 
         cand["score"] = round(cand["score"], 2)
+
+        # Calculate human-friendly match percentage
+        if is_synergy:
+            match_pct = min(99, max(88, int(85 + cand["score"] * 1.5)))
+        elif sources and sources[0]["rating"] == 5:
+            match_pct = min(95, max(80, int(75 + cand["score"] * 3.5)))
+        elif sources and sources[0]["rating"] == 4:
+            match_pct = min(88, max(70, int(65 + cand["score"] * 3.5)))
+        else:
+            match_pct = min(78, max(55, int(50 + cand["score"] * 4.0)))
+        cand["match_pct"] = match_pct
+
         scored_list.append(cand)
 
     # Sort by composite recommendation score descending
@@ -341,12 +360,16 @@ def get_recommendations_for_single_artist(
         norm = database.normalize_text(raw_name)
         user_rating = rated_map.get(norm)
         match_score = float(item.get("match", 0.5))
+        match_pct = min(99, max(50, int(match_score * 100)))
 
         results.append({
             "artist": raw_name,
             "artist_normalized": norm,
             "score": round(match_score * 5.0, 2),
             "match": match_score,
+            "match_pct": match_pct,
+            "is_synergy": False,
+            "synergy_count": 1,
             "url": item.get("url", f"https://www.last.fm/music/{urllib.parse.quote_plus(raw_name)}"),
             "image_url": item.get("image_url", ""),
             "user_rating": user_rating,
