@@ -5,9 +5,10 @@ import sqlite3
 import secrets
 import json
 import re
+import time
 from contextlib import contextmanager
 from datetime import datetime, date, timedelta, timezone
-from typing import Optional, List, Dict, Any, Union
+from typing import Optional, List, Dict, Any, Union, Tuple
 
 PRIMARY_ADMIN_EMAIL = "jpmclaug@gmail.com"
 
@@ -2354,6 +2355,191 @@ def clear_spotify_history(user_email: str, db_path: Optional[str] = None) -> Non
         cursor = conn.cursor()
         ph = "%s" if is_postgres(target) else "?"
         cursor.execute(f"DELETE FROM spotify_history WHERE LOWER(user_email) = {ph}", (clean_email,))
+
+
+_spotify_stats_cache: Dict[str, Tuple[float, int, Dict[str, Any]]] = {}
+
+def get_spotify_lifetime_stats(user_email: str, db_path: Optional[str] = None) -> Dict[str, Any]:
+    """Retrieve all-time lifetime listening intelligence across the entire personal history archive."""
+    clean_email = user_email.lower().strip()
+    if not clean_email:
+        return {}
+
+    target = get_db_target(db_path)
+    now = time.time()
+    mut_ver = get_db_mutation_version()
+    cache_entry = _spotify_stats_cache.get(f"{clean_email}:{target}")
+    if cache_entry:
+        cached_time, cached_ver, cached_data = cache_entry
+        if (now - cached_time < 300) and (cached_ver == mut_ver):
+            return cached_data
+
+    with get_connection(target) as conn:
+        cursor = conn.cursor()
+        ph = "%s" if is_postgres(target) else "?"
+
+        cursor.execute(f"""
+            SELECT 
+                COUNT(*), 
+                COALESCE(SUM(duration_ms), 0), 
+                COUNT(DISTINCT artist_name),
+                MIN(played_at),
+                MAX(played_at)
+            FROM spotify_history 
+            WHERE LOWER(user_email) = {ph}
+        """, (clean_email,))
+        agg = cursor.fetchone() or (0, 0, 0, None, None)
+        total_tracks, total_ms, unique_artists, min_played, max_played = agg
+        total_hours = round((total_ms or 0) / (1000 * 3600), 1)
+
+        # Top 10 All-Time Artists
+        cursor.execute(f"""
+            SELECT artist_name, COUNT(*) as play_count 
+            FROM spotify_history 
+            WHERE LOWER(user_email) = {ph} 
+            GROUP BY artist_name 
+            ORDER BY play_count DESC 
+            LIMIT 10
+        """, (clean_email,))
+        top_artists = [{"artist": r[0], "count": int(r[1])} for r in cursor.fetchall()]
+
+        # Top 10 All-Time Tracks
+        cursor.execute(f"""
+            SELECT track_name, artist_name, COUNT(*) as play_count, MAX(spotify_url) as s_url 
+            FROM spotify_history 
+            WHERE LOWER(user_email) = {ph} 
+            GROUP BY track_name, artist_name 
+            ORDER BY play_count DESC 
+            LIMIT 10
+        """, (clean_email,))
+        top_tracks = [{"name": r[0], "artist": r[1], "count": int(r[2]), "spotify_url": r[3] or ""} for r in cursor.fetchall()]
+
+    result = {
+        "total_tracks": total_tracks or 0,
+        "total_ms": total_ms or 0,
+        "total_hours": total_hours,
+        "unique_artists": unique_artists or 0,
+        "first_played": _format_datetime(min_played) if min_played else None,
+        "last_played": _format_datetime(max_played) if max_played else None,
+        "first_year": str(min_played)[:4] if min_played else "",
+        "last_year": str(max_played)[:4] if max_played else "",
+        "top_artists": top_artists,
+        "top_tracks": top_tracks,
+    }
+    _spotify_stats_cache[f"{clean_email}:{target}"] = (now, mut_ver, result)
+    return result
+
+
+def search_spotify_history(
+    user_email: str,
+    query: Optional[str] = None,
+    page: int = 1,
+    per_page: int = 50,
+    db_path: Optional[str] = None
+) -> Tuple[List[Dict[str, Any]], int, int]:
+    """
+    Search and paginate through the user's complete Spotify stream archive.
+    Returns: (list_of_tracks, total_matching_count, total_pages)
+    """
+    clean_email = user_email.lower().strip()
+    if not clean_email:
+        return [], 0, 0
+
+    target = get_db_target(db_path)
+    page = max(1, page)
+    per_page = max(1, min(per_page, 200))
+    offset = (page - 1) * per_page
+    clean_q = query.strip() if query else ""
+
+    with get_connection(target) as conn:
+        ph = "%s" if is_postgres(target) else "?"
+        
+        if clean_q:
+            like_param = f"%{clean_q.lower()}%"
+            where_sql = f"LOWER(user_email) = {ph} AND (LOWER(track_name) LIKE {ph} OR LOWER(artist_name) LIKE {ph} OR LOWER(album_name) LIKE {ph})"
+            params = (clean_email, like_param, like_param, like_param)
+        else:
+            where_sql = f"LOWER(user_email) = {ph}"
+            params = (clean_email,)
+
+        # Total count
+        cur = conn.cursor()
+        cur.execute(f"SELECT COUNT(*) FROM spotify_history WHERE {where_sql}", params)
+        total_count = cur.fetchone()[0] or 0
+
+        total_pages = max(1, (total_count + per_page - 1) // per_page)
+        if page > total_pages and total_count > 0:
+            page = total_pages
+            offset = (page - 1) * per_page
+
+        # Select items
+        if is_postgres(target):
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        else:
+            cursor = conn.cursor()
+
+        query_sql = f"""
+            SELECT * FROM spotify_history 
+            WHERE {where_sql} 
+            ORDER BY played_at DESC 
+            LIMIT {ph} OFFSET {ph}
+        """
+        cursor.execute(query_sql, params + (per_page, offset))
+        rows = cursor.fetchall()
+        tracks = [_format_spotify_history_record(r) for r in rows if r]
+
+    return tracks, total_count, total_pages
+
+
+def get_artist_spotify_stats(
+    user_email: str,
+    artist_name: str,
+    db_path: Optional[str] = None
+) -> Dict[str, Any]:
+    """Return user's personal Spotify listening metrics for a specific artist."""
+    clean_email = user_email.lower().strip()
+    clean_art = artist_name.strip()
+    if not clean_email or not clean_art:
+        return {"play_count": 0, "total_hours": 0.0, "first_played": None, "last_played": None, "top_tracks": []}
+
+    target = get_db_target(db_path)
+    with get_connection(target) as conn:
+        cursor = conn.cursor()
+        ph = "%s" if is_postgres(target) else "?"
+
+        cursor.execute(f"""
+            SELECT 
+                COUNT(*), 
+                COALESCE(SUM(duration_ms), 0),
+                MIN(played_at),
+                MAX(played_at)
+            FROM spotify_history 
+            WHERE LOWER(user_email) = {ph} AND LOWER(artist_name) = LOWER({ph})
+        """, (clean_email, clean_art))
+        row = cursor.fetchone() or (0, 0, None, None)
+        cnt, dur, first_p, last_p = row
+        hours = round((dur or 0) / (1000 * 3600), 1)
+
+        cursor.execute(f"""
+            SELECT track_name, COUNT(*) as c, MAX(spotify_url) as s_url 
+            FROM spotify_history 
+            WHERE LOWER(user_email) = {ph} AND LOWER(artist_name) = LOWER({ph})
+            GROUP BY track_name 
+            ORDER BY c DESC 
+            LIMIT 5
+        """, (clean_email, clean_art))
+        top = [{"name": r[0], "count": int(r[1]), "spotify_url": r[2] or ""} for r in cursor.fetchall()]
+
+    return {
+        "play_count": cnt or 0,
+        "total_hours": hours,
+        "first_played": _format_datetime(first_p) if first_p else None,
+        "last_played": _format_datetime(last_p) if last_p else None,
+        "first_year": str(first_p)[:4] if first_p else "",
+        "last_year": str(last_p)[:4] if last_p else "",
+        "top_tracks": top,
+    }
+
 
 
 def get_analyzed_songs(

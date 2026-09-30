@@ -195,6 +195,111 @@ class TestSpotifyExtendedHistoryAndAutoSync(unittest.TestCase):
             self.assertEqual(count, count_after)
 
 
+    def test_lifetime_stats_and_archive_search(self):
+        """Verify get_spotify_lifetime_stats and search_spotify_history."""
+        user = "test_lifetime@example.com"
+        # Seed 3 streams for 2 artists
+        items = [
+            {
+                "track_id": "trk_1",
+                "played_at": "2020-01-01T12:00:00Z",
+                "name": "Song A",
+                "artist": "Artist Alpha",
+                "album": "Album 1",
+                "duration_ms": 180000,
+            },
+            {
+                "track_id": "trk_2",
+                "played_at": "2022-06-01T12:00:00Z",
+                "name": "Song B",
+                "artist": "Artist Alpha",
+                "album": "Album 2",
+                "duration_ms": 240000,
+            },
+            {
+                "track_id": "trk_3",
+                "played_at": "2024-03-01T12:00:00Z",
+                "name": "Song C",
+                "artist": "Artist Beta",
+                "album": "Album 3",
+                "duration_ms": 300000,
+            }
+        ]
+        database.save_spotify_history_items(user, items, db_path=self.db_path)
+
+        # 1. Lifetime Stats
+        stats = database.get_spotify_lifetime_stats(user, db_path=self.db_path)
+        self.assertEqual(stats["total_tracks"], 3)
+        self.assertEqual(stats["unique_artists"], 2)
+        self.assertAlmostEqual(stats["total_hours"], 0.2, places=1)
+        self.assertEqual(stats["first_year"], "2020")
+        self.assertEqual(stats["last_year"], "2024")
+        self.assertEqual(len(stats["top_artists"]), 2)
+        self.assertEqual(stats["top_artists"][0]["artist"], "Artist Alpha")
+        self.assertEqual(stats["top_artists"][0]["count"], 2)
+
+        # 2. Archive Search
+        # Search all
+        tracks, total, pages = database.search_spotify_history(user, query="", page=1, per_page=2, db_path=self.db_path)
+        self.assertEqual(total, 3)
+        self.assertEqual(pages, 2)
+        self.assertEqual(len(tracks), 2)
+        self.assertEqual(tracks[0]["name"], "Song C")  # Most recent first
+
+        # Page 2
+        tracks_p2, total2, pages2 = database.search_spotify_history(user, query="", page=2, per_page=2, db_path=self.db_path)
+        self.assertEqual(len(tracks_p2), 1)
+        self.assertEqual(tracks_p2[0]["name"], "Song A")
+
+        # Search with filter
+        filtered_tracks, f_total, f_pages = database.search_spotify_history(user, query="Alpha", page=1, per_page=10, db_path=self.db_path)
+        self.assertEqual(f_total, 2)
+        self.assertEqual(len(filtered_tracks), 2)
+        self.assertEqual(filtered_tracks[0]["artist"], "Artist Alpha")
+
+        # 3. Artist Spotify Stats
+        artist_stats = database.get_artist_spotify_stats(user, "Artist Alpha", db_path=self.db_path)
+        self.assertEqual(artist_stats["play_count"], 2)
+        self.assertEqual(artist_stats["first_year"], "2020")
+        self.assertEqual(artist_stats["last_year"], "2022")
+        self.assertEqual(len(artist_stats["top_tracks"]), 2)
+
+    def test_ui_rendering_spotify_and_artist_page(self):
+        """Verify UI rendering incorporates lifetime intelligence, search, and artist metrics."""
+        handler = calling_hours.CallingHoursRequestHandler.__new__(calling_hours.CallingHoursRequestHandler)
+        mock_user = {"email": "jpmclaug@gmail.com", "id": 1, "is_admin": True}
+
+        # Mock user & response output buffer
+        handler.headers = {"Host": "localhost:8080", "Accept-Encoding": ""}
+        handler.is_request_secure = MagicMock(return_value=False)
+        handler.get_current_user = MagicMock(return_value=mock_user)
+        output_chunks = []
+        handler.wfile = MagicMock()
+        handler.wfile.write = MagicMock(side_effect=lambda b: output_chunks.append(b))
+        handler.send_response = MagicMock()
+        handler.send_header = MagicMock()
+        handler.end_headers = MagicMock()
+
+        # 1. Render Spotify Page in Demo Mode
+        handler.render_spotify_page(demo=True)
+        rendered_spotify_html = b"".join(output_chunks).decode("utf-8", errors="ignore")
+        self.assertIn("Spotify Listening Intelligence", rendered_spotify_html)
+        self.assertIn("15-Year Personal Streaming Intelligence Archive", rendered_spotify_html)
+        self.assertIn("Lifetime Plays", rendered_spotify_html)
+        self.assertIn("spotify-pagination-bar", rendered_spotify_html)
+        self.assertIn("Search 98,000+ songs", rendered_spotify_html)
+
+        # 2. Render Artist Page with user history
+        output_chunks.clear()
+        handler.render_artist_page(selected_artist="Bane")
+        rendered_artist_html = b"".join(output_chunks).decode("utf-8", errors="ignore")
+        self.assertIn("Bane", rendered_artist_html)
+        # Should surface personal plays and personal history card if present in db
+        if "Your Personal Listening History with Bane" in rendered_artist_html:
+            self.assertIn("Lifetime Plays", rendered_artist_html)
+            self.assertIn("Your Most Streamed Bane Songs", rendered_artist_html)
+
+
 if __name__ == "__main__":
     unittest.main()
 

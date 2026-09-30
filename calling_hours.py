@@ -6737,6 +6737,71 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             border-color: #1DB954;
             box-shadow: 0 0 10px rgba(29, 185, 84, 0.35);
         }
+        .spotify-lifetime-banner {
+            background: linear-gradient(135deg, rgba(14, 38, 80, 0.85) 0%, rgba(6, 20, 35, 0.95) 100%);
+            border: 1px solid rgba(29, 185, 84, 0.45);
+            border-radius: 16px;
+            padding: 22px 26px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+        }
+        .lifetime-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-bottom: 18px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid rgba(29, 185, 84, 0.2);
+        }
+        .lifetime-kpi-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 14px;
+        }
+        .lifetime-stat-box {
+            background: rgba(14, 38, 80, 0.55);
+            border: 1px solid rgba(29, 185, 84, 0.25);
+            border-radius: 12px;
+            padding: 14px 18px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            transition: transform 0.2s ease, border-color 0.2s ease;
+        }
+        .lifetime-stat-box:hover {
+            transform: translateY(-2px);
+            border-color: rgba(29, 185, 84, 0.5);
+        }
+        .stat-box-label {
+            font-size: 0.76rem;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: #A5C8FF;
+            font-weight: 700;
+        }
+        .stat-box-val {
+            font-size: 1.55rem;
+            font-weight: 900;
+            color: #FFFFFF;
+            font-family: 'Montserrat', sans-serif;
+            line-height: 1.2;
+        }
+        .stat-box-sub {
+            font-size: 0.76rem;
+            color: rgba(225, 232, 240, 0.65);
+        }
+        .spotify-pagination-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 18px;
+            background: rgba(11, 30, 63, 0.6);
+            border: 1px solid rgba(165, 200, 255, 0.18);
+            border-radius: 10px;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
         @media (max-width: 768px) {
             .history-track-card {
                 flex-direction: column;
@@ -10883,7 +10948,13 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             elif err:
                 msg = f'Spotify error: {err}'
             refresh = params.get('refresh', ['0'])[0] == '1'
-            self.render_spotify_page(demo=demo_mode, message=msg, refresh=refresh)
+            search_query = params.get('q', [''])[0].strip()
+            page_str = params.get('p', ['1'])[0]
+            try:
+                page_val = max(1, int(page_str))
+            except (ValueError, TypeError):
+                page_val = 1
+            self.render_spotify_page(demo=demo_mode, message=msg, refresh=refresh, search_query=search_query, page=page_val)
             return
 
         if parsed.path == '/auth/spotify':
@@ -12830,8 +12901,22 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         else:
             title_html = f'<h1 class="artist-heading">{artist_esc}</h1>'
 
+        # Personal Listening Intelligence (from 15-year Spotify archive)
+        user_email = current_user.get('email') if current_user else None
+        user_artist_stats = {}
+        if user_email:
+            try:
+                user_artist_stats = database.get_artist_spotify_stats(user_email, clean_artist)
+            except Exception as uase:
+                print(f"Personal Spotify stats error for {clean_artist}: {uase}")
+                user_artist_stats = {}
+
         # Meta badges
         badges = []
+        if user_artist_stats.get('play_count', 0) > 0:
+            u_cnt = user_artist_stats['play_count']
+            u_hrs = user_artist_stats.get('total_hours', 0.0)
+            badges.append(f'<span class="artist-meta-badge" style="background: rgba(29, 185, 84, 0.22); border-color: rgba(29, 185, 84, 0.6); color: #6EE7B7;">🎧 Your Plays: <strong>{u_cnt:,}</strong> ({u_hrs} hrs)</span>')
         if formed_year:
             badges.append(f'<span class="artist-meta-badge">🎸 Formed: <strong>{formed_year}</strong></span>')
         if country:
@@ -13164,6 +13249,67 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             </div>
             '''
 
+        # Personal Listening Intelligence for Artist
+        personal_spot_section_html = ''
+        if user_artist_stats.get('play_count', 0) > 0:
+            u_plays = user_artist_stats['play_count']
+            u_hrs = user_artist_stats.get('total_hours', 0.0)
+            u_first_yr = user_artist_stats.get('first_year', '')
+            u_last_yr = user_artist_stats.get('last_year', '')
+            u_span_text = f"{u_first_yr} – {u_last_yr}" if (u_first_yr and u_last_yr and u_first_yr != u_last_yr) else (u_first_yr or "Lifetime")
+
+            top_played_rows = []
+            for t_idx, u_track in enumerate(user_artist_stats.get('top_tracks', [])):
+                t_n = html_escape(u_track.get('name', ''))
+                t_cnt = u_track.get('count', 0)
+                t_url = u_track.get('spotify_url', '')
+                t_spot_btn = f'<a href="{html_escape(t_url)}" target="_blank" rel="noopener noreferrer" class="pill-btn secondary" style="font-size: 0.72rem; padding: 3px 8px; border-color: rgba(29, 185, 84, 0.35); color: #6EE7B7;" title="Listen on Spotify">🎧 Spotify</a>' if t_url else ''
+                t_analyze_btn = f'<a href="/?artist={artist_url_param}&song={urllib.parse.quote(u_track.get("name", ""))}&auto_analyze=1" class="btn-analyze-song-sm" style="font-size: 0.72rem; padding: 3px 8px;" title="Analyze lyrics with Gemini">⚡ Analyze</a>'
+
+                top_played_rows.append(f'''
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 14px; background: rgba(11, 30, 63, 0.65); border-radius: 8px; gap: 10px; border: 1px solid rgba(165, 200, 255, 0.12);">
+                    <div style="display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1;">
+                        <span style="font-family: \'Montserrat\', sans-serif; font-weight: 800; color: #10B981; font-size: 0.88rem; width: 22px;">#{t_idx + 1}</span>
+                        <span style="font-weight: 700; color: #FFFFFF; font-size: 0.92rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{t_n}</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
+                        <span style="font-size: 0.76rem; color: #6EE7B7; font-weight: 700; background: rgba(29, 185, 84, 0.18); padding: 3px 8px; border-radius: 6px;">{t_cnt:,} plays</span>
+                        {t_spot_btn}
+                        {t_analyze_btn}
+                    </div>
+                </div>
+                ''')
+
+            personal_spot_section_html = f'''
+            <div style="background: linear-gradient(135deg, rgba(14, 38, 80, 0.85) 0%, rgba(6, 20, 35, 0.95) 100%); border: 1px solid rgba(29, 185, 84, 0.45); border-radius: 12px; padding: 18px 20px; margin-bottom: 22px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);">
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px;">
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <span style="font-size: 1.5rem;">🎧</span>
+                        <div>
+                            <div style="font-family: \'Montserrat\', sans-serif; font-weight: 800; font-size: 1.05rem; color: #FFFFFF;">
+                                Your Personal Listening History with {artist_esc}
+                            </div>
+                            <div style="font-size: 0.78rem; color: #A5C8FF; margin-top: 2px;">
+                                {u_span_text} archive &bull; {u_hrs} hours across {u_plays:,} total streams
+                            </div>
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 8px;">
+                        <span style="font-size: 0.82rem; font-weight: 800; color: #6EE7B7; background: rgba(29, 185, 84, 0.2); border: 1px solid rgba(29, 185, 84, 0.5); padding: 4px 14px; border-radius: 20px;">
+                            ⚡ {u_plays:,} Lifetime Plays
+                        </span>
+                    </div>
+                </div>
+                
+                <div style="font-size: 0.78rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; color: #6EE7B7; margin-bottom: 8px;">
+                    Your Most Streamed {artist_esc} Songs
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 6px;">
+                    {"".join(top_played_rows)}
+                </div>
+            </div>
+            '''
+
         spotify_analytics_html = f'''
         <div class="spotify-analytics-card">
             <div class="section-header-row" style="border-bottom-color: rgba(16, 185, 129, 0.25);">
@@ -13177,6 +13323,8 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 </div>
                 {f'<a href="{html_escape(spot_url)}" target="_blank" rel="noopener noreferrer" class="pill-btn primary" style="padding: 6px 14px; font-size: 0.82rem; background: #10B981; border-color: #34D399; text-decoration: none;">Open Spotify Profile &rarr;</a>' if spot_url else ''}
             </div>
+
+            {personal_spot_section_html}
 
             <!-- KPI Metric Cards -->
             <div class="spotify-kpi-grid">
@@ -14026,7 +14174,14 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(json.dumps({'error': str(e)}).encode('utf-8'))
 
-    def render_spotify_page(self, demo: bool = False, message: str = '', refresh: bool = False):
+    def render_spotify_page(
+        self,
+        demo: bool = False,
+        message: str = '',
+        refresh: bool = False,
+        search_query: str = '',
+        page: int = 1
+    ):
         current_user = self.get_current_user()
         if not current_user:
             self.send_response(302)
@@ -14043,10 +14198,28 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         is_demo = demo
         is_configured = spotify.is_spotify_configured()
 
+        lifetime_stats: Dict[str, Any] = {}
+        history_tracks: List[Dict[str, Any]] = []
+        total_matching: int = 0
+        total_pages: int = 1
+        page = max(1, page)
+
         if is_demo:
             profile, tracks, analytics = spotify.get_demo_sample_data()
             now_playing = tracks[0] if tracks else None
             is_connected = True
+            history_tracks = tracks
+            total_matching = len(tracks)
+            total_pages = 1
+            lifetime_stats = {
+                'total_tracks': len(tracks),
+                'total_hours': 2.4,
+                'unique_artists': len(set(t.get('artist') for t in tracks)),
+                'first_year': '2023',
+                'last_year': '2026',
+                'top_artists': [{'artist': t.get('artist'), 'count': 5} for t in tracks[:5]],
+                'top_tracks': [{'name': t.get('name'), 'artist': t.get('artist'), 'count': 4, 'spotify_url': t.get('spotify_url', '')} for t in tracks[:5]]
+            }
         else:
             token_rec = database.get_spotify_token(current_user['email'])
             if token_rec:
@@ -14069,16 +14242,81 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                         now_playing = spotify.fetch_currently_playing(access_token)
                     except Exception as e:
                         print(f"Spotify fetch error: {e}")
-                    
-                    tracks = database.get_spotify_history(current_user['email'], limit=50)
-                    analytics = spotify.compute_analytics(tracks, top_artists=top_artists)
                 else:
                     is_connected = False
                     if not message:
                         message = "Your Spotify session has expired. Please reconnect your account."
 
+            recent_tracks = database.get_spotify_history(current_user['email'], limit=50)
+            analytics = spotify.compute_analytics(recent_tracks, top_artists=top_artists)
+            lifetime_stats = database.get_spotify_lifetime_stats(current_user['email'])
+            history_tracks, total_matching, total_pages = database.search_spotify_history(
+                current_user['email'],
+                query=search_query,
+                page=page,
+                per_page=50
+            )
+
         if not analytics:
             analytics = spotify.compute_analytics([])
+
+        has_history = bool(lifetime_stats.get('total_tracks', 0) > 0)
+
+        # Lifetime KPI Banner
+        lifetime_banner_html = ''
+        if has_history:
+            tot_tr = lifetime_stats.get('total_tracks', 0)
+            tot_hrs = lifetime_stats.get('total_hours', 0.0)
+            u_art = lifetime_stats.get('unique_artists', 0)
+            fy = lifetime_stats.get('first_year') or ''
+            ly = lifetime_stats.get('last_year') or ''
+            span_str = f"{fy} – {ly}" if (fy and ly and fy != ly) else (fy or "Lifetime")
+            days_continuous = round(tot_hrs / 24, 1) if tot_hrs else 0.0
+
+            lifetime_banner_html = f'''
+            <div class="spotify-lifetime-banner">
+                <div class="lifetime-header">
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <span style="font-size: 1.6rem;">🏛️</span>
+                        <div>
+                            <h3 style="margin: 0; font-family: \'Montserrat\', sans-serif; font-size: 1.2rem; color: #FFFFFF; font-weight: 800;">
+                                15-Year Personal Streaming Intelligence Archive
+                            </h3>
+                            <div style="font-size: 0.82rem; color: #A5C8FF; margin-top: 3px;">
+                                Spanning {span_str} &bull; Auto-syncs live on application launch
+                            </div>
+                        </div>
+                    </div>
+                    <div>
+                        <span style="background: rgba(29, 185, 84, 0.2); border: 1px solid rgba(29, 185, 84, 0.5); color: #6EE7B7; font-size: 0.8rem; font-weight: 800; padding: 4px 14px; border-radius: 20px;">
+                            ⚡ {tot_tr:,} Lifetime Streams
+                        </span>
+                    </div>
+                </div>
+                <div class="lifetime-kpi-row">
+                    <div class="lifetime-stat-box">
+                        <span class="stat-box-label">🎧 Lifetime Plays</span>
+                        <span class="stat-box-val">{tot_tr:,}</span>
+                        <span class="stat-box-sub">Total music streams</span>
+                    </div>
+                    <div class="lifetime-stat-box">
+                        <span class="stat-box-label">⏱️ Total Audio Time</span>
+                        <span class="stat-box-val">{tot_hrs:,.1f} hrs</span>
+                        <span class="stat-box-sub">~{days_continuous:,} days continuous listening</span>
+                    </div>
+                    <div class="lifetime-stat-box">
+                        <span class="stat-box-label">👥 Unique Artists</span>
+                        <span class="stat-box-val">{u_art:,}</span>
+                        <span class="stat-box-sub">Distinct artists discovered</span>
+                    </div>
+                    <div class="lifetime-stat-box">
+                        <span class="stat-box-label">📅 Historical Span</span>
+                        <span class="stat-box-val">{span_str}</span>
+                        <span class="stat-box-sub">15+ years of music memory</span>
+                    </div>
+                </div>
+            </div>
+            '''
 
         # Build UI Sections
         message_banner_html = f'<div class="message" style="margin-bottom: 20px;">{html_escape(message)}</div>' if message else ''
@@ -14418,8 +14656,70 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             </div>
             '''
 
+        # All-Time Top Artists (Lifetime Archive)
+        alltime_art_items = []
+        for rank_idx, a in enumerate(lifetime_stats.get('top_artists', [])[:10]):
+            a_name = html_escape(a.get('artist') or '')
+            cnt = a.get('count', 0)
+            art_link = f'/artist?artist={urllib.parse.quote(a.get("artist") or "")}'
+            medal = "🥇 " if rank_idx == 0 else ("🥈 " if rank_idx == 1 else ("🥉 " if rank_idx == 2 else f"#{rank_idx + 1} "))
+            alltime_art_items.append(f'''
+            <div class="artist-rank-item">
+                <a href="{art_link}" style="color: #FFFFFF; font-weight: 700; text-decoration: none; font-size: 0.88rem;" title="Explore Artist Intelligence">
+                    <span style="color: #6EE7B7; font-size: 0.8rem; font-weight: 800; margin-right: 4px;">{medal}</span>{a_name}
+                </a>
+                <span style="font-size: 0.78rem; color: #1DB954; font-weight: 700; background: rgba(29, 185, 84, 0.15); padding: 3px 8px; border-radius: 8px;">{cnt:,} plays</span>
+            </div>
+            ''')
+
+        alltime_art_html = f'''
+        <div class="analytics-block">
+            <div class="analytics-block-title">
+                <span>👑 All-Time Top Artists</span>
+                <span style="font-size: 0.75rem; color: #A5C8FF; font-weight: 400;">Lifetime Archive</span>
+            </div>
+            {"".join(alltime_art_items) if alltime_art_items else '<div style="color: rgba(225, 232, 240, 0.5); font-style: italic; font-size: 0.85rem; padding: 20px 0; text-align: center;">No artist history available yet.</div>'}
+        </div>
+        '''
+
+        # All-Time Top Tracks (Lifetime Archive)
+        alltime_trk_items = []
+        for rank_idx, tr in enumerate(lifetime_stats.get('top_tracks', [])[:10]):
+            t_name = html_escape(tr.get('name') or '')
+            a_name = html_escape(tr.get('artist') or '')
+            cnt = tr.get('count', 0)
+            s_url = html_escape(tr.get('spotify_url') or '')
+            t_analyze = f'/?artist={urllib.parse.quote(tr.get("artist") or "")}&song={urllib.parse.quote(tr.get("name") or "")}&auto_analyze=1'
+            medal = "🥇 " if rank_idx == 0 else ("🥈 " if rank_idx == 1 else ("🥉 " if rank_idx == 2 else f"#{rank_idx + 1} "))
+            alltime_trk_items.append(f'''
+            <div class="artist-rank-item" style="gap: 8px;">
+                <div style="min-width: 0; flex: 1;">
+                    <div style="font-weight: 700; font-size: 0.86rem; color: #FFFFFF; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                        <span style="color: #6EE7B7; font-size: 0.8rem; font-weight: 800; margin-right: 4px;">{medal}</span>{t_name}
+                    </div>
+                    <div style="font-size: 0.76rem; color: #A5C8FF; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{a_name}</div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
+                    <span style="font-size: 0.76rem; color: #1DB954; font-weight: 700; background: rgba(29, 185, 84, 0.15); padding: 2px 7px; border-radius: 6px;">{cnt:,} plays</span>
+                    <a href="{t_analyze}" class="pill-btn primary" style="font-size: 0.72rem; padding: 2px 6px; text-decoration: none;" title="Analyze Lyrics">✨</a>
+                </div>
+            </div>
+            ''')
+
+        alltime_trk_html = f'''
+        <div class="analytics-block">
+            <div class="analytics-block-title">
+                <span>🏆 All-Time Top Played Songs</span>
+                <span style="font-size: 0.75rem; color: #A5C8FF; font-weight: 400;">Lifetime Archive</span>
+            </div>
+            {"".join(alltime_trk_items) if alltime_trk_items else '<div style="color: rgba(225, 232, 240, 0.5); font-style: italic; font-size: 0.85rem; padding: 20px 0; text-align: center;">No song history available yet.</div>'}
+        </div>
+        '''
+
         analytics_grid_html = f'''
         <div class="spotify-analytics-grid">
+            {alltime_art_html if lifetime_stats.get('top_artists') else ''}
+            {alltime_trk_html if lifetime_stats.get('top_tracks') else ''}
             {tod_html}
             {dow_html}
             {top_art_html}
@@ -14428,16 +14728,17 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         </div>
         '''
 
-        # 6. Listening History Feed
+        # 6. Listening History Feed (with archive search & pagination)
         history_cards = []
-        for idx, t in enumerate(tracks):
+        for idx, t in enumerate(history_tracks):
             t_name = html_escape(t.get('name') or 'Unknown Track')
             a_name = html_escape(t.get('artist') or 'Unknown Artist')
             all_a = html_escape(t.get('all_artists') or a_name)
             alb = html_escape(t.get('album') or '')
             img = html_escape(t.get('album_image') or '')
             dur = html_escape(t.get('duration_formatted') or '0:00')
-            rel = html_escape(t.get('relative_time') or '')
+            played_raw = t.get('played_at') or ''
+            rel = html_escape(t.get('relative_time') or (played_raw[:16] if played_raw else ''))
             pop = t.get('popularity', 0)
             preview = html_escape(t.get('preview_url') or '')
             spot_url = html_escape(t.get('spotify_url') or '')
@@ -14459,7 +14760,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                     {preview_btn}
                     {img_el}
                     <div style="min-width: 0; flex: 1;">
-                        <div style="font-weight: 800; font-size: 1rem; color: #FFFFFF; font-family: 'Montserrat', sans-serif; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                        <div style="font-weight: 800; font-size: 1rem; color: #FFFFFF; font-family: \'Montserrat\', sans-serif; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
                             <a href="{spot_url}" target="_blank" rel="noopener noreferrer" style="color: #FFFFFF; text-decoration: none;" title="Open in Spotify">{t_name}</a>
                         </div>
                         <div style="font-size: 0.84rem; color: #A5C8FF; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
@@ -14487,26 +14788,52 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             </div>
             ''')
 
-        tracks_count = len(tracks)
+        # Pagination controls
+        q_param = f'&q={urllib.parse.quote(search_query)}' if search_query else ''
+        prev_btn = f'<a href="/spotify?p={page-1}{q_param}" class="pill-btn secondary" style="font-size: 0.82rem; padding: 6px 14px; text-decoration: none;">&larr; Previous 50</a>' if page > 1 else '<span class="pill-btn secondary" style="font-size: 0.82rem; padding: 6px 14px; opacity: 0.35; cursor: not-allowed;">&larr; Previous 50</span>'
+        next_btn = f'<a href="/spotify?p={page+1}{q_param}" class="pill-btn secondary" style="font-size: 0.82rem; padding: 6px 14px; text-decoration: none;">Next 50 &rarr;</a>' if page < total_pages else '<span class="pill-btn secondary" style="font-size: 0.82rem; padding: 6px 14px; opacity: 0.35; cursor: not-allowed;">Next 50 &rarr;</span>'
+
+        pagination_html = f'''
+        <div class="spotify-pagination-bar">
+            <div style="font-size: 0.85rem; color: rgba(225, 232, 240, 0.75);">
+                Page <strong style="color: #FFFFFF;">{page:,}</strong> of <strong style="color: #FFFFFF;">{total_pages:,}</strong> &bull; <span style="color: #6EE7B7; font-weight: 700;">{total_matching:,}</span> streams in archive
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center;">
+                {prev_btn}
+                {next_btn}
+            </div>
+        </div>
+        '''
+
+        clear_search_btn = f'<a href="/spotify" class="pill-btn secondary" style="font-size: 0.82rem; padding: 8px 12px; text-decoration: none; border-color: rgba(239, 68, 68, 0.4); color: #FCA5A5;">✕ Clear</a>' if search_query else ''
+
+        search_header_text = f'Search results for <span style="color: #6EE7B7;">"{html_escape(search_query)}"</span> ({total_matching:,} streams found)' if search_query else f'Listening History Archive ({total_matching:,} total streams)'
+
         history_feed_html = f'''
         <div style="display: flex; flex-direction: column; gap: 14px; margin-top: 10px;">
             <div style="display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;">
                 <div>
-                    <h2 style="font-family: 'Montserrat', sans-serif; font-size: 1.3rem; font-weight: 800; color: #FFFFFF; margin: 0;">Listening History Stream ({tracks_count})</h2>
-                    <div style="font-size: 0.82rem; color: #A5C8FF; margin-top: 2px;">Recently played tracks synced from Spotify with 1-click lyric analysis</div>
+                    <h2 style="font-family: \'Montserrat\', sans-serif; font-size: 1.3rem; font-weight: 800; color: #FFFFFF; margin: 0;">
+                        {search_header_text}
+                    </h2>
+                    <div style="font-size: 0.82rem; color: #A5C8FF; margin-top: 2px;">
+                        Browsing personal stream archive &bull; 1-click Gemini lyric analysis on any song
+                    </div>
                 </div>
-                <div style="flex: 1; max-width: 360px;">
-                    <input type="text" id="spotify-filter-input" class="spotify-search-input" placeholder="Filter recent songs or artists..." oninput="filterSpotifyHistory()">
-                </div>
+                <form method="get" action="/spotify" style="display: flex; gap: 8px; flex: 1; max-width: 480px;">
+                    <input type="text" name="q" class="spotify-search-input" value="{html_escape(search_query)}" placeholder="Search 98,000+ songs, artists, albums...">
+                    <button type="submit" class="pill-btn primary" style="font-size: 0.84rem; padding: 0 16px; white-space: nowrap;">🔍 Search</button>
+                    {clear_search_btn}
+                </form>
             </div>
 
-            <div id="history-no-match" style="display: none; text-align: center; color: rgba(225, 232, 240, 0.6); padding: 30px; font-style: italic;">
-                No recently played tracks match your filter.
-            </div>
+            {pagination_html}
 
             <div style="display: flex; flex-direction: column; gap: 10px;">
-                {"".join(history_cards) if history_cards else '<div style="text-align: center; color: rgba(225, 232, 240, 0.6); padding: 40px; font-style: italic;">No listening history found. Start listening on Spotify or click Sync to fetch tracks!</div>'}
+                {"".join(history_cards) if history_cards else '<div style="text-align: center; color: rgba(225, 232, 240, 0.6); padding: 40px; font-style: italic;">No tracks found matching your search. Try another query or clear the filter.</div>'}
             </div>
+
+            {pagination_html if total_matching > 15 else ''}
         </div>
         '''
 
@@ -14514,11 +14841,11 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         full_content = f'''
         <div class="spotify-top-bar">
             <div>
-                <h1 style="font-family: 'Montserrat', sans-serif; font-size: 2rem; font-weight: 900; margin: 0; color: #FFFFFF;">
+                <h1 style="font-family: \'Montserrat\', sans-serif; font-size: 2rem; font-weight: 900; margin: 0; color: #FFFFFF;">
                     🎧 Spotify Listening Intelligence
                 </h1>
                 <div style="font-size: 0.88rem; color: #A5C8FF; margin-top: 4px;">
-                    Live playback, listening habits, recent streams, and one-click Gemini lyric analysis
+                    15-year streaming history archive, live playback, habit analytics, and one-click Gemini lyric analysis
                 </div>
             </div>
             {top_actions_html}
@@ -14526,10 +14853,11 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
 
         {message_banner_html}
         {state_card_html}
+        {lifetime_banner_html if (is_connected or is_demo or has_history) else ''}
         {now_playing_html}
-        {kpi_grid_html if (is_connected or is_demo) else ''}
-        {analytics_grid_html if (is_connected or is_demo) else ''}
-        {history_feed_html if (is_connected or is_demo) else ''}
+        {kpi_grid_html if (is_connected or is_demo or has_history) else ''}
+        {analytics_grid_html if (is_connected or is_demo or has_history) else ''}
+        {history_feed_html if (is_connected or is_demo or has_history) else ''}
         '''
 
         content = SPOTIFY_PAGE_HTML.replace('{app_header}', build_app_header('spotify', user=current_user))\
