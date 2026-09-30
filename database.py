@@ -619,6 +619,38 @@ def init_db(db_path: Optional[str] = None) -> None:
                 """)
             except Exception as bfe:
                 print(f"Warning: Postgres song_analyses backfill skipped ({bfe})")
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS spotify_artist_enrichment (
+                    id SERIAL PRIMARY KEY,
+                    artist_name TEXT NOT NULL,
+                    artist_name_lower TEXT NOT NULL UNIQUE,
+                    lastfm_tags TEXT,
+                    lastfm_similar TEXT,
+                    genre TEXT,
+                    style TEXT,
+                    mood TEXT,
+                    formed_year INTEGER,
+                    country TEXT,
+                    bio_summary TEXT,
+                    image_url TEXT,
+                    listeners BIGINT,
+                    playcount BIGINT,
+                    fetch_status TEXT DEFAULT 'pending',
+                    fetched_at TIMESTAMP,
+                    error_msg TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_sae_name_lower
+                ON spotify_artist_enrichment(artist_name_lower);
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_sae_fetch_status
+                ON spotify_artist_enrichment(fetch_status);
+            """)
         else:
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS searches (
@@ -902,48 +934,6 @@ def init_db(db_path: Optional[str] = None) -> None:
             except Exception as bfe:
                 print(f"Warning: SQLite song_analyses backfill skipped ({bfe})")
 
-        # Initialize the spotify_artist_enrichment table for both backends
-        init_spotify_artist_enrichment_table(db_path=db_path)
-
-
-def init_spotify_artist_enrichment_table(db_path: Optional[str] = None) -> None:
-    """Create the spotify_artist_enrichment table and index if they don't exist."""
-    target = get_db_target(db_path)
-    with get_connection(target) as conn:
-        cursor = conn.cursor()
-        if is_postgres(target):
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS spotify_artist_enrichment (
-                    id SERIAL PRIMARY KEY,
-                    artist_name TEXT NOT NULL,
-                    artist_name_lower TEXT NOT NULL UNIQUE,
-                    lastfm_tags TEXT,
-                    lastfm_similar TEXT,
-                    genre TEXT,
-                    style TEXT,
-                    mood TEXT,
-                    formed_year INTEGER,
-                    country TEXT,
-                    bio_summary TEXT,
-                    image_url TEXT,
-                    listeners BIGINT,
-                    playcount BIGINT,
-                    fetch_status TEXT DEFAULT 'pending',
-                    fetched_at TIMESTAMP,
-                    error_msg TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                );
-            """)
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_sae_name_lower
-                ON spotify_artist_enrichment(artist_name_lower);
-            """)
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_sae_fetch_status
-                ON spotify_artist_enrichment(fetch_status);
-            """)
-        else:
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS spotify_artist_enrichment (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -975,6 +965,10 @@ def init_spotify_artist_enrichment_table(db_path: Optional[str] = None) -> None:
                 CREATE INDEX IF NOT EXISTS idx_sae_fetch_status
                 ON spotify_artist_enrichment(fetch_status);
             """)
+
+
+def init_spotify_artist_enrichment_table(db_path: Optional[str] = None) -> None:
+    init_db(db_path=db_path)
 
 
 def normalize_text(text: str) -> str:
