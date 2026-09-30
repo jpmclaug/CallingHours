@@ -442,6 +442,18 @@ class TestSpotifyExtendedHistoryAndAutoSync(unittest.TestCase):
         self.assertEqual(count_genre, 1)
         self.assertEqual(artists_genre[0]['artist'], 'Alpha Band')
 
+        # 7. Slicing by season / month
+        artists_spring, count_spring = database.get_filtered_top_artists(user, month="spring", db_path=self.db_path)
+        self.assertEqual(count_spring, 2)  # May 15 tracks
+        artists_winter, count_winter = database.get_filtered_top_artists(user, month="winter", db_path=self.db_path)
+        self.assertEqual(count_winter, 1)  # Jan 20 track
+
+        # 8. Slicing by albums
+        albums, count_albums = database.get_filtered_top_albums(user, db_path=self.db_path)
+        self.assertEqual(count_albums, 3)
+        self.assertEqual(albums[0]['album'], 'Alb 2')
+        self.assertEqual(albums[0]['play_count'], 2)
+
 
 if __name__ == "__main__":
     unittest.main()

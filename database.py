@@ -2843,6 +2843,7 @@ def get_filtered_top_artists(
     time_of_day: str = 'all',
     day_of_week: str = 'all',
     genre: str = '',
+    month: str = 'all',
     limit: int = 20,
     db_path: Optional[str] = None
 ) -> Tuple[List[Dict[str, Any]], int]:
@@ -2853,6 +2854,7 @@ def get_filtered_top_artists(
     time_of_day: 'all' | 'morning' | 'afternoon' | 'evening' | 'night'
     day_of_week: 'all' | 'weekday' | 'weekend' | 'Mon'..'Sun'
     genre:       free-text genre substring filter (requires spotify_artist_enrichment join)
+    month:       'all' | '1'..'12' | 'summer' | 'fall' | 'winter' | 'spring'
     limit:       max rows returned
 
     Returns (list_of_artists, total_matching_streams_count)
@@ -2942,6 +2944,35 @@ def get_filtered_top_artists(
             where_clauses.append(f"CAST(strftime('%w', sh.played_at) AS INTEGER) = {ph}")
         params.append(dow_num)
 
+    # --- Month / Season filter ---
+    m_val = (month or 'all').strip().lower()
+    if m_val.isdigit() and 1 <= int(m_val) <= 12:
+        if pg:
+            where_clauses.append(f"EXTRACT(MONTH FROM sh.played_at::timestamp)::int = {ph}")
+        else:
+            where_clauses.append(f"CAST(strftime('%m', sh.played_at) AS INTEGER) = {ph}")
+        params.append(int(m_val))
+    elif m_val == 'summer':  # Jun, Jul, Aug (6, 7, 8)
+        if pg:
+            where_clauses.append("EXTRACT(MONTH FROM sh.played_at::timestamp) IN (6, 7, 8)")
+        else:
+            where_clauses.append("CAST(strftime('%m', sh.played_at) AS INTEGER) IN (6, 7, 8)")
+    elif m_val == 'fall':  # Sep, Oct, Nov (9, 10, 11)
+        if pg:
+            where_clauses.append("EXTRACT(MONTH FROM sh.played_at::timestamp) IN (9, 10, 11)")
+        else:
+            where_clauses.append("CAST(strftime('%m', sh.played_at) AS INTEGER) IN (9, 10, 11)")
+    elif m_val == 'winter':  # Dec, Jan, Feb (12, 1, 2)
+        if pg:
+            where_clauses.append("EXTRACT(MONTH FROM sh.played_at::timestamp) IN (12, 1, 2)")
+        else:
+            where_clauses.append("CAST(strftime('%m', sh.played_at) AS INTEGER) IN (12, 1, 2)")
+    elif m_val == 'spring':  # Mar, Apr, May (3, 4, 5)
+        if pg:
+            where_clauses.append("EXTRACT(MONTH FROM sh.played_at::timestamp) IN (3, 4, 5)")
+        else:
+            where_clauses.append("CAST(strftime('%m', sh.played_at) AS INTEGER) IN (3, 4, 5)")
+
     # --- Genre filter (requires enrichment join) ---
     clean_genre = (genre or '').strip()
     join_clause = "LEFT JOIN spotify_artist_enrichment sae ON LOWER(sh.artist_name) = sae.artist_name_lower"
@@ -2973,7 +3004,8 @@ def get_filtered_top_artists(
                 COUNT(*) AS play_count,
                 COALESCE(SUM(sh.duration_ms), 0) AS total_ms,
                 MAX(sae.genre) AS genre,
-                MAX(sae.lastfm_tags) AS tags_json
+                MAX(sae.lastfm_tags) AS tags_json,
+                MAX(sae.lastfm_similar) AS similar_json
             FROM spotify_history sh
             {join_clause}
             WHERE {where_sql}
@@ -2994,12 +3026,24 @@ def get_filtered_top_artists(
                 tags_preview = ', '.join(t.get('name', '') for t in tags_list[:3] if t.get('name'))
             except Exception:
                 pass
+
+        similar_preview = []
+        similar_json = r[5]
+        if similar_json:
+            try:
+                import json as _json
+                sim_list = _json.loads(similar_json)
+                similar_preview = [s.get('name') for s in sim_list[:3] if s.get('name')]
+            except Exception:
+                pass
+
         results.append({
             'artist': r[0] or '',
             'play_count': int(r[1] or 0),
             'hours': round((r[2] or 0) / (1000 * 3600), 1),
             'genre': r[3] or '',
             'tags': tags_preview,
+            'related': similar_preview
         })
     return results, total_streams
 
@@ -3010,13 +3054,14 @@ def get_filtered_top_tracks(
     time_of_day: str = 'all',
     day_of_week: str = 'all',
     artist: str = '',
+    month: str = 'all',
     limit: int = 20,
     db_path: Optional[str] = None
 ) -> Tuple[List[Dict[str, Any]], int]:
     """
     Return top tracks for any combination of filters.
 
-    period/time_of_day/day_of_week: same semantics as get_filtered_top_artists
+    period/time_of_day/day_of_week/month: same semantics as get_filtered_top_artists
     artist: filter to a specific artist (substring match)
     Returns (list_of_tracks, total_stream_count_in_filter)
     Each track dict: {name, artist, play_count, hours}
@@ -3069,6 +3114,20 @@ def get_filtered_top_tracks(
         where_clauses.append(f"EXTRACT(DOW FROM played_at::timestamp)::int = {ph}" if pg else f"CAST(strftime('%w', played_at) AS INTEGER) = {ph}")
         params.append(dow_num)
 
+    # --- Month / Season filter ---
+    m_val = (month or 'all').strip().lower()
+    if m_val.isdigit() and 1 <= int(m_val) <= 12:
+        where_clauses.append(f"EXTRACT(MONTH FROM played_at::timestamp)::int = {ph}" if pg else f"CAST(strftime('%m', played_at) AS INTEGER) = {ph}")
+        params.append(int(m_val))
+    elif m_val == 'summer':
+        where_clauses.append("EXTRACT(MONTH FROM played_at::timestamp) IN (6, 7, 8)" if pg else "CAST(strftime('%m', played_at) AS INTEGER) IN (6, 7, 8)")
+    elif m_val == 'fall':
+        where_clauses.append("EXTRACT(MONTH FROM played_at::timestamp) IN (9, 10, 11)" if pg else "CAST(strftime('%m', played_at) AS INTEGER) IN (9, 10, 11)")
+    elif m_val == 'winter':
+        where_clauses.append("EXTRACT(MONTH FROM played_at::timestamp) IN (12, 1, 2)" if pg else "CAST(strftime('%m', played_at) AS INTEGER) IN (12, 1, 2)")
+    elif m_val == 'spring':
+        where_clauses.append("EXTRACT(MONTH FROM played_at::timestamp) IN (3, 4, 5)" if pg else "CAST(strftime('%m', played_at) AS INTEGER) IN (3, 4, 5)")
+
     clean_artist = (artist or '').strip()
     if clean_artist:
         where_clauses.append(f"LOWER(artist_name) LIKE LOWER({ph})")
@@ -3092,6 +3151,113 @@ def get_filtered_top_tracks(
         rows = cursor.fetchall()
 
     results = [{'name': r[0] or '', 'artist': r[1] or '', 'play_count': int(r[2] or 0), 'hours': round((r[3] or 0) / (1000 * 3600), 1)} for r in rows]
+    return results, total_streams
+
+
+def get_filtered_top_albums(
+    user_email: str,
+    period: str = 'all',
+    time_of_day: str = 'all',
+    day_of_week: str = 'all',
+    month: str = 'all',
+    limit: int = 20,
+    db_path: Optional[str] = None
+) -> Tuple[List[Dict[str, Any]], int]:
+    """
+    Return top albums for any combination of filters.
+    Returns (list_of_albums, total_matching_streams_count)
+    Each album dict: {album, artist, play_count, hours, image_url}
+    """
+    clean_email = user_email.lower().strip()
+    if not clean_email:
+        return [], 0
+
+    target = get_db_target(db_path)
+    pg = is_postgres(target)
+    ph = "%s" if pg else "?"
+
+    where_clauses = [f"LOWER(user_email) = {ph}", "album_name IS NOT NULL", "LENGTH(TRIM(album_name)) > 0"]
+    params: List[Any] = [clean_email]
+
+    period = (period or 'all').strip()
+    if period == '7d':
+        where_clauses.append("played_at >= NOW() - INTERVAL '7 days'" if pg else "played_at >= datetime('now', '-7 days')")
+    elif period == '30d':
+        where_clauses.append("played_at >= NOW() - INTERVAL '30 days'" if pg else "played_at >= datetime('now', '-30 days')")
+    elif period == '90d':
+        where_clauses.append("played_at >= NOW() - INTERVAL '90 days'" if pg else "played_at >= datetime('now', '-90 days')")
+    elif period == '1y':
+        where_clauses.append("played_at >= NOW() - INTERVAL '1 year'" if pg else "played_at >= datetime('now', '-365 days')")
+    elif period.isdigit() and 2000 <= int(period) <= 2100:
+        if pg:
+            where_clauses.append(f"EXTRACT(YEAR FROM played_at::timestamp) = {ph}")
+        else:
+            where_clauses.append(f"CAST(strftime('%Y', played_at) AS INTEGER) = {ph}")
+        params.append(int(period))
+
+    tod = (time_of_day or 'all').strip().lower()
+    if tod == 'morning':
+        where_clauses.append("EXTRACT(HOUR FROM played_at::timestamp) BETWEEN 5 AND 11" if pg else "CAST(strftime('%H', played_at) AS INTEGER) BETWEEN 5 AND 11")
+    elif tod == 'afternoon':
+        where_clauses.append("EXTRACT(HOUR FROM played_at::timestamp) BETWEEN 12 AND 17" if pg else "CAST(strftime('%H', played_at) AS INTEGER) BETWEEN 12 AND 17")
+    elif tod == 'evening':
+        where_clauses.append("EXTRACT(HOUR FROM played_at::timestamp) BETWEEN 18 AND 22" if pg else "CAST(strftime('%H', played_at) AS INTEGER) BETWEEN 18 AND 22")
+    elif tod == 'night':
+        where_clauses.append("(EXTRACT(HOUR FROM played_at::timestamp) >= 23 OR EXTRACT(HOUR FROM played_at::timestamp) <= 4)" if pg else "(CAST(strftime('%H', played_at) AS INTEGER) >= 23 OR CAST(strftime('%H', played_at) AS INTEGER) <= 4)")
+
+    dow = (day_of_week or 'all').strip()
+    _dow_map = {'Sun': 0, 'Mon': 1, 'Tue': 2, 'Wed': 3, 'Thu': 4, 'Fri': 5, 'Sat': 6}
+    if dow == 'weekday':
+        where_clauses.append("EXTRACT(DOW FROM played_at::timestamp) BETWEEN 1 AND 5" if pg else "CAST(strftime('%w', played_at) AS INTEGER) BETWEEN 1 AND 5")
+    elif dow == 'weekend':
+        where_clauses.append("EXTRACT(DOW FROM played_at::timestamp) IN (0, 6)" if pg else "CAST(strftime('%w', played_at) AS INTEGER) IN (0, 6)")
+    elif dow in _dow_map:
+        dow_num = _dow_map[dow]
+        where_clauses.append(f"EXTRACT(DOW FROM played_at::timestamp)::int = {ph}" if pg else f"CAST(strftime('%w', played_at) AS INTEGER) = {ph}")
+        params.append(dow_num)
+
+    m_val = (month or 'all').strip().lower()
+    if m_val.isdigit() and 1 <= int(m_val) <= 12:
+        where_clauses.append(f"EXTRACT(MONTH FROM played_at::timestamp)::int = {ph}" if pg else f"CAST(strftime('%m', played_at) AS INTEGER) = {ph}")
+        params.append(int(m_val))
+    elif m_val == 'summer':
+        where_clauses.append("EXTRACT(MONTH FROM played_at::timestamp) IN (6, 7, 8)" if pg else "CAST(strftime('%m', played_at) AS INTEGER) IN (6, 7, 8)")
+    elif m_val == 'fall':
+        where_clauses.append("EXTRACT(MONTH FROM played_at::timestamp) IN (9, 10, 11)" if pg else "CAST(strftime('%m', played_at) AS INTEGER) IN (9, 10, 11)")
+    elif m_val == 'winter':
+        where_clauses.append("EXTRACT(MONTH FROM played_at::timestamp) IN (12, 1, 2)" if pg else "CAST(strftime('%m', played_at) AS INTEGER) IN (12, 1, 2)")
+    elif m_val == 'spring':
+        where_clauses.append("EXTRACT(MONTH FROM played_at::timestamp) IN (3, 4, 5)" if pg else "CAST(strftime('%m', played_at) AS INTEGER) IN (3, 4, 5)")
+
+    where_sql = " AND ".join(where_clauses)
+
+    with get_connection(target) as conn:
+        cursor = conn.cursor()
+        cursor.execute(f"SELECT COUNT(*) FROM spotify_history WHERE {where_sql}", params)
+        total_streams = int((cursor.fetchone() or [0])[0])
+
+        cursor.execute(f"""
+            SELECT 
+                album_name, 
+                artist_name, 
+                COUNT(*) AS play_count, 
+                COALESCE(SUM(duration_ms), 0) AS total_ms,
+                MAX(album_image_url) AS image_url
+            FROM spotify_history
+            WHERE {where_sql}
+            GROUP BY album_name, artist_name
+            ORDER BY play_count DESC
+            LIMIT {ph}
+        """, params + [limit])
+        rows = cursor.fetchall()
+
+    results = [{
+        'album': r[0] or '',
+        'artist': r[1] or '',
+        'play_count': int(r[2] or 0),
+        'hours': round((r[3] or 0) / (1000 * 3600), 1),
+        'image_url': r[4] or ''
+    } for r in rows]
     return results, total_streams
 
 

@@ -6950,6 +6950,7 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
 
         async function runSpotifySlice() {
             const period = document.getElementById('slice-period')?.value || 'all';
+            const month = document.getElementById('slice-month')?.value || 'all';
             const tod = document.getElementById('slice-tod')?.value || 'all';
             const dow = document.getElementById('slice-dow')?.value || 'all';
             const genre = document.getElementById('slice-genre')?.value || '';
@@ -6961,7 +6962,7 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             container.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; color: #A5C8FF; padding: 24px;">⏳ Slicing your personal archive...</div>';
 
             try {
-                const url = `/api/spotify/slice?period=${encodeURIComponent(period)}&tod=${encodeURIComponent(tod)}&dow=${encodeURIComponent(dow)}&genre=${encodeURIComponent(genre)}&view=${encodeURIComponent(view)}&limit=24`;
+                const url = `/api/spotify/slice?period=${encodeURIComponent(period)}&month=${encodeURIComponent(month)}&tod=${encodeURIComponent(tod)}&dow=${encodeURIComponent(dow)}&genre=${encodeURIComponent(genre)}&view=${encodeURIComponent(view)}&limit=24`;
                 const res = await fetch(url);
                 const data = await res.json();
 
@@ -6987,6 +6988,28 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
                             </div>
                         </div>
                     `).join('');
+                } else if (view === 'albums') {
+                    if (!data.albums || data.albums.length === 0) {
+                        container.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; color: rgba(225, 232, 240, 0.5); padding: 20px;">No albums found for these filter settings.</div>';
+                        return;
+                    }
+                    container.innerHTML = data.albums.map((al, idx) => {
+                        const img = al.image_url ? `<img src="${al.image_url}" style="width: 38px; height: 38px; border-radius: 6px; object-fit: cover; flex-shrink: 0; margin-right: 10px;">` : `<div style="width: 38px; height: 38px; border-radius: 6px; background: rgba(165,200,255,0.15); display: flex; align-items: center; justify-content: center; font-size: 1.1rem; flex-shrink: 0; margin-right: 10px;">💿</div>`;
+                        return `
+                            <div class="slicer-result-item" style="padding: 8px 12px;">
+                                ${img}
+                                <div style="min-width: 0; flex: 1; margin-right: 8px;">
+                                    <div style="font-weight: 700; color: #FFFFFF; font-size: 0.86rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                                        <span style="color: #6EE7B7; font-size: 0.75rem; margin-right: 4px;">#${idx + 1}</span>${al.album}
+                                    </div>
+                                    <div style="font-size: 0.74rem; color: #A5C8FF; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${al.artist} &bull; ${al.hours} hrs</div>
+                                </div>
+                                <div style="text-align: right; flex-shrink: 0;">
+                                    <span style="font-size: 0.78rem; color: #1DB954; font-weight: 700; background: rgba(29, 185, 84, 0.15); padding: 3px 8px; border-radius: 8px;">${al.play_count.toLocaleString()} plays</span>
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
                 } else {
                     if (!data.artists || data.artists.length === 0) {
                         container.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; color: rgba(225, 232, 240, 0.5); padding: 20px;">No artists found for these filter settings.</div>';
@@ -6994,20 +7017,24 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
                     }
                     container.innerHTML = data.artists.map((a, idx) => {
                         const genreTag = a.genre ? `<span style="font-size: 0.68rem; color: #A5C8FF; background: rgba(165, 200, 255, 0.1); padding: 2px 6px; border-radius: 4px; margin-left: 6px;">${a.genre}</span>` : '';
+                        const relStr = (a.related && a.related.length > 0) ? `<div style="font-size: 0.72rem; color: #6EE7B7; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">🔗 Related: ${a.related.join(', ')}</div>` : '';
                         return `
-                            <div class="slicer-result-item">
-                                <div style="min-width: 0; flex: 1; margin-right: 10px;">
-                                    <div style="font-weight: 700; font-size: 0.88rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                                        <a href="/artist?artist=${encodeURIComponent(a.artist)}" style="color: #FFFFFF; text-decoration: none;" title="Explore Artist Intelligence">
-                                            <span style="color: #6EE7B7; font-size: 0.75rem; margin-right: 4px;">#${idx + 1}</span>${a.artist}
-                                        </a>
-                                        ${genreTag}
+                            <div class="slicer-result-item" style="flex-direction: column; align-items: stretch; gap: 6px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <div style="min-width: 0; flex: 1; margin-right: 10px;">
+                                        <div style="font-weight: 700; font-size: 0.88rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                                            <a href="/artist?artist=${encodeURIComponent(a.artist)}" style="color: #FFFFFF; text-decoration: none;" title="Explore Artist Intelligence">
+                                                <span style="color: #6EE7B7; font-size: 0.75rem; margin-right: 4px;">#${idx + 1}</span>${a.artist}
+                                            </a>
+                                            ${genreTag}
+                                        </div>
+                                        <div style="font-size: 0.74rem; color: rgba(225, 232, 240, 0.55);">${a.hours} hrs continuous</div>
                                     </div>
-                                    <div style="font-size: 0.74rem; color: rgba(225, 232, 240, 0.55);">${a.hours} hrs continuous</div>
+                                    <div style="text-align: right; flex-shrink: 0;">
+                                        <span style="font-size: 0.8rem; color: #1DB954; font-weight: 700; background: rgba(29, 185, 84, 0.15); padding: 3px 8px; border-radius: 8px;">${a.play_count.toLocaleString()} plays</span>
+                                    </div>
                                 </div>
-                                <div style="text-align: right; flex-shrink: 0;">
-                                    <span style="font-size: 0.8rem; color: #1DB954; font-weight: 700; background: rgba(29, 185, 84, 0.15); padding: 3px 8px; border-radius: 8px;">${a.play_count.toLocaleString()} plays</span>
-                                </div>
+                                ${relStr}
                             </div>
                         `;
                     }).join('');
@@ -14377,6 +14404,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         tod = params.get('tod', ['all'])[0].strip()
         dow = params.get('dow', ['all'])[0].strip()
         genre = params.get('genre', [''])[0].strip()
+        month = params.get('month', ['all'])[0].strip()
         view = params.get('view', ['artists'])[0].strip().lower()
         limit_str = params.get('limit', ['20'])[0].strip()
         limit = max(1, min(int(limit_str) if limit_str.isdigit() else 20, 100))
@@ -14390,13 +14418,29 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                     time_of_day=tod,
                     day_of_week=dow,
                     artist=artist_filter,
+                    month=month,
                     limit=limit
                 )
                 payload = {
                     'view': 'tracks',
                     'tracks': tracks,
                     'total_streams': total_streams,
-                    'filters': {'period': period, 'tod': tod, 'dow': dow, 'artist': artist_filter}
+                    'filters': {'period': period, 'tod': tod, 'dow': dow, 'artist': artist_filter, 'month': month}
+                }
+            elif view == 'albums':
+                albums, total_streams = database.get_filtered_top_albums(
+                    current_user['email'],
+                    period=period,
+                    time_of_day=tod,
+                    day_of_week=dow,
+                    month=month,
+                    limit=limit
+                )
+                payload = {
+                    'view': 'albums',
+                    'albums': albums,
+                    'total_streams': total_streams,
+                    'filters': {'period': period, 'tod': tod, 'dow': dow, 'month': month}
                 }
             else:
                 artists, total_streams = database.get_filtered_top_artists(
@@ -14405,13 +14449,14 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                     time_of_day=tod,
                     day_of_week=dow,
                     genre=genre,
+                    month=month,
                     limit=limit
                 )
                 payload = {
                     'view': 'artists',
                     'artists': artists,
                     'total_streams': total_streams,
-                    'filters': {'period': period, 'tod': tod, 'dow': dow, 'genre': genre}
+                    'filters': {'period': period, 'tod': tod, 'dow': dow, 'genre': genre, 'month': month}
                 }
             self.send_response(200)
             self.send_header('Content-Type', 'application/json; charset=utf-8')
@@ -15181,6 +15226,29 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 </div>
 
                 <div>
+                    <label class="slicer-field-label">Season / Month</label>
+                    <select id="slice-month" class="slicer-select" onchange="runSpotifySlice()">
+                        <option value="all">All Months</option>
+                        <option value="summer">☀️ Summer (Jun – Aug)</option>
+                        <option value="fall">🍂 Fall (Sep – Nov)</option>
+                        <option value="winter">❄️ Winter (Dec – Feb)</option>
+                        <option value="spring">🌱 Spring (Mar – May)</option>
+                        <option value="1">January</option>
+                        <option value="2">February</option>
+                        <option value="3">March</option>
+                        <option value="4">April</option>
+                        <option value="5">May</option>
+                        <option value="6">June</option>
+                        <option value="7">July (Peak Day Month)</option>
+                        <option value="8">August</option>
+                        <option value="9">September</option>
+                        <option value="10">October</option>
+                        <option value="11">November</option>
+                        <option value="12">December</option>
+                    </select>
+                </div>
+
+                <div>
                     <label class="slicer-field-label">Time of Day</label>
                     <select id="slice-tod" class="slicer-select" onchange="runSpotifySlice()">
                         <option value="all">Any Hour (24h)</option>
@@ -15217,6 +15285,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                     <select id="slice-view" class="slicer-select" onchange="runSpotifySlice()">
                         <option value="artists">👥 Top Bands / Artists</option>
                         <option value="tracks">🎵 Top Played Tracks</option>
+                        <option value="albums">💿 Top Played Albums</option>
                     </select>
                 </div>
             </div>
