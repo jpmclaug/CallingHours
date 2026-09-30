@@ -30,3 +30,7 @@ Thumbs.db
 
 # Test artifacts
 genius_test.html
+
+# Local data dumps & user history exports
+Spotify History/
+*.json.gz

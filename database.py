@@ -193,6 +193,29 @@ def _format_spotify_history_record(rec: Any) -> Optional[Dict[str, Any]]:
             d['popularity'] = int(d['popularity'])
         except (ValueError, TypeError):
             d['popularity'] = 0
+
+    # Provide normalized aliases matching Spotify Web API track dicts
+    if 'name' not in d and 'track_name' in d:
+        d['name'] = d['track_name']
+    if 'artist' not in d and 'artist_name' in d:
+        d['artist'] = d['artist_name']
+    if 'album' not in d and 'album_name' in d:
+        d['album'] = d['album_name']
+    if 'album_image' not in d and 'album_image_url' in d:
+        d['album_image'] = d['album_image_url']
+    if 'track_id' not in d and 'spotify_track_id' in d:
+        d['track_id'] = d['spotify_track_id']
+    if 'spotify_url' not in d or not d['spotify_url']:
+        tid = d.get('track_id') or d.get('spotify_track_id')
+        d['spotify_url'] = f"https://open.spotify.com/track/{tid}" if tid else ""
+    if 'duration_formatted' not in d:
+        ms = d.get('duration_ms') or 0
+        total_sec = int(ms) // 1000
+        d['duration_formatted'] = f"{total_sec // 60}:{total_sec % 60:02d}"
+    if 'release_year' not in d:
+        rel = str(d.get('release_date') or '')
+        d['release_year'] = rel[:4] if len(rel) >= 4 and rel[:4].isdigit() else ''
+
     return d
 
 def _format_playlist_record(rec: Any) -> Optional[Dict[str, Any]]:
@@ -246,6 +269,16 @@ def _format_band_rating_record(rec: Any) -> Optional[Dict[str, Any]]:
             d['rating'] = int(d['rating'])
         except (ValueError, TypeError):
             d['rating'] = 0
+    return d
+
+def _format_song_analysis_record(rec: Any) -> Optional[Dict[str, Any]]:
+    if not rec:
+        return None
+    d = dict(rec)
+    if 'created_at' in d and d['created_at'] is not None:
+        d['created_at'] = _format_datetime(d['created_at'])
+    if 'updated_at' in d and d['updated_at'] is not None:
+        d['updated_at'] = _format_datetime(d['updated_at'])
     return d
 
 
@@ -456,6 +489,10 @@ def init_db(db_path: Optional[str] = None) -> None:
                 ON spotify_history(played_at DESC);
             """)
             cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_spotify_hist_email_played 
+                ON spotify_history(user_email, played_at DESC);
+            """)
+            cursor.execute("""
                 CREATE TABLE IF NOT EXISTS playlists (
                     id SERIAL PRIMARY KEY,
                     name TEXT NOT NULL,
@@ -537,6 +574,50 @@ def init_db(db_path: Optional[str] = None) -> None:
                 VALUES (%s, TRUE, TRUE, CURRENT_TIMESTAMP)
                 ON CONFLICT (email) DO UPDATE SET is_admin = TRUE, is_active = TRUE;
             """, (PRIMARY_ADMIN_EMAIL.lower().strip(),))
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS song_analyses (
+                    id SERIAL PRIMARY KEY,
+                    artist TEXT NOT NULL,
+                    song TEXT NOT NULL,
+                    artist_normalized TEXT NOT NULL,
+                    song_normalized TEXT NOT NULL,
+                    prompt_name TEXT NOT NULL,
+                    prompt_text TEXT,
+                    analysis TEXT NOT NULL,
+                    model_name TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(artist_normalized, song_normalized, prompt_name)
+                );
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_song_analyses_artist_song 
+                ON song_analyses(artist_normalized, song_normalized);
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_song_analyses_prompt 
+                ON song_analyses(artist_normalized, song_normalized, prompt_name);
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_song_analyses_updated 
+                ON song_analyses(updated_at DESC);
+            """)
+            try:
+                cursor.execute("""
+                    INSERT INTO song_analyses (
+                        artist, song, artist_normalized, song_normalized,
+                        prompt_name, analysis, model_name, created_at, updated_at
+                    )
+                    SELECT 
+                        artist, song, artist_normalized, song_normalized,
+                        COALESCE(NULLIF(TRIM(prompt_name), ''), 'Default Analysis'),
+                        analysis, model_name, created_at, updated_at
+                    FROM searches
+                    WHERE analysis IS NOT NULL AND LENGTH(TRIM(analysis)) > 0
+                    ON CONFLICT (artist_normalized, song_normalized, prompt_name) DO NOTHING;
+                """)
+            except Exception as bfe:
+                print(f"Warning: Postgres song_analyses backfill skipped ({bfe})")
         else:
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS searches (
@@ -690,6 +771,10 @@ def init_db(db_path: Optional[str] = None) -> None:
                 ON spotify_history(played_at DESC);
             """)
             cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_spotify_hist_email_played 
+                ON spotify_history(user_email, played_at DESC);
+            """)
+            cursor.execute("""
                 CREATE TABLE IF NOT EXISTS playlists (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     name TEXT NOT NULL,
@@ -772,6 +857,49 @@ def init_db(db_path: Optional[str] = None) -> None:
                 VALUES (?, 1, 1, CURRENT_TIMESTAMP)
                 ON CONFLICT (email) DO UPDATE SET is_admin = 1, is_active = 1;
             """, (PRIMARY_ADMIN_EMAIL.lower().strip(),))
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS song_analyses (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    artist TEXT NOT NULL,
+                    song TEXT NOT NULL,
+                    artist_normalized TEXT NOT NULL,
+                    song_normalized TEXT NOT NULL,
+                    prompt_name TEXT NOT NULL,
+                    prompt_text TEXT,
+                    analysis TEXT NOT NULL,
+                    model_name TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(artist_normalized, song_normalized, prompt_name)
+                );
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_song_analyses_artist_song 
+                ON song_analyses(artist_normalized, song_normalized);
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_song_analyses_prompt 
+                ON song_analyses(artist_normalized, song_normalized, prompt_name);
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_song_analyses_updated 
+                ON song_analyses(updated_at DESC);
+            """)
+            try:
+                cursor.execute("""
+                    INSERT OR IGNORE INTO song_analyses (
+                        artist, song, artist_normalized, song_normalized,
+                        prompt_name, analysis, model_name, created_at, updated_at
+                    )
+                    SELECT 
+                        artist, song, artist_normalized, song_normalized,
+                        COALESCE(NULLIF(TRIM(prompt_name), ''), 'Default Analysis'),
+                        analysis, model_name, created_at, updated_at
+                    FROM searches
+                    WHERE analysis IS NOT NULL AND LENGTH(TRIM(analysis)) > 0;
+                """)
+            except Exception as bfe:
+                print(f"Warning: SQLite song_analyses backfill skipped ({bfe})")
 
 def normalize_text(text: str) -> str:
     return text.strip().lower() if text else ""
@@ -886,16 +1014,23 @@ def save_analysis(
     analysis: str,
     model_name: Optional[str] = None,
     prompt_name: Optional[str] = None,
+    prompt_text: Optional[str] = None,
     lyrics: Optional[str] = None,
     track_tags: Optional[Union[str, List[Dict[str, Any]]]] = None,
     theaudiodb_data: Optional[Union[str, Dict[str, Any]]] = None,
     db_path: Optional[str] = None
 ) -> None:
-    """Save or update the Gemini analysis result for a given artist and song, ensuring lyrics are preserved."""
+    """Save or update the Gemini analysis result for a given artist, song, and prompt.
+    
+    Persists the analysis into `song_analyses` keyed by (artist, song, prompt_name)
+    so multiple prompt analyses are preserved across sessions, while also updating
+    the primary `searches` record for immediate access and backward compatibility.
+    """
     artist_clean = artist.strip()
     song_clean = song.strip()
     artist_norm = normalize_text(artist_clean)
     song_norm = normalize_text(song_clean)
+    effective_prompt_name = (prompt_name or 'Default Analysis').strip()
     tags_json = json.dumps(track_tags) if isinstance(track_tags, (list, dict)) else track_tags
     audiodb_json = json.dumps(theaudiodb_data) if isinstance(theaudiodb_data, (list, dict)) else theaudiodb_data
     target = get_db_target(db_path)
@@ -903,6 +1038,25 @@ def save_analysis(
     with get_connection(target) as conn:
         if is_postgres(target):
             cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            # 1. Upsert into song_analyses table
+            try:
+                cursor.execute("""
+                    INSERT INTO song_analyses (
+                        artist, song, artist_normalized, song_normalized,
+                        prompt_name, prompt_text, analysis, model_name, created_at, updated_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    ON CONFLICT (artist_normalized, song_normalized, prompt_name) DO UPDATE
+                    SET analysis = EXCLUDED.analysis,
+                        model_name = COALESCE(EXCLUDED.model_name, song_analyses.model_name),
+                        prompt_text = COALESCE(EXCLUDED.prompt_text, song_analyses.prompt_text),
+                        artist = EXCLUDED.artist,
+                        song = EXCLUDED.song,
+                        updated_at = CURRENT_TIMESTAMP;
+                """, (artist_clean, song_clean, artist_norm, song_norm, effective_prompt_name, prompt_text, analysis, model_name))
+            except Exception as sae:
+                print(f"Warning: save_analysis Postgres song_analyses upsert error: {sae}")
+
+            # 2. Update searches table
             cursor.execute(
                 "SELECT id, lyrics, source, track_tags, theaudiodb_data FROM searches WHERE artist_normalized = %s AND song_normalized = %s",
                 (artist_norm, song_norm)
@@ -927,7 +1081,7 @@ def save_analysis(
                         theaudiodb_data = %s,
                         updated_at = CURRENT_TIMESTAMP
                     WHERE id = %s
-                """, (artist_clean, song_clean, new_lyrics, new_source, analysis, model_name, prompt_name, new_tags, new_audiodb, row['id']))
+                """, (artist_clean, song_clean, new_lyrics, new_source, analysis, model_name, effective_prompt_name, new_tags, new_audiodb, row['id']))
             else:
                 new_source = 'Manual' if (lyrics and lyrics.strip()) else None
                 cursor.execute("""
@@ -935,9 +1089,28 @@ def save_analysis(
                         artist, song, artist_normalized, song_normalized,
                         lyrics, source, analysis, model_name, prompt_name, track_tags, theaudiodb_data, created_at, updated_at
                     ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                """, (artist_clean, song_clean, artist_norm, song_norm, lyrics, new_source, analysis, model_name, prompt_name, tags_json, audiodb_json))
+                """, (artist_clean, song_clean, artist_norm, song_norm, lyrics, new_source, analysis, model_name, effective_prompt_name, tags_json, audiodb_json))
         else:
             cursor = conn.cursor()
+            # 1. Upsert into song_analyses table
+            try:
+                cursor.execute("""
+                    INSERT INTO song_analyses (
+                        artist, song, artist_normalized, song_normalized,
+                        prompt_name, prompt_text, analysis, model_name, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'), strftime('%Y-%m-%d %H:%M:%f', 'now'))
+                    ON CONFLICT (artist_normalized, song_normalized, prompt_name) DO UPDATE
+                    SET analysis = excluded.analysis,
+                        model_name = COALESCE(excluded.model_name, song_analyses.model_name),
+                        prompt_text = COALESCE(excluded.prompt_text, song_analyses.prompt_text),
+                        artist = excluded.artist,
+                        song = excluded.song,
+                        updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now');
+                """, (artist_clean, song_clean, artist_norm, song_norm, effective_prompt_name, prompt_text, analysis, model_name))
+            except Exception as sae:
+                print(f"Warning: save_analysis SQLite song_analyses upsert error: {sae}")
+
+            # 2. Update searches table
             cursor.execute(
                 "SELECT id, lyrics, source, track_tags, theaudiodb_data FROM searches WHERE artist_normalized = ? AND song_normalized = ?",
                 (artist_norm, song_norm)
@@ -962,7 +1135,7 @@ def save_analysis(
                         theaudiodb_data = ?,
                         updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now')
                     WHERE id = ?
-                """, (artist_clean, song_clean, new_lyrics, new_source, analysis, model_name, prompt_name, new_tags, new_audiodb, row['id']))
+                """, (artist_clean, song_clean, new_lyrics, new_source, analysis, model_name, effective_prompt_name, new_tags, new_audiodb, row['id']))
             else:
                 new_source = 'Manual' if (lyrics and lyrics.strip()) else None
                 cursor.execute("""
@@ -970,7 +1143,167 @@ def save_analysis(
                         artist, song, artist_normalized, song_normalized,
                         lyrics, source, analysis, model_name, prompt_name, track_tags, theaudiodb_data, created_at, updated_at
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'), strftime('%Y-%m-%d %H:%M:%f', 'now'))
-                """, (artist_clean, song_clean, artist_norm, song_norm, lyrics, new_source, analysis, model_name, prompt_name, tags_json, audiodb_json))
+                """, (artist_clean, song_clean, artist_norm, song_norm, lyrics, new_source, analysis, model_name, effective_prompt_name, tags_json, audiodb_json))
+        notify_db_mutation()
+
+
+def get_analysis(
+    artist: str,
+    song: str,
+    prompt_name: Optional[str] = None,
+    db_path: Optional[str] = None
+) -> Optional[Dict[str, Any]]:
+    """Retrieve saved analysis for a song, optionally matching a specific prompt_name.
+    
+    If prompt_name is provided, checks song_analyses table for an exact match.
+    Falls back to searches table if not found in song_analyses.
+    If prompt_name is None, returns the most recent analysis for this song.
+    """
+    artist_norm = normalize_text(artist)
+    song_norm = normalize_text(song)
+    target = get_db_target(db_path)
+
+    with get_connection(target) as conn:
+        ph = "%s" if is_postgres(target) else "?"
+        if is_postgres(target):
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        else:
+            cursor = conn.cursor()
+
+        if prompt_name and prompt_name.strip():
+            p_name = prompt_name.strip()
+            # 1. Check song_analyses table
+            try:
+                cursor.execute(
+                    f"SELECT * FROM song_analyses WHERE artist_normalized = {ph} AND song_normalized = {ph} AND prompt_name = {ph}",
+                    (artist_norm, song_norm, p_name)
+                )
+                row = cursor.fetchone()
+                if row:
+                    res = _format_song_analysis_record(row)
+                    if res and res.get('analysis') and str(res['analysis']).strip():
+                        return res
+            except Exception:
+                pass
+
+            # 2. Fall back to searches table if prompt_name matches
+            cursor.execute(
+                f"SELECT * FROM searches WHERE artist_normalized = {ph} AND song_normalized = {ph} AND (prompt_name = {ph} OR (prompt_name IS NULL AND {ph} = 'Default Analysis'))",
+                (artist_norm, song_norm, p_name, p_name)
+            )
+            row = cursor.fetchone()
+            if row:
+                rec = _format_search_record(row)
+                if rec and rec.get('analysis') and str(rec['analysis']).strip():
+                    return {
+                        'artist': rec['artist'],
+                        'song': rec['song'],
+                        'prompt_name': rec.get('prompt_name') or 'Default Analysis',
+                        'prompt_text': None,
+                        'analysis': rec['analysis'],
+                        'model_name': rec.get('model_name'),
+                        'created_at': rec.get('created_at'),
+                        'updated_at': rec.get('updated_at')
+                    }
+            return None
+        else:
+            # Most recent analysis
+            try:
+                cursor.execute(
+                    f"SELECT * FROM song_analyses WHERE artist_normalized = {ph} AND song_normalized = {ph} ORDER BY updated_at DESC LIMIT 1",
+                    (artist_norm, song_norm)
+                )
+                row = cursor.fetchone()
+                if row:
+                    res = _format_song_analysis_record(row)
+                    if res and res.get('analysis') and str(res['analysis']).strip():
+                        return res
+            except Exception:
+                pass
+
+            cursor.execute(
+                f"SELECT * FROM searches WHERE artist_normalized = {ph} AND song_normalized = {ph}",
+                (artist_norm, song_norm)
+            )
+            row = cursor.fetchone()
+            if row:
+                rec = _format_search_record(row)
+                if rec and rec.get('analysis') and str(rec['analysis']).strip():
+                    return {
+                        'artist': rec['artist'],
+                        'song': rec['song'],
+                        'prompt_name': rec.get('prompt_name') or 'Default Analysis',
+                        'prompt_text': None,
+                        'analysis': rec['analysis'],
+                        'model_name': rec.get('model_name'),
+                        'created_at': rec.get('created_at'),
+                        'updated_at': rec.get('updated_at')
+                    }
+            return None
+
+
+def get_song_analyses(
+    artist: str,
+    song: str,
+    db_path: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    """Retrieve all saved analyses for a song across all prompts."""
+    artist_norm = normalize_text(artist)
+    song_norm = normalize_text(song)
+    target = get_db_target(db_path)
+    analyses: List[Dict[str, Any]] = []
+    seen_prompts: set = set()
+
+    with get_connection(target) as conn:
+        ph = "%s" if is_postgres(target) else "?"
+        if is_postgres(target):
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        else:
+            cursor = conn.cursor()
+
+        try:
+            cursor.execute(
+                f"SELECT * FROM song_analyses WHERE artist_normalized = {ph} AND song_normalized = {ph} ORDER BY updated_at DESC",
+                (artist_norm, song_norm)
+            )
+            rows = cursor.fetchall()
+            for r in rows:
+                item = _format_song_analysis_record(r)
+                if item and item.get('analysis') and str(item['analysis']).strip():
+                    p_name = item.get('prompt_name')
+                    if p_name and p_name not in seen_prompts:
+                        seen_prompts.add(p_name)
+                        analyses.append(item)
+        except Exception:
+            pass
+
+        # Also check searches table for any prompt not yet present
+        try:
+            cursor.execute(
+                f"SELECT * FROM searches WHERE artist_normalized = {ph} AND song_normalized = {ph}",
+                (artist_norm, song_norm)
+            )
+            row = cursor.fetchone()
+            if row:
+                rec = _format_search_record(row)
+                if rec and rec.get('analysis') and str(rec['analysis']).strip():
+                    p_name = rec.get('prompt_name') or 'Default Analysis'
+                    if p_name not in seen_prompts:
+                        seen_prompts.add(p_name)
+                        analyses.append({
+                            'artist': rec['artist'],
+                            'song': rec['song'],
+                            'prompt_name': p_name,
+                            'prompt_text': None,
+                            'analysis': rec['analysis'],
+                            'model_name': rec.get('model_name'),
+                            'created_at': rec.get('created_at'),
+                            'updated_at': rec.get('updated_at')
+                        })
+        except Exception:
+            pass
+
+    return analyses
 
 
 def save_track_tags(
@@ -1447,11 +1780,24 @@ def get_recent_searches(limit: int = 100, db_path: Optional[str] = None) -> List
         return [_format_search_record(r) for r in rows]
 
 def delete_search(search_id: int, db_path: Optional[str] = None) -> bool:
-    """Delete a search record by ID."""
+    """Delete a search record by ID and remove associated prompt analyses."""
     target = get_db_target(db_path)
     with get_connection(target) as conn:
         cursor = conn.cursor()
         ph = "%s" if is_postgres(target) else "?"
+        try:
+            cursor.execute(f"SELECT artist_normalized, song_normalized FROM searches WHERE id = {ph}", (search_id,))
+            row = cursor.fetchone()
+            if row:
+                if is_postgres(target):
+                    a_norm, s_norm = row.get('artist_normalized'), row.get('song_normalized')
+                else:
+                    a_norm, s_norm = row['artist_normalized'], row['song_normalized']
+                if a_norm and s_norm:
+                    cursor.execute(f"DELETE FROM song_analyses WHERE artist_normalized = {ph} AND song_normalized = {ph}", (a_norm, s_norm))
+        except Exception as de:
+            print(f"Warning: delete_search song_analyses cleanup error: {de}")
+
         cursor.execute(f"DELETE FROM searches WHERE id = {ph}", (search_id,))
         success = cursor.rowcount > 0
         if success:
@@ -1877,53 +2223,74 @@ def save_spotify_history_items(
         return 0
 
     target = get_db_target(db_path)
+    rows_to_insert = []
+    for item in items:
+        track_id = item.get("track_id") or item.get("spotify_track_id") or ""
+        if not track_id and item.get("spotify_track_uri"):
+            uri = str(item["spotify_track_uri"])
+            if uri.startswith("spotify:track:"):
+                track_id = uri.split(":")[-1].strip()
+
+        played_at = item.get("played_at") or item.get("ts") or ""
+        track_name = item.get("name") or item.get("track_name") or item.get("master_metadata_track_name") or "Unknown Track"
+        artist_name = item.get("artist") or item.get("artist_name") or item.get("master_metadata_album_artist_name") or "Unknown Artist"
+        album_name = item.get("album") or item.get("album_name") or item.get("master_metadata_album_album_name") or ""
+        album_image = item.get("album_image") or item.get("album_image_url") or ""
+        duration_ms = item.get("duration_ms") if item.get("duration_ms") is not None else item.get("ms_played", 0)
+        popularity = item.get("popularity") or 0
+        preview_url = item.get("preview_url") or ""
+        spotify_url = item.get("spotify_url") or (f"https://open.spotify.com/track/{track_id}" if track_id else "")
+        release_date = item.get("release_date") or ""
+
+        if not track_id or not played_at:
+            continue
+
+        rows_to_insert.append((
+            clean_email, track_id, played_at, track_name, artist_name,
+            album_name, album_image, duration_ms, popularity,
+            preview_url, spotify_url, release_date
+        ))
+
+    if not rows_to_insert:
+        return 0
+
     inserted = 0
     with get_connection(target) as conn:
         cursor = conn.cursor()
-        for item in items:
-            track_id = item.get("track_id") or ""
-            played_at = item.get("played_at") or ""
-            track_name = item.get("name") or "Unknown Track"
-            artist_name = item.get("artist") or "Unknown Artist"
-            album_name = item.get("album") or ""
-            album_image = item.get("album_image") or ""
-            duration_ms = item.get("duration_ms") or 0
-            popularity = item.get("popularity") or 0
-            preview_url = item.get("preview_url") or ""
-            spotify_url = item.get("spotify_url") or ""
-            release_date = item.get("release_date") or ""
+        if is_postgres(target):
+            import psycopg2.extras
+            psycopg2.extras.execute_values(
+                cursor,
+                """
+                INSERT INTO spotify_history (
+                    user_email, spotify_track_id, played_at, track_name, artist_name,
+                    album_name, album_image_url, duration_ms, popularity,
+                    preview_url, spotify_url, release_date, created_at
+                )
+                VALUES %s
+                ON CONFLICT (user_email, spotify_track_id, played_at) DO NOTHING;
+                """,
+                rows_to_insert,
+                template="(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)",
+                page_size=min(len(rows_to_insert), 2000)
+            )
+            inserted = max(0, cursor.rowcount)
+        else:
+            cursor.executemany(
+                """
+                INSERT OR IGNORE INTO spotify_history (
+                    user_email, spotify_track_id, played_at, track_name, artist_name,
+                    album_name, album_image_url, duration_ms, popularity,
+                    preview_url, spotify_url, release_date, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP);
+                """,
+                rows_to_insert
+            )
+            inserted = max(0, cursor.rowcount)
 
-            if not track_id or not played_at:
-                continue
-
-            if is_postgres(target):
-                cursor.execute("""
-                    INSERT INTO spotify_history (
-                        user_email, spotify_track_id, played_at, track_name, artist_name,
-                        album_name, album_image_url, duration_ms, popularity,
-                        preview_url, spotify_url, release_date, created_at
-                    )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
-                    ON CONFLICT (user_email, spotify_track_id, played_at) DO NOTHING;
-                """, (
-                    clean_email, track_id, played_at, track_name, artist_name,
-                    album_name, album_image, duration_ms, popularity,
-                    preview_url, spotify_url, release_date
-                ))
-            else:
-                cursor.execute("""
-                    INSERT OR IGNORE INTO spotify_history (
-                        user_email, spotify_track_id, played_at, track_name, artist_name,
-                        album_name, album_image_url, duration_ms, popularity,
-                        preview_url, spotify_url, release_date, created_at
-                    )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP);
-                """, (
-                    clean_email, track_id, played_at, track_name, artist_name,
-                    album_name, album_image, duration_ms, popularity,
-                    preview_url, spotify_url, release_date
-                ))
-            inserted += 1
+    if inserted > 0:
+        notify_db_mutation()
 
     return inserted
 

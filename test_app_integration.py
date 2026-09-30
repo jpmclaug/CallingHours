@@ -1,7 +1,7 @@
 import os
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 import threading
 import http.server
 import urllib.request
@@ -1873,6 +1873,181 @@ class TestAppIntegration(unittest.TestCase):
             self.assertIn('class="btn-track-remove"', html)
             self.assertIn('onclick="pruneTrack(', html)
             self.assertIn('id="playlist-track-row-', html)
+
+    def test_mobile_navigation_and_ui_enhancements(self):
+        # 1. Verify 4-tab mobile navigation bar and More sheet on /
+        with self.authed_get("/") as resp:
+            self.assertEqual(resp.status, 200)
+            html = resp.read().decode('utf-8')
+            # 4 primary mobile tabs
+            self.assertIn('id="mobile-nav-link-song"', html)
+            self.assertIn('id="mobile-nav-link-artist"', html)
+            self.assertIn('id="mobile-nav-link-library"', html)
+            self.assertIn('id="mobile-nav-link-more"', html)
+            # Active state on /
+            self.assertIn('class="app-bottom-nav-link active" id="mobile-nav-link-song"', html)
+            # More sheet modal & backdrop
+            self.assertIn('id="more-sheet"', html)
+            self.assertIn('id="more-sheet-backdrop"', html)
+            self.assertIn('function openMoreSheet()', html)
+            self.assertIn('function closeMoreSheet()', html)
+            self.assertIn('function toggleMoreSheet()', html)
+            # More sheet launcher items
+            self.assertIn('id="mobile-nav-link-ratings"', html)
+            self.assertIn('id="mobile-nav-link-playlists"', html)
+            self.assertIn('id="mobile-nav-link-spotify"', html)
+            self.assertIn('id="mobile-nav-link-history"', html)
+            self.assertIn('id="mobile-nav-link-prompts"', html)
+            self.assertIn('id="mobile-nav-link-admin"', html)
+
+        # 2. Verify /library route redirects to /ratings and has subnav bar
+        with self.authed_get("/library") as resp:
+            html = resp.read().decode('utf-8')
+            self.assertIn('class="library-subnav-bar"', html)
+            self.assertIn('class="library-subnav-pill active"', html)
+            self.assertIn('Ratings &amp; Discovery', html)
+            self.assertIn('Playlists', html)
+            self.assertIn('Spotify Hub', html)
+            # Bottom nav highlights Library
+            self.assertIn('class="app-bottom-nav-link active" id="mobile-nav-link-library"', html)
+
+        # 3. Verify /playlists has library subnav and highlights Library tab
+        with self.authed_get("/playlists") as resp:
+            self.assertEqual(resp.status, 200)
+            html = resp.read().decode('utf-8')
+            self.assertIn('class="library-subnav-bar"', html)
+            self.assertIn('class="app-bottom-nav-link active" id="mobile-nav-link-library"', html)
+
+        # 4. Verify /spotify has library subnav and highlights Library tab
+        with self.authed_get("/spotify") as resp:
+            self.assertEqual(resp.status, 200)
+            html = resp.read().decode('utf-8')
+            self.assertIn('class="library-subnav-bar"', html)
+            self.assertIn('class="app-bottom-nav-link active" id="mobile-nav-link-library"', html)
+
+        # 5. Verify /history highlights More tab in bottom nav and History in More sheet
+        with self.authed_get("/history") as resp:
+            self.assertEqual(resp.status, 200)
+            html = resp.read().decode('utf-8')
+            self.assertIn('class="app-bottom-nav-link active" id="mobile-nav-link-more"', html)
+            self.assertIn('class="app-bottom-nav-link active" id="mobile-nav-link-history"', html)
+
+        # 6. Verify /prompts highlights More tab in bottom nav and Prompts in More sheet
+        with self.authed_get("/prompts") as resp:
+            self.assertEqual(resp.status, 200)
+            html = resp.read().decode('utf-8')
+            self.assertIn('class="app-bottom-nav-link active" id="mobile-nav-link-more"', html)
+            self.assertIn('class="app-bottom-nav-link active" id="mobile-nav-link-prompts"', html)
+
+        # 7. Verify song page has collapsible track intel and similar songs
+        with self.authed_get("/") as resp:
+            html = resp.read().decode('utf-8')
+            self.assertIn('id="track-intel-collapsible"', html)
+            self.assertIn('id="similar-songs-collapsible"', html)
+            self.assertIn('class="collapsible-section"', html)
+
+    def test_49_prompt_name_storage_and_caching_flow(self):
+        """Verify prompt name is stored, cached results are reused without API calls, and multiple prompts work."""
+        orig_key = calling_hours.GEMINI_API_KEY
+        orig_get_client = calling_hours.get_gemini_client
+        mock_client = MagicMock()
+        mock_interaction = MagicMock()
+        mock_interaction.output_text = "### Gemini Deep Analysis\nPoetic melancholia exploring nostalgia and memory."
+        mock_client.interactions.create.return_value = mock_interaction
+
+        try:
+            calling_hours.GEMINI_API_KEY = "mock-gemini-key"
+            calling_hours.get_gemini_client = lambda: mock_client
+
+            artist = "The Cure"
+            song = "Pictures of You"
+            lyrics = "I've been looking so long at these pictures of you"
+
+            # 1. First /analyze request with Prompt 0 ("Default Analysis")
+            data1 = {
+                "artist": artist,
+                "song": song,
+                "lyrics": lyrics,
+                "prompt_idx": "0",
+                "model_name": "gemini-2.5-flash"
+            }
+            with self.authed_post("/analyze", data1) as resp:
+                self.assertEqual(resp.status, 200)
+                html1 = resp.read().decode('utf-8')
+                self.assertIn("Poetic melancholia", html1)
+                self.assertEqual(mock_client.interactions.create.call_count, 1)
+
+            # Verify saved in database under song_analyses
+            analyses = database.get_song_analyses(artist, song, db_path=self.db_path)
+            self.assertEqual(len(analyses), 1)
+            self.assertEqual(analyses[0]['prompt_name'], "Default Analysis")
+
+            # 2. Second /analyze request for same song & prompt: MUST reuse cached result (no Gemini call)
+            with self.authed_post("/analyze", data1) as resp:
+                self.assertEqual(resp.status, 200)
+                html2 = resp.read().decode('utf-8')
+                self.assertIn("Poetic melancholia", html2)
+                self.assertIn("⚡ Loaded saved", html2)
+                self.assertIn("no AI API call needed", html2)
+                # Call count MUST remain 1!
+                self.assertEqual(mock_client.interactions.create.call_count, 1)
+
+            # 3. Third /analyze request with a DIFFERENT prompt (prompt_idx 1)
+            mock_interaction.output_text = "### Top 5 Themes\n1. Yearning\n2. Time passing\n3. Regret\n4. Photography\n5. Rain"
+            data3 = {
+                "artist": artist,
+                "song": song,
+                "lyrics": lyrics,
+                "prompt_idx": "1",
+                "model_name": "gemini-2.5-flash"
+            }
+            with self.authed_post("/analyze", data3) as resp:
+                self.assertEqual(resp.status, 200)
+                html3 = resp.read().decode('utf-8')
+                self.assertIn("Top 5 Themes", html3)
+                # New prompt was executed: call count must increment to 2
+                self.assertEqual(mock_client.interactions.create.call_count, 2)
+
+            # Both prompt analyses are preserved in database!
+            all_analyses = database.get_song_analyses(artist, song, db_path=self.db_path)
+            self.assertEqual(len(all_analyses), 2)
+            prompt_names = {a['prompt_name'] for a in all_analyses}
+            self.assertIn("Default Analysis", prompt_names)
+
+            # Verify multi-prompt switcher chips and dropdown indicators in rendered page
+            self.assertIn("Saved Prompts (2)", html3)
+            self.assertIn("(Saved ✓)", html3)
+
+            # 4. Verify GET /api/song/analyses endpoint
+            api_url = f"/api/song/analyses?artist={urllib.parse.quote(artist)}&song={urllib.parse.quote(song)}"
+            with self.authed_get(api_url) as resp:
+                self.assertEqual(resp.status, 200)
+                json_data = json.loads(resp.read().decode('utf-8'))
+                self.assertTrue(json_data.get('success'))
+                self.assertEqual(json_data.get('artist'), artist)
+                self.assertEqual(json_data.get('song'), song)
+                self.assertEqual(len(json_data.get('analyses', [])), 2)
+
+            # 5. Fourth /analyze request with force_refresh=1: must bypass cache and re-call Gemini
+            mock_interaction.output_text = "### Fresh Analysis\nRe-generated from scratch."
+            data_force = {
+                "artist": artist,
+                "song": song,
+                "lyrics": lyrics,
+                "prompt_idx": "0",
+                "model_name": "gemini-2.5-flash",
+                "force_refresh": "1"
+            }
+            with self.authed_post("/analyze", data_force) as resp:
+                self.assertEqual(resp.status, 200)
+                html_force = resp.read().decode('utf-8')
+                self.assertIn("Fresh Analysis", html_force)
+                # Call count incremented to 3 because refresh was forced
+                self.assertEqual(mock_client.interactions.create.call_count, 3)
+
+        finally:
+            calling_hours.GEMINI_API_KEY = orig_key
+            calling_hours.get_gemini_client = orig_get_client
 
 
 if __name__ == "__main__":

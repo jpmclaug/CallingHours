@@ -7,6 +7,7 @@ import sys
 import urllib.parse
 import webbrowser
 import threading
+import time
 import re
 import html
 import json
@@ -14,7 +15,7 @@ import secrets
 import difflib
 import gzip
 from datetime import datetime, timezone
-from typing import Any, Optional, Dict, List
+from typing import Any, Optional, Dict, List, Set
 from collections import Counter
 import traceback
 import concurrent.futures
@@ -637,6 +638,153 @@ def build_loading_overlay_html() -> str:
     </div>
     '''
 
+def build_library_subnav(active_subpage: str = 'ratings') -> str:
+    r_act = ' active' if active_subpage in ('ratings', 'rating', 'recommendations', 'discover', 'rankings', 'my_ratings', 'library') else ''
+    p_act = ' active' if active_subpage in ('playlist', 'playlists') else ''
+    s_act = ' active' if active_subpage == 'spotify' else ''
+    return f'''
+    <nav class="library-subnav-bar" aria-label="Library Sections">
+        <a href="/ratings" class="library-subnav-pill{r_act}">
+            <span class="subnav-icon">⭐</span>
+            <span class="subnav-text">Ratings &amp; Discovery</span>
+        </a>
+        <a href="/playlists" class="library-subnav-pill{p_act}">
+            <span class="subnav-icon">🎶</span>
+            <span class="subnav-text">Playlists</span>
+        </a>
+        <a href="/spotify" class="library-subnav-pill{s_act}">
+            <span class="subnav-icon">🎧</span>
+            <span class="subnav-text">Spotify Hub</span>
+        </a>
+    </nav>
+    '''
+
+def build_more_sheet_html(user: Optional[Dict[str, Any]] = None, active_page: str = '') -> str:
+    history_active = ' active' if active_page == 'history' else ''
+    prompts_active = ' active' if active_page == 'prompts' else ''
+    admin_active = ' active' if active_page == 'admin' else ''
+    spotify_active = ' active' if active_page == 'spotify' else ''
+    playlists_active = ' active' if active_page in ('playlist', 'playlists') else ''
+    ratings_active = ' active' if active_page in ('ratings', 'rating', 'recommendations', 'library') else ''
+
+    admin_sheet_link = ''
+    user_card_html = ''
+    if user:
+        display_name = html_escape(user.get('name') or user.get('email', '').split('@')[0])
+        email = html_escape(user.get('email', ''))
+        picture = user.get('picture')
+        if picture and str(picture).strip():
+            avatar_html = f'<img src="{html_escape(picture)}" class="more-sheet-avatar" alt="Avatar" referrerpolicy="no-referrer">'
+        else:
+            initial = (display_name[0] if display_name else 'U').upper()
+            avatar_html = f'<div class="more-sheet-avatar-initial">{html_escape(initial)}</div>'
+        admin_pill = '<span class="badge-role-admin" style="font-size: 0.68rem; padding: 1px 6px;">Admin</span>' if user.get('is_admin') else ''
+        user_card_html = f'''
+        <div class="more-sheet-user-card">
+            {avatar_html}
+            <div class="more-sheet-user-info">
+                <div class="more-sheet-user-name">{display_name} {admin_pill}</div>
+                <div class="more-sheet-user-email">{email}</div>
+            </div>
+        </div>
+        '''
+        if user.get('is_admin'):
+            admin_sheet_link = f'''
+            <a href="/admin" class="app-bottom-nav-link{admin_active}" id="mobile-nav-link-admin">
+                <span class="nav-icon">🛡️</span>
+                <span class="nav-text">Admin Panel</span>
+            </a>
+            '''
+
+    return f'''
+    <!-- More Sheet Backdrop -->
+    <div id="more-sheet-backdrop" class="more-sheet-backdrop" onclick="closeMoreSheet()" aria-hidden="true"></div>
+
+    <!-- More Sheet Bottom Modal -->
+    <div id="more-sheet" class="more-sheet" role="dialog" aria-modal="true" aria-labelledby="more-sheet-title">
+        <div class="more-sheet-handle"></div>
+        <div class="more-sheet-header">
+            <h3 id="more-sheet-title" class="more-sheet-title">Menu &amp; Navigation</h3>
+            <button type="button" class="more-sheet-close-btn" onclick="closeMoreSheet()" aria-label="Close menu">&times;</button>
+        </div>
+
+        {user_card_html}
+
+        <div class="more-sheet-section-title">Music &amp; Library</div>
+        <div class="more-sheet-grid">
+            <a href="/ratings" class="app-bottom-nav-link{ratings_active}" id="mobile-nav-link-ratings">
+                <span class="nav-icon">⭐</span>
+                <span class="nav-text">Band Ratings</span>
+            </a>
+            <a href="/playlists" class="app-bottom-nav-link{playlists_active}" id="mobile-nav-link-playlists">
+                <span class="nav-icon">🎶</span>
+                <span class="nav-text">Playlists</span>
+            </a>
+            <a href="/spotify" class="app-bottom-nav-link{spotify_active}" id="mobile-nav-link-spotify">
+                <span class="nav-icon">🎧</span>
+                <span class="nav-text">Spotify Hub</span>
+            </a>
+            <a href="/artist" class="app-bottom-nav-link" id="mobile-nav-link-sheet-artist">
+                <span class="nav-icon">👤</span>
+                <span class="nav-text">Artists</span>
+            </a>
+        </div>
+
+        <div class="more-sheet-section-title">Tools &amp; Settings</div>
+        <div class="more-sheet-grid">
+            <a href="/history" class="app-bottom-nav-link{history_active}" id="mobile-nav-link-history">
+                <span class="nav-icon">📜</span>
+                <span class="nav-text">Search History</span>
+            </a>
+            <a href="/prompts" class="app-bottom-nav-link{prompts_active}" id="mobile-nav-link-prompts">
+                <span class="nav-icon">⚙️</span>
+                <span class="nav-text">Manage Prompts</span>
+            </a>
+            {admin_sheet_link}
+            <a href="/logout" class="app-bottom-nav-link more-sheet-logout" title="Sign out of Calling Hours">
+                <span class="nav-icon">🚪</span>
+                <span class="nav-text">Sign Out</span>
+            </a>
+        </div>
+    </div>
+    <script>
+        function openMoreSheet() {{
+            const sheet = document.getElementById('more-sheet');
+            const backdrop = document.getElementById('more-sheet-backdrop');
+            if (sheet && backdrop) {{
+                backdrop.style.display = 'block';
+                void sheet.offsetWidth;
+                sheet.classList.add('is-open');
+                document.body.style.overflow = 'hidden';
+            }}
+        }}
+        function closeMoreSheet() {{
+            const sheet = document.getElementById('more-sheet');
+            const backdrop = document.getElementById('more-sheet-backdrop');
+            if (sheet && backdrop) {{
+                sheet.classList.remove('is-open');
+                setTimeout(() => {{
+                    if (!sheet.classList.contains('is-open')) {{
+                        backdrop.style.display = 'none';
+                    }}
+                }}, 280);
+                document.body.style.overflow = '';
+            }}
+        }}
+        function toggleMoreSheet() {{
+            const sheet = document.getElementById('more-sheet');
+            if (sheet && sheet.classList.contains('is-open')) {{
+                closeMoreSheet();
+            }} else {{
+                openMoreSheet();
+            }}
+        }}
+        document.addEventListener('keydown', function(e) {{
+            if (e.key === 'Escape') closeMoreSheet();
+        }});
+    </script>
+    '''
+
 def build_app_header(active_page: str = 'song', user: Optional[Dict[str, Any]] = None) -> str:
     song_active = ' active' if active_page == 'song' else ''
     artist_active = ' active' if active_page == 'artist' else ''
@@ -647,19 +795,16 @@ def build_app_header(active_page: str = 'song', user: Optional[Dict[str, Any]] =
     prompts_active = ' active' if active_page == 'prompts' else ''
     admin_active = ' active' if active_page == 'admin' else ''
 
+    # Unified Library active state for mobile 4-tab bar
+    library_active = ' active' if active_page in ('library', 'ratings', 'rating', 'recommendations', 'playlist', 'playlists', 'spotify') else ''
+    more_active = ' active' if active_page in ('history', 'prompts', 'admin') else ''
+
     admin_nav_link = ''
-    admin_bottom_nav_link = ''
     user_menu_html = ''
     if user:
         if user.get('is_admin'):
             admin_nav_link = f'''
                 <a href="/admin" class="app-nav-link{admin_active}" id="nav-link-admin">
-                    <span class="nav-icon">🛡️</span>
-                    <span class="nav-text">Admin</span>
-                </a>
-            '''
-            admin_bottom_nav_link = f'''
-                <a href="/admin" class="app-bottom-nav-link{admin_active}" id="mobile-nav-link-admin">
                     <span class="nav-icon">🛡️</span>
                     <span class="nav-text">Admin</span>
                 </a>
@@ -678,7 +823,7 @@ def build_app_header(active_page: str = 'song', user: Optional[Dict[str, Any]] =
 
         user_menu_html = f'''
             <div class="app-user-bar">
-                <div class="user-profile-badge" title="{email}">
+                <div class="user-profile-badge" title="{email}" onclick="openMoreSheet()" style="cursor: pointer;">
                     {avatar_html}
                     <span class="user-display-name">{display_name}</span>
                     {admin_pill}
@@ -686,6 +831,10 @@ def build_app_header(active_page: str = 'song', user: Optional[Dict[str, Any]] =
                 <a href="/logout" class="btn-logout" title="Sign out">Sign Out</a>
             </div>
         '''
+
+    library_subnav_html = ''
+    if active_page in ('library', 'ratings', 'rating', 'recommendations', 'playlist', 'playlists', 'spotify'):
+        library_subnav_html = build_library_subnav(active_page)
 
     return f'''
     <header class="app-header">
@@ -728,6 +877,7 @@ def build_app_header(active_page: str = 'song', user: Optional[Dict[str, Any]] =
                     <span class="nav-icon">🎶</span>
                     <span class="nav-text">Playlists</span>
                 </a>
+                <span class="app-nav-divider" aria-hidden="true"></span>
                 <a href="/history" class="app-nav-link{history_active}" id="nav-link-history">
                     <span class="nav-icon">📜</span>
                     <span class="nav-text"><span class="desktop-only-text">Search </span>History</span>
@@ -739,6 +889,7 @@ def build_app_header(active_page: str = 'song', user: Optional[Dict[str, Any]] =
                 {admin_nav_link}
             </nav>
         </div>
+        {library_subnav_html}
     </header>
     <nav class="app-bottom-nav" aria-label="Mobile Navigation">
         <a href="/" class="app-bottom-nav-link{song_active}" id="mobile-nav-link-song">
@@ -749,28 +900,16 @@ def build_app_header(active_page: str = 'song', user: Optional[Dict[str, Any]] =
             <span class="nav-icon">👤</span>
             <span class="nav-text">Artists</span>
         </a>
-        <a href="/ratings" class="app-bottom-nav-link{ratings_active}" id="mobile-nav-link-ratings">
-            <span class="nav-icon">⭐</span>
-            <span class="nav-text">Ratings</span>
-        </a>
-        <a href="/spotify" class="app-bottom-nav-link{spotify_active}" id="mobile-nav-link-spotify">
-            <span class="nav-icon">🎧</span>
-            <span class="nav-text">Spotify</span>
-        </a>
-        <a href="/playlists" class="app-bottom-nav-link{playlists_active}" id="mobile-nav-link-playlists">
+        <a href="/library" class="app-bottom-nav-link{library_active}" id="mobile-nav-link-library">
             <span class="nav-icon">🎶</span>
-            <span class="nav-text">Playlists</span>
+            <span class="nav-text">Library</span>
         </a>
-        <a href="/history" class="app-bottom-nav-link{history_active}" id="mobile-nav-link-history">
-            <span class="nav-icon">📜</span>
-            <span class="nav-text">History</span>
-        </a>
-        <a href="/prompts" class="app-bottom-nav-link{prompts_active}" id="mobile-nav-link-prompts">
-            <span class="nav-icon">⚙️</span>
-            <span class="nav-text">Prompts</span>
-        </a>
-        {admin_bottom_nav_link}
+        <button type="button" class="app-bottom-nav-link{more_active}" id="mobile-nav-link-more" onclick="toggleMoreSheet()" aria-label="More navigation options">
+            <span class="nav-icon">•••</span>
+            <span class="nav-text">More</span>
+        </button>
     </nav>
+    {build_more_sheet_html(user=user, active_page=active_page)}
     {build_loading_overlay_html()}
     '''
 
@@ -1718,6 +1857,336 @@ PAGE_HTML = r'''<!DOCTYPE html>
             color: #050A14;
             border-color: #A5C8FF;
             box-shadow: 0 0 14px rgba(165, 200, 255, 0.35);
+        }
+
+        .app-nav-divider {
+            width: 1px;
+            height: 20px;
+            background: rgba(165, 200, 255, 0.2);
+            margin: 0 4px;
+            display: inline-block;
+        }
+
+        /* Library Subnav Bar */
+        .library-subnav-bar {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            padding: 10px 16px;
+            background: rgba(5, 12, 28, 0.75);
+            border-top: 1px solid rgba(165, 200, 255, 0.12);
+            width: 100%;
+            box-sizing: border-box;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        .library-subnav-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            padding: 7px 16px;
+            border-radius: 18px;
+            color: #A5C8FF;
+            text-decoration: none;
+            font-size: 0.82rem;
+            font-weight: 700;
+            letter-spacing: 0.03em;
+            background: rgba(165, 200, 255, 0.06);
+            border: 1px solid rgba(165, 200, 255, 0.18);
+            transition: all 0.2s ease;
+            white-space: nowrap;
+        }
+        .library-subnav-pill:hover {
+            background: rgba(165, 200, 255, 0.16);
+            color: #FFFFFF;
+            border-color: rgba(165, 200, 255, 0.35);
+        }
+        .library-subnav-pill.active {
+            background: #A5C8FF;
+            color: #050A14;
+            border-color: #A5C8FF;
+            box-shadow: 0 0 12px rgba(165, 200, 255, 0.35);
+        }
+
+        /* More Sheet Modal & Backdrop */
+        .more-sheet-backdrop {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(3, 7, 18, 0.75);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            z-index: 9994;
+            display: none;
+        }
+        .more-sheet {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            width: 100%;
+            max-width: 580px;
+            margin: 0 auto;
+            background: rgba(8, 18, 38, 0.98);
+            border-top: 1px solid rgba(165, 200, 255, 0.3);
+            border-radius: 20px 20px 0 0;
+            box-shadow: 0 -8px 36px rgba(0, 0, 0, 0.85), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+            z-index: 9996;
+            padding: 12px 18px max(24px, env(safe-area-inset-bottom, 16px)) 18px;
+            box-sizing: border-box;
+            max-height: 85vh;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+            transform: translateY(105%);
+            transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .more-sheet.is-open {
+            transform: translateY(0);
+        }
+        .more-sheet-handle {
+            width: 44px;
+            height: 4px;
+            border-radius: 2px;
+            background: rgba(165, 200, 255, 0.35);
+            margin: 0 auto 12px auto;
+        }
+        .more-sheet-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 14px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid rgba(165, 200, 255, 0.12);
+        }
+        .more-sheet-title {
+            font-family: 'Montserrat', sans-serif;
+            font-weight: 800;
+            font-size: 1.05rem;
+            color: #FFFFFF;
+            margin: 0;
+            letter-spacing: 0.04em;
+        }
+        .more-sheet-close-btn {
+            background: rgba(165, 200, 255, 0.12);
+            border: 1px solid rgba(165, 200, 255, 0.2);
+            color: #A5C8FF;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            font-size: 1.25rem;
+            line-height: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            padding: 0;
+            transition: all 0.15s ease;
+        }
+        .more-sheet-close-btn:hover {
+            background: rgba(165, 200, 255, 0.25);
+            color: #FFFFFF;
+        }
+        .more-sheet-user-card {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: rgba(165, 200, 255, 0.08);
+            border: 1px solid rgba(165, 200, 255, 0.2);
+            border-radius: 12px;
+            padding: 10px 14px;
+            margin-bottom: 16px;
+        }
+        .more-sheet-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 1px solid rgba(165, 200, 255, 0.4);
+            flex-shrink: 0;
+        }
+        .more-sheet-avatar-initial {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: #3B82F6;
+            color: #FFFFFF;
+            font-weight: 800;
+            font-size: 1.1rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+        .more-sheet-user-info {
+            min-width: 0;
+        }
+        .more-sheet-user-name {
+            font-weight: 700;
+            color: #FFFFFF;
+            font-size: 0.95rem;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .more-sheet-user-email {
+            font-size: 0.78rem;
+            color: rgba(225, 232, 240, 0.6);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .more-sheet-section-title {
+            font-size: 0.72rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: #A5C8FF;
+            margin: 14px 0 8px 4px;
+        }
+        .more-sheet-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+        }
+        .more-sheet .app-bottom-nav-link, .more-sheet-item {
+            display: flex;
+            align-items: center;
+            flex-direction: row;
+            justify-content: flex-start;
+            gap: 10px;
+            padding: 12px 14px;
+            border-radius: 12px;
+            background: rgba(14, 30, 60, 0.7);
+            border: 1px solid rgba(165, 200, 255, 0.15);
+            color: #E1E8F0;
+            text-decoration: none;
+            font-size: 0.86rem;
+            font-weight: 600;
+            min-height: auto;
+            transition: all 0.18s ease;
+            touch-action: manipulation;
+        }
+        .more-sheet .app-bottom-nav-link:hover, .more-sheet .app-bottom-nav-link:active,
+        .more-sheet-item:hover, .more-sheet-item:active {
+            background: rgba(165, 200, 255, 0.18);
+            border-color: rgba(165, 200, 255, 0.4);
+            color: #FFFFFF;
+        }
+        .more-sheet .app-bottom-nav-link.active, .more-sheet-item.active {
+            background: rgba(165, 200, 255, 0.24);
+            border-color: #A5C8FF;
+            color: #FFFFFF;
+            font-weight: 700;
+        }
+        .more-sheet-logout {
+            grid-column: span 2;
+            border-color: rgba(240, 140, 90, 0.35);
+            color: #f08c5a;
+            justify-content: center;
+            background: rgba(240, 140, 90, 0.08);
+            margin-top: 4px;
+        }
+        .more-sheet-logout:hover, .more-sheet-logout:active {
+            background: rgba(240, 140, 90, 0.2);
+            color: #ff9d6e;
+            border-color: rgba(240, 140, 90, 0.6);
+        }
+
+        /* Collapsible Sections & Decluttered Analysis */
+        .collapsible-section {
+            background: rgba(11, 30, 63, 0.55);
+            border: 1px solid rgba(165, 200, 255, 0.2);
+            border-radius: 14px;
+            margin-top: 18px;
+            overflow: hidden;
+            transition: all 0.25s ease;
+        }
+        .collapsible-section[open] {
+            background: rgba(11, 30, 63, 0.85);
+            border-color: rgba(165, 200, 255, 0.35);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+        }
+        .collapsible-summary {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 18px;
+            cursor: pointer;
+            user-select: none;
+            list-style: none;
+            transition: background 0.2s ease;
+        }
+        .collapsible-summary::-webkit-details-marker {
+            display: none;
+        }
+        .collapsible-summary:hover {
+            background: rgba(165, 200, 255, 0.08);
+        }
+        .collapsible-summary-content {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            min-width: 0;
+        }
+        .collapsible-icon {
+            font-size: 1.25rem;
+            flex-shrink: 0;
+        }
+        .collapsible-text-group {
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+        }
+        .collapsible-title {
+            font-family: 'Montserrat', sans-serif;
+            font-weight: 700;
+            font-size: 0.95rem;
+            color: #FFFFFF;
+        }
+        .collapsible-subtitle {
+            font-size: 0.78rem;
+            color: rgba(165, 200, 255, 0.75);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin-top: 2px;
+        }
+        .collapsible-chevron {
+            color: #A5C8FF;
+            font-size: 0.9rem;
+            transition: transform 0.25s ease;
+            margin-left: 8px;
+            flex-shrink: 0;
+        }
+        .collapsible-section[open] .collapsible-chevron {
+            transform: rotate(180deg);
+        }
+        .collapsible-body {
+            padding: 16px 18px;
+            border-top: 1px solid rgba(165, 200, 255, 0.12);
+        }
+        .analysis-rating-strip {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            background: rgba(14, 38, 80, 0.4);
+            border: 1px solid rgba(165, 200, 255, 0.18);
+            border-radius: 12px;
+            padding: 8px 14px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+        }
+        .analysis-rating-label {
+            font-size: 0.82rem;
+            font-weight: 700;
+            color: #A5C8FF;
+            white-space: nowrap;
         }
 
         /* User Profile & Navigation */
@@ -2952,6 +3421,15 @@ PAGE_HTML = r'''<!DOCTYPE html>
                 flex: 1 1 auto;
                 max-width: 220px;
                 margin: 0 4px;
+                transition: all 0.22s ease;
+            }
+
+            .global-search-container:focus-within {
+                position: absolute;
+                left: 10px;
+                right: 10px;
+                max-width: calc(100% - 20px) !important;
+                z-index: 9999;
             }
 
             .app-brand {
@@ -2984,10 +3462,7 @@ PAGE_HTML = r'''<!DOCTYPE html>
             }
 
             .btn-logout {
-                padding: 4px 8px;
-                font-size: 0.75rem;
-                white-space: nowrap;
-                flex-shrink: 0;
+                display: none !important; /* Prominently available in More Sheet on mobile */
             }
 
             /* Hide desktop navigation in top header on mobile */
@@ -3012,8 +3487,8 @@ PAGE_HTML = r'''<!DOCTYPE html>
                 display: flex !important;
                 align-items: center;
                 justify-content: space-around;
-                gap: 2px;
-                padding: 6px 8px max(8px, env(safe-area-inset-bottom, 0px)) 8px;
+                gap: 4px;
+                padding: 6px 12px max(8px, env(safe-area-inset-bottom, 0px)) 12px;
                 box-sizing: border-box;
                 overflow: hidden;
             }
@@ -3028,30 +3503,31 @@ PAGE_HTML = r'''<!DOCTYPE html>
                 flex-direction: column;
                 align-items: center;
                 justify-content: center;
-                gap: 2px;
-                padding: 5px 2px;
-                border-radius: 10px;
+                gap: 3px;
+                padding: 6px 4px;
+                border-radius: 12px;
                 color: #A5C8FF;
                 background: transparent;
                 border: 1px solid transparent;
                 text-decoration: none;
-                font-size: 0.66rem;
+                font-size: 0.74rem;
                 letter-spacing: 0.02em;
                 min-height: 48px;
                 touch-action: manipulation;
                 -webkit-tap-highlight-color: transparent;
                 transition: all 0.15s ease;
+                cursor: pointer;
             }
 
             .app-bottom-nav-link .nav-icon {
-                font-size: 1.25rem;
+                font-size: 1.35rem;
                 line-height: 1;
                 display: block;
                 transition: transform 0.15s ease;
             }
 
             .app-bottom-nav-link .nav-text {
-                font-size: 0.65rem;
+                font-size: 0.72rem;
                 font-weight: 700;
                 line-height: 1.1;
                 text-align: center;
@@ -3272,12 +3748,13 @@ PAGE_HTML = r'''<!DOCTYPE html>
             }
 
             .app-bottom-nav {
-                gap: 2px;
+                gap: 4px;
+                padding: 6px 8px max(8px, env(safe-area-inset-bottom, 0px)) 8px;
             }
 
             .app-bottom-nav-link {
-                padding: 5px 2px;
-                font-size: 0.62rem;
+                padding: 5px 3px;
+                font-size: 0.70rem;
                 gap: 2px;
             }
 
@@ -3886,10 +4363,10 @@ PAGE_HTML = r'''<!DOCTYPE html>
                 </div>
             </div>
             
-            {theaudiodb_widget}
-            {lastfm_widget}
+            <!-- Compact Inline Band Rating Strip -->
             {band_rating_widget}
 
+            <!-- 1. PRIMARY: Gemini Analysis Form / Result Area -->
             <div class="analysis-form" style="{analysis_form_display}">
                 <form id="analyze-form" method="post" action="/analyze" onsubmit="return startAnalysisSubmit(event);">
                     <input type="hidden" name="artist" value="{artist_value}">
@@ -3905,6 +4382,12 @@ PAGE_HTML = r'''<!DOCTYPE html>
                     <select name="prompt_idx" id="prompt_idx">
                         {prompt_options}
                     </select>
+                    <div id="saved-prompt-hint" style="display: none; margin-top: 8px; font-size: 0.82rem; color: #5af0a5; background: rgba(90, 240, 165, 0.1); border: 1px solid rgba(90, 240, 165, 0.25); border-radius: 6px; padding: 6px 10px;"></div>
+                    
+                    <div style="margin-top: 10px; display: flex; align-items: center; gap: 8px;">
+                        <input type="checkbox" name="force_refresh" id="force_refresh_analysis" value="1" style="width: auto; margin: 0; cursor: pointer;">
+                        <label for="force_refresh_analysis" style="margin: 0; font-size: 0.85rem; color: #A5C8FF; cursor: pointer; font-weight: normal;">Force re-generate with AI (bypass saved results)</label>
+                    </div>
                     
                     <button type="submit" id="btn-perform-analysis" style="margin-top: 16px;">Perform Analysis</button>
 
@@ -3915,15 +4398,50 @@ PAGE_HTML = r'''<!DOCTYPE html>
             </div>
             
             <div id="analysis-result-wrapper" style="{analysis_result_display}">
+                {analysis_meta_badge}
                 <div id="analysis-formatted" class="analysis-container"></div>
                 <pre id="analysis-raw" class="analysis-raw-box" style="display: none;">{analysis_result}</pre>
-                {similar_songs_widget}
                 
                 <div style="margin-top: 20px; text-align: center; display: flex; justify-content: center; gap: 10px; flex-wrap: wrap;">
-                    <button type="button" onclick="showAnalysisForm()" style="background: transparent; border: 1px solid rgba(165, 200, 255, 0.4); color: #A5C8FF; padding: 10px 18px; font-size: 0.9rem; cursor: pointer; border-radius: 6px; font-family: inherit; width: auto;">Perform Another Analysis</button>
+                    <button type="button" onclick="showAnalysisForm()" style="background: transparent; border: 1px solid rgba(165, 200, 255, 0.4); color: #A5C8FF; padding: 10px 18px; font-size: 0.9rem; cursor: pointer; border-radius: 6px; font-family: inherit; width: auto;">Change Prompt / Re-Analyze</button>
                     <button type="button" class="flow-btn-back" onclick="switchWorkspaceTab('lyrics')" style="background: transparent; border: 1px solid rgba(165, 200, 255, 0.4); color: #A5C8FF; padding: 10px 18px; font-size: 0.9rem; cursor: pointer; border-radius: 6px; font-family: inherit; width: auto;">&larr; View Lyrics</button>
                 </div>
             </div>
+
+            <!-- 2. SECONDARY: Collapsible Track Intelligence & Last.fm -->
+            <details class="collapsible-section" id="track-intel-collapsible" style="{track_intel_display}">
+                <summary class="collapsible-summary">
+                    <div class="collapsible-summary-content">
+                        <span class="collapsible-icon">🎵</span>
+                        <div class="collapsible-text-group">
+                            <span class="collapsible-title">Track Intelligence &amp; Tags</span>
+                            <span class="collapsible-subtitle">{track_intel_preview}</span>
+                        </div>
+                    </div>
+                    <span class="collapsible-chevron">▾</span>
+                </summary>
+                <div class="collapsible-body">
+                    {theaudiodb_widget}
+                    {lastfm_widget}
+                </div>
+            </details>
+
+            <!-- 3. SECONDARY: Collapsible Similar Songs in Library -->
+            <details class="collapsible-section" id="similar-songs-collapsible" style="{similar_songs_display}">
+                <summary class="collapsible-summary">
+                    <div class="collapsible-summary-content">
+                        <span class="collapsible-icon">✨</span>
+                        <div class="collapsible-text-group">
+                            <span class="collapsible-title">Discover Similar Songs in Library</span>
+                            <span class="collapsible-subtitle">Thematic &amp; acoustic library matches</span>
+                        </div>
+                    </div>
+                    <span class="collapsible-chevron">▾</span>
+                </summary>
+                <div class="collapsible-body">
+                    {similar_songs_widget}
+                </div>
+            </details>
         </div>
     </div>
 
@@ -4200,6 +4718,84 @@ PAGE_HTML = r'''<!DOCTYPE html>
             if (form) form.style.display = 'block';
             if (resultWrapper) resultWrapper.style.display = 'none';
             if (controls) controls.style.display = 'none';
+            const selectEl = document.getElementById('prompt_idx');
+            if (selectEl) onPromptSelectChange(selectEl.value);
+        }
+
+        function hideAnalysisForm() {
+            const form = document.querySelector('.analysis-form');
+            const resultWrapper = document.getElementById('analysis-result-wrapper');
+            const controls = document.getElementById('analysis-controls');
+            if (form) form.style.display = 'none';
+            if (resultWrapper) resultWrapper.style.display = 'block';
+            if (controls) controls.style.display = 'flex';
+        }
+
+        function reanalyzeWithForce() {
+            showAnalysisForm();
+            const chk = document.getElementById('force_refresh_analysis');
+            if (chk) chk.checked = true;
+        }
+
+        function switchSavedPromptAnalysis(promptName) {
+            if (!window.SAVED_ANALYSES || !window.SAVED_ANALYSES[promptName]) return;
+            const rec = window.SAVED_ANALYSES[promptName];
+            const rawEl = document.getElementById('analysis-raw');
+            if (rawEl) {
+                rawEl.textContent = rec.analysis || '';
+            }
+            const activePromptLabel = document.getElementById('active-prompt-label');
+            if (activePromptLabel) {
+                activePromptLabel.textContent = rec.prompt_name || promptName;
+            }
+            const activeModelLabel = document.getElementById('active-model-label');
+            if (activeModelLabel && rec.model_name) {
+                activeModelLabel.textContent = rec.model_name;
+            }
+            document.querySelectorAll('.saved-prompt-chip').forEach(chip => {
+                if (chip.getAttribute('data-prompt') === promptName) {
+                    chip.style.background = 'rgba(165, 200, 255, 0.35)';
+                    chip.style.borderColor = '#A5C8FF';
+                    chip.style.color = '#FFFFFF';
+                    chip.classList.add('active');
+                } else {
+                    chip.style.background = 'rgba(11, 30, 63, 0.6)';
+                    chip.style.borderColor = 'rgba(165, 200, 255, 0.2)';
+                    chip.style.color = '#A5C8FF';
+                    chip.classList.remove('active');
+                }
+            });
+            const selectEl = document.getElementById('prompt_idx');
+            if (selectEl) {
+                for (let i = 0; i < selectEl.options.length; i++) {
+                    const optText = selectEl.options[i].text.replace(/\s*\(Saved\s*✓\)$/i, '').trim();
+                    if (optText.toLowerCase() === promptName.toLowerCase()) {
+                        selectEl.selectedIndex = i;
+                        break;
+                    }
+                }
+            }
+            renderAnalysisCards();
+        }
+
+        function onPromptSelectChange(idx) {
+            const selectEl = document.getElementById('prompt_idx');
+            if (!selectEl) return;
+            const selectedText = selectEl.options[selectEl.selectedIndex].text;
+            const cleanName = selectedText.replace(/\s*\(Saved\s*✓\)$/i, '').trim();
+            const chk = document.getElementById('force_refresh_analysis');
+            if (chk) {
+                chk.checked = false;
+            }
+            const hintEl = document.getElementById('saved-prompt-hint');
+            if (hintEl) {
+                if (window.SAVED_ANALYSES && window.SAVED_ANALYSES[cleanName]) {
+                    hintEl.innerHTML = '⚡ <strong>Saved analysis exists for this prompt!</strong> Submitting will load it instantly without an AI call. <button type="button" onclick="switchSavedPromptAnalysis(\'' + cleanName.replace(/'/g, "\\'") + '\'); hideAnalysisForm();" style="background: none; border: none; padding: 0; color: #A8D2FF; text-decoration: underline; font-size: inherit; cursor: pointer; font-family: inherit; margin-left: 6px;">[View Now]</button>';
+                    hintEl.style.display = 'block';
+                } else {
+                    hintEl.style.display = 'none';
+                }
+            }
         }
 
         function quickLoadTrack(artist, track) {
@@ -4653,6 +5249,13 @@ PAGE_HTML = r'''<!DOCTYPE html>
             }
             renderAnalysisCards();
             updateWorkspaceBadges();
+            const promptSelectEl = document.getElementById('prompt_idx');
+            if (promptSelectEl) {
+                promptSelectEl.addEventListener('change', function() {
+                    onPromptSelectChange(this.value);
+                });
+                onPromptSelectChange(promptSelectEl.value);
+            }
 
             // Auto-select workspace tab based on content
             const analysisWrapper = document.getElementById('analysis-result-wrapper');
@@ -9719,6 +10322,59 @@ ADMIN_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
 </body>
 </html>'''
 
+# ============================================================================
+# Spotify Auto-Increment Sync State & Background Worker
+# ============================================================================
+_last_spotify_sync: Dict[str, float] = {}
+_syncing_spotify_users: Set[str] = set()
+_spotify_sync_lock = threading.Lock()
+
+def trigger_auto_spotify_sync(user_email: str, force: bool = False, min_interval_seconds: int = 60) -> bool:
+    """
+    Asynchronously fetch and persist the last 50 streamed songs from Spotify on app load.
+    Runs non-blocking in a background daemon thread to keep page load instantaneous (<1ms).
+    Deduplicates listens at the database level and enforces a cooldown to prevent API hammering.
+    """
+    clean_email = (user_email or '').lower().strip()
+    if not clean_email:
+        return False
+
+    now = time.time()
+    with _spotify_sync_lock:
+        if clean_email in _syncing_spotify_users:
+            return False
+        last_sync = _last_spotify_sync.get(clean_email, 0.0)
+        if not force and (now - last_sync) < min_interval_seconds:
+            return False
+        _syncing_spotify_users.add(clean_email)
+
+    def _sync_worker():
+        try:
+            token_rec = database.get_spotify_token(clean_email)
+            if not token_rec:
+                return
+
+            access_token = spotify.get_valid_access_token(clean_email)
+            if not access_token:
+                return
+
+            tracks = spotify.fetch_recently_played(access_token, limit=50)
+            if tracks:
+                inserted = database.save_spotify_history_items(clean_email, tracks)
+                if inserted > 0:
+                    print(f"[Spotify Auto-Sync] Added {inserted} new stream(s) for {clean_email}")
+        except Exception as exc:
+            print(f"[Spotify Auto-Sync] Sync notice for {clean_email}: {exc}")
+        finally:
+            with _spotify_sync_lock:
+                _last_spotify_sync[clean_email] = time.time()
+                _syncing_spotify_users.discard(clean_email)
+
+    thread = threading.Thread(target=_sync_worker, daemon=True, name=f"spotify-sync-{clean_email}")
+    thread.start()
+    return True
+
+
 class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
     def is_request_secure(self) -> bool:
         proto = self.headers.get('X-Forwarded-Proto', '').lower()
@@ -10176,6 +10832,10 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             return
 
+        # Trigger auto-sync of last 50 songs streamed from Spotify on app/page load
+        if not parsed.path.startswith('/api/') and parsed.path not in ('/logout', '/callback', '/authorize'):
+            trigger_auto_spotify_sync(current_user.get('email', ''))
+
         # 5. Admin routes
         if parsed.path == '/admin':
             if not current_user.get('is_admin'):
@@ -10341,6 +11001,28 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(json.dumps({'playlists': playlists}).encode('utf-8'))
             return
 
+        if parsed.path in ('/library', '/library/'):
+            params = urllib.parse.parse_qs(parsed.query)
+            tab = params.get('tab', ['ratings'])[0].strip().lower()
+            if tab in ('playlist', 'playlists'):
+                sub_query = parsed.query
+                self.send_response(302)
+                self.send_header('Location', f'/playlists?{sub_query}' if sub_query else '/playlists')
+                self.end_headers()
+                return
+            elif tab == 'spotify':
+                sub_query = parsed.query
+                self.send_response(302)
+                self.send_header('Location', f'/spotify?{sub_query}' if sub_query else '/spotify')
+                self.end_headers()
+                return
+            else:
+                sub_query = parsed.query
+                self.send_response(302)
+                self.send_header('Location', f'/ratings?{sub_query}' if sub_query else '/ratings')
+                self.end_headers()
+                return
+
         if parsed.path in ('/ratings', '/band-rankings', '/recommendations', '/band-recommendations'):
             default_tab = 'recommendations' if parsed.path in ('/recommendations', '/band-recommendations') else 'discover'
             self.render_ratings_page(parsed.query, default_tab=default_tab)
@@ -10427,6 +11109,13 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             self.send_header('Content-Type', 'application/json; charset=utf-8')
             self.end_headers()
             self.wfile.write(json.dumps({'songs': songs}).encode('utf-8'))
+            return
+        if parsed.path == '/api/song/analyses':
+            params = urllib.parse.parse_qs(parsed.query)
+            artist_q = params.get('artist', [''])[0].strip()
+            song_q = params.get('song', [''])[0].strip()
+            analyses = database.get_song_analyses(artist_q, song_q) if (artist_q and song_q) else []
+            self._send_json({'success': True, 'artist': artist_q, 'song': song_q, 'analyses': analyses})
             return
 
         if parsed.path == '/api/search':
@@ -10715,27 +11404,33 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
 
                 # Auto-analyze if requested and lyrics exist but no analysis yet
                 did_analyze = False
-                if auto_analyze and not analysis and lyrics and GEMINI_API_KEY:
-                    try:
-                        prompts = load_prompts()
-                        p_template = prompts[0]['text'] if prompts else "Analyze lyrics:\n{lyrics_text}"
-                        p_text = p_template.replace('{song}', song).replace('{artist}', artist).replace('{lyrics_text}', html.unescape(lyrics))
-                        client = get_gemini_client()
-                        inter = client.interactions.create(model=model_name, input=p_text)
-                        analysis = inter.output_text or ''
-                        database.save_analysis(
-                            artist=artist,
-                            song=song,
-                            analysis=analysis,
-                            model_name=model_name,
-                            prompt_name="Default Analysis",
-                            lyrics=lyrics,
-                            track_tags=track_tags,
-                            theaudiodb_data=theaudiodb_data
-                        )
-                        did_analyze = True
-                    except Exception as aae:
-                        print(f"Auto-analyze error in load_id: {aae}")
+                if auto_analyze and not analysis and lyrics:
+                    cached_auto = database.get_analysis(artist, song, prompt_name="Default Analysis")
+                    if cached_auto and cached_auto.get('analysis') and str(cached_auto['analysis']).strip():
+                        analysis = cached_auto['analysis']
+                        model_name = cached_auto.get('model_name') or model_name
+                    elif GEMINI_API_KEY:
+                        try:
+                            prompts = load_prompts()
+                            p_template = prompts[0]['text'] if prompts else "Analyze lyrics:\n{lyrics_text}"
+                            p_text = p_template.replace('{song}', song).replace('{artist}', artist).replace('{lyrics_text}', html.unescape(lyrics))
+                            client = get_gemini_client()
+                            inter = client.interactions.create(model=model_name, input=p_text)
+                            analysis = inter.output_text or ''
+                            database.save_analysis(
+                                artist=artist,
+                                song=song,
+                                analysis=analysis,
+                                model_name=model_name,
+                                prompt_name="Default Analysis",
+                                prompt_text=p_template,
+                                lyrics=lyrics,
+                                track_tags=track_tags,
+                                theaudiodb_data=theaudiodb_data
+                            )
+                            did_analyze = True
+                        except Exception as aae:
+                            print(f"Auto-analyze error in load_id: {aae}")
 
                 genius_link = f' <a href="{html_escape(song_url)}" target="_blank" rel="noopener noreferrer" style="color:#A8D2FF; text-decoration:underline;">View on Genius</a>' if song_url else ''
                 if did_analyze:
@@ -10755,7 +11450,8 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                     show_editor=True,
                     track_tags=track_tags,
                     artist_metadata=artist_metadata,
-                    theaudiodb_data=theaudiodb_data
+                    theaudiodb_data=theaudiodb_data,
+                    prompt_name=rec.get('prompt_name') if rec else "Default Analysis"
                 )
                 return
         elif artist_param and song_param:
@@ -10792,27 +11488,33 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                     print(f"Last.fm artist metadata load error: {lfe}")
 
                 did_analyze = False
-                if auto_analyze and not analysis and lyrics and GEMINI_API_KEY:
-                    try:
-                        prompts = load_prompts()
-                        p_template = prompts[0]['text'] if prompts else "Analyze lyrics:\n{lyrics_text}"
-                        p_text = p_template.replace('{song}', song).replace('{artist}', artist).replace('{lyrics_text}', html.unescape(lyrics))
-                        client = get_gemini_client()
-                        inter = client.interactions.create(model=model_name, input=p_text)
-                        analysis = inter.output_text or ''
-                        database.save_analysis(
-                            artist=artist,
-                            song=song,
-                            analysis=analysis,
-                            model_name=model_name,
-                            prompt_name="Default Analysis",
-                            lyrics=lyrics,
-                            track_tags=track_tags,
-                            theaudiodb_data=theaudiodb_data
-                        )
-                        did_analyze = True
-                    except Exception as aae:
-                        print(f"Auto-analyze error: {aae}")
+                if auto_analyze and not analysis and lyrics:
+                    cached_auto = database.get_analysis(artist, song, prompt_name="Default Analysis")
+                    if cached_auto and cached_auto.get('analysis') and str(cached_auto['analysis']).strip():
+                        analysis = cached_auto['analysis']
+                        model_name = cached_auto.get('model_name') or model_name
+                    elif GEMINI_API_KEY:
+                        try:
+                            prompts = load_prompts()
+                            p_template = prompts[0]['text'] if prompts else "Analyze lyrics:\n{lyrics_text}"
+                            p_text = p_template.replace('{song}', song).replace('{artist}', artist).replace('{lyrics_text}', html.unescape(lyrics))
+                            client = get_gemini_client()
+                            inter = client.interactions.create(model=model_name, input=p_text)
+                            analysis = inter.output_text or ''
+                            database.save_analysis(
+                                artist=artist,
+                                song=song,
+                                analysis=analysis,
+                                model_name=model_name,
+                                prompt_name="Default Analysis",
+                                prompt_text=p_template,
+                                lyrics=lyrics,
+                                track_tags=track_tags,
+                                theaudiodb_data=theaudiodb_data
+                            )
+                            did_analyze = True
+                        except Exception as aae:
+                            print(f"Auto-analyze error: {aae}")
 
                 genius_link = f' <a href="{html_escape(song_url)}" target="_blank" rel="noopener noreferrer" style="color:#A8D2FF; text-decoration:underline;">View on Genius</a>' if song_url else ''
                 if did_analyze:
@@ -10832,7 +11534,8 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                     show_editor=True,
                     track_tags=track_tags,
                     artist_metadata=artist_metadata,
-                    theaudiodb_data=theaudiodb_data
+                    theaudiodb_data=theaudiodb_data,
+                    prompt_name=rec.get('prompt_name') if rec else "Default Analysis"
                 )
                 return
             else:
@@ -10914,27 +11617,33 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                     except Exception as sse:
                         print(f"Save search on auto load error: {sse}")
 
-                    if auto_analyze and GEMINI_API_KEY:
-                        try:
-                            prompts = load_prompts()
-                            p_template = prompts[0]['text'] if prompts else "Analyze lyrics:\n{lyrics_text}"
-                            p_text = p_template.replace('{song}', effective_song).replace('{artist}', effective_artist).replace('{lyrics_text}', html.unescape(lyrics))
-                            client = get_gemini_client()
-                            inter = client.interactions.create(model=DEFAULT_GEMINI_MODEL, input=p_text)
-                            analysis = inter.output_text or ''
-                            database.save_analysis(
-                                artist=effective_artist,
-                                song=effective_song,
-                                analysis=analysis,
-                                model_name=DEFAULT_GEMINI_MODEL,
-                                prompt_name="Default Analysis",
-                                lyrics=lyrics,
-                                track_tags=track_tags,
-                                theaudiodb_data=theaudiodb_data
-                            )
+                    if auto_analyze:
+                        cached_auto = database.get_analysis(effective_artist, effective_song, prompt_name="Default Analysis")
+                        if cached_auto and cached_auto.get('analysis') and str(cached_auto['analysis']).strip():
+                            analysis = cached_auto['analysis']
                             did_analyze = True
-                        except Exception as aae:
-                            print(f"Auto-analyze new song error: {aae}")
+                        elif GEMINI_API_KEY:
+                            try:
+                                prompts = load_prompts()
+                                p_template = prompts[0]['text'] if prompts else "Analyze lyrics:\n{lyrics_text}"
+                                p_text = p_template.replace('{song}', effective_song).replace('{artist}', effective_artist).replace('{lyrics_text}', html.unescape(lyrics))
+                                client = get_gemini_client()
+                                inter = client.interactions.create(model=DEFAULT_GEMINI_MODEL, input=p_text)
+                                analysis = inter.output_text or ''
+                                database.save_analysis(
+                                    artist=effective_artist,
+                                    song=effective_song,
+                                    analysis=analysis,
+                                    model_name=DEFAULT_GEMINI_MODEL,
+                                    prompt_name="Default Analysis",
+                                    prompt_text=p_template,
+                                    lyrics=lyrics,
+                                    track_tags=track_tags,
+                                    theaudiodb_data=theaudiodb_data
+                                )
+                                did_analyze = True
+                            except Exception as aae:
+                                print(f"Auto-analyze new song error: {aae}")
 
                     genius_link = f' <a href="{html_escape(song_url)}" target="_blank" rel="noopener noreferrer" style="color:#A8D2FF; text-decoration:underline;">View on Genius</a>' if song_url else ''
                     if did_analyze:
@@ -10964,7 +11673,8 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                     show_editor=True,
                     track_tags=track_tags,
                     artist_metadata=artist_metadata,
-                    theaudiodb_data=theaudiodb_data
+                    theaudiodb_data=theaudiodb_data,
+                    prompt_name="Default Analysis" if did_analyze else None
                 )
                 return
 
@@ -11147,6 +11857,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             show_editor = False
             cached_analysis = ''
             cached_model = DEFAULT_GEMINI_MODEL
+            cached_prompt_name = None
 
             if not artist or not song:
                 message = '<div class="message">Please enter both artist name and song title.</div>'
@@ -11167,6 +11878,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                         song_url = cached.get('song_url')
                         cached_analysis = cached.get('analysis') or ''
                         cached_model = cached.get('model_name') or DEFAULT_GEMINI_MODEL
+                        cached_prompt_name = cached.get('prompt_name') or ("Default Analysis" if cached_analysis else None)
                         try:
                             database.touch_search(artist, song)
                         except Exception as e:
@@ -11330,7 +12042,8 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 show_editor=show_editor,
                 track_tags=track_tags,
                 artist_metadata=artist_metadata,
-                theaudiodb_data=theaudiodb_data
+                theaudiodb_data=theaudiodb_data,
+                prompt_name=cached_prompt_name
             )
             
         elif self.path == '/analyze':
@@ -11341,6 +12054,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             model_name = data.get('model_name', [DEFAULT_GEMINI_MODEL])[0].strip()
             if model_name not in [m['id'] for m in AVAILABLE_GEMINI_MODELS]:
                 model_name = DEFAULT_GEMINI_MODEL
+            force_refresh = data.get('force_refresh', ['0'])[0] in ('1', 'true', 'on', 'yes')
             analysis_result = ''
             
             track_tags = []
@@ -11361,20 +12075,50 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                     print(f"Last.fm artist metadata error on analyze: {lfe}")
 
             prompt_idx = 0
+            prompts = load_prompts()
             try:
                 prompt_idx = int(prompt_idx_str)
-                prompts = load_prompts()
                 if 0 <= prompt_idx < len(prompts):
                     prompt_template = prompts[prompt_idx]['text']
+                    prompt_name = prompts[prompt_idx]['name']
                 else:
-                    prompt_template = prompts[0]['text']
+                    prompt_template = prompts[0]['text'] if prompts else "Analyze lyrics:\n{lyrics_text}"
+                    prompt_name = prompts[0]['name'] if prompts else "Default Analysis"
                     prompt_idx = 0
             except (ValueError, IndexError):
-                prompts = load_prompts()
-                prompt_template = prompts[0]['text']
+                prompt_template = prompts[0]['text'] if prompts else "Analyze lyrics:\n{lyrics_text}"
+                prompt_name = prompts[0]['name'] if prompts else "Default Analysis"
                 prompt_idx = 0
-            
-            if not GEMINI_API_KEY:
+
+            # Check if this prompt was already run for this song and we're not forcing refresh
+            cached_res = None
+            if not force_refresh and artist and song:
+                try:
+                    cached_res = database.get_analysis(artist, song, prompt_name=prompt_name)
+                except Exception as ce:
+                    print(f"Error checking cached prompt analysis: {ce}")
+
+            if cached_res and cached_res.get('analysis') and str(cached_res['analysis']).strip():
+                analysis_result = cached_res['analysis']
+                if cached_res.get('model_name'):
+                    model_name = cached_res['model_name']
+                try:
+                    database.save_analysis(
+                        artist=artist,
+                        song=song,
+                        analysis=analysis_result,
+                        model_name=model_name,
+                        prompt_name=prompt_name,
+                        prompt_text=cached_res.get('prompt_text') or prompt_template,
+                        lyrics=lyrics_text,
+                        track_tags=track_tags,
+                        theaudiodb_data=theaudiodb_data
+                    )
+                except Exception as se:
+                    print(f"Error touching saved analysis: {se}")
+
+                message = f'<div class="message">⚡ Loaded saved <strong>{html_escape(prompt_name)}</strong> analysis for <strong>{html_escape(artist)}</strong> - <strong>{html_escape(song)}</strong> (no AI API call needed).</div>'
+            elif not GEMINI_API_KEY:
                 message = get_gemini_missing_message()
             elif not lyrics_text:
                 message = '<div class="message">Please paste or enter lyrics in the lyrics box before running analysis.</div>'
@@ -11388,10 +12132,9 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                     )
                     analysis_result = interaction.output_text or ''
                     model_display_name = next((m['name'] for m in AVAILABLE_GEMINI_MODELS if m['id'] == model_name), model_name)
-                    message = f'<div class="message">Analysis complete using {html_escape(model_display_name)}.</div>'
+                    message = f'<div class="message">Analysis complete using {html_escape(model_display_name)} with prompt "{html_escape(prompt_name)}".</div>'
 
                     # Save analysis to database
-                    prompt_name = prompts[prompt_idx]['name'] if (prompts and 0 <= prompt_idx < len(prompts)) else "Default Analysis"
                     try:
                         database.save_analysis(
                             artist=artist,
@@ -11399,6 +12142,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                             analysis=analysis_result,
                             model_name=model_name,
                             prompt_name=prompt_name,
+                            prompt_text=prompt_template,
                             lyrics=lyrics_text,
                             track_tags=track_tags,
                             theaudiodb_data=theaudiodb_data
@@ -11420,7 +12164,8 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 show_editor=True,
                 track_tags=track_tags,
                 artist_metadata=artist_metadata,
-                theaudiodb_data=theaudiodb_data
+                theaudiodb_data=theaudiodb_data,
+                prompt_name=prompt_name
             )
 
     def handle_authorize(self):
@@ -11468,7 +12213,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
 
         self.render_page(message=message, lyrics_text='')
 
-    def render_page(self, message: str, lyrics_text: str, artist_value: str = '', song_value: str = '', analysis_result: str = '', selected_model: str = DEFAULT_GEMINI_MODEL, selected_prompt: int = 0, show_editor: bool = False, track_tags: Optional[List[Dict[str, Any]]] = None, artist_metadata: Optional[Dict[str, Any]] = None, theaudiodb_data: Optional[Dict[str, Any]] = None):
+    def render_page(self, message: str, lyrics_text: str, artist_value: str = '', song_value: str = '', analysis_result: str = '', selected_model: str = DEFAULT_GEMINI_MODEL, selected_prompt: int = 0, show_editor: bool = False, track_tags: Optional[List[Dict[str, Any]]] = None, artist_metadata: Optional[Dict[str, Any]] = None, theaudiodb_data: Optional[Dict[str, Any]] = None, prompt_name: Optional[str] = None):
         show_sections = bool(lyrics_text or show_editor)
         lyrics_display = '' if show_sections else 'display: none;'
         analysis_display = '' if show_sections else 'display: none;'
@@ -11522,12 +12267,42 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
 
         current_user = self.get_current_user()
         user_email = current_user.get('email') if current_user else None
-        band_rating_widget = build_band_rating_widget(
-            artist=artist_value,
-            user_email=user_email,
-            compact=False,
-            show_header=True
-        ) if artist_value else ""
+        if artist_value:
+            rating_inner = build_band_rating_widget(
+                artist=artist_value,
+                user_email=user_email,
+                compact=True,
+                show_header=False
+            )
+            band_rating_widget = f'''
+            <div class="analysis-rating-strip">
+                <span class="analysis-rating-label">⭐ Rate Band:</span>
+                {rating_inner}
+            </div>
+            '''
+        else:
+            band_rating_widget = ""
+
+        # Secondary collapsible section visibility and metadata preview
+        track_intel_display = '' if (artist_value or song_value) else 'display: none;'
+        similar_songs_display = '' if (artist_value and song_value) else 'display: none;'
+
+        intel_parts = []
+        if theaudiodb_data:
+            genre = theaudiodb_data.get('genre')
+            tempo = theaudiodb_data.get('tempo')
+            key = theaudiodb_data.get('key')
+            if genre:
+                intel_parts.append(f"🎸 {html_escape(genre)}")
+            if tempo:
+                intel_parts.append(f"⏱️ {tempo} BPM")
+            if key:
+                intel_parts.append(f"🎹 Key: {html_escape(key)}")
+        if not intel_parts and track_tags:
+            tag_names = [t.get('name') for t in track_tags[:3] if isinstance(t, dict) and t.get('name')]
+            if tag_names:
+                intel_parts.append(" • ".join(f"#{html_escape(t)}" for t in tag_names))
+        track_intel_preview = " • ".join(intel_parts) if intel_parts else "TheAudioDB insights &amp; Last.fm community tags"
 
         artist_info_btn_display = '' if artist_value else 'display: none;'
         
@@ -11537,10 +12312,98 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             model_options += f'<option value="{html_escape(m["id"])}"{selected_attr}>{html_escape(m["name"])}</option>\n'
 
         prompts = load_prompts()
+        if prompt_name:
+            for idx, p in enumerate(prompts):
+                if p['name'].strip().lower() == prompt_name.strip().lower():
+                    selected_prompt = idx
+                    break
+
+        active_prompt = prompt_name
+        if not active_prompt:
+            if 0 <= selected_prompt < len(prompts):
+                active_prompt = prompts[selected_prompt]['name']
+            else:
+                active_prompt = "Default Analysis"
+
+        artist_clean = html.unescape(artist_value).strip() if artist_value else ""
+        song_clean = html.unescape(song_value).strip() if song_value else ""
+        saved_analyses = []
+        if artist_clean and song_clean:
+            try:
+                saved_analyses = database.get_song_analyses(artist_clean, song_clean) or []
+            except Exception as sae:
+                print(f"Error fetching song analyses in render_page: {sae}")
+                saved_analyses = []
+
+        saved_prompt_names = {sa['prompt_name'] for sa in saved_analyses if sa.get('prompt_name')}
+
         prompt_options = ''
         for idx, p in enumerate(prompts):
+            p_name = p['name']
             selected_attr = ' selected' if idx == selected_prompt else ''
-            prompt_options += f'<option value="{idx}"{selected_attr}>{html_escape(p["name"])}</option>\n'
+            saved_indicator = ' (Saved ✓)' if p_name in saved_prompt_names else ''
+            prompt_options += f'<option value="{idx}"{selected_attr}>{html_escape(p_name)}{saved_indicator}</option>\n'
+
+        saved_analyses_map = {sa['prompt_name']: {
+            'prompt_name': sa['prompt_name'],
+            'analysis': sa['analysis'],
+            'model_name': sa.get('model_name') or ''
+        } for sa in saved_analyses if sa.get('prompt_name')}
+
+        if analysis_result and active_prompt and active_prompt not in saved_analyses_map:
+            saved_analyses_map[active_prompt] = {
+                'prompt_name': active_prompt,
+                'analysis': analysis_result,
+                'model_name': selected_model
+            }
+
+        chips_block = ''
+        if len(saved_analyses_map) >= 2:
+            chips_html = []
+            for p_name in saved_analyses_map.keys():
+                is_active = (p_name.strip().lower() == active_prompt.strip().lower())
+                active_style = 'background: rgba(165, 200, 255, 0.35); border-color: #A5C8FF; color: #FFFFFF;' if is_active else 'background: rgba(11, 30, 63, 0.6); border-color: rgba(165, 200, 255, 0.2); color: #A5C8FF;'
+                active_cls = ' active' if is_active else ''
+                chips_html.append(
+                    f'<button type="button" class="saved-prompt-chip{active_cls}" data-prompt="{html_escape(p_name)}" onclick="switchSavedPromptAnalysis(this.dataset.prompt)" style="{active_style} border: 1px solid; padding: 4px 12px; border-radius: 16px; font-size: 0.8rem; cursor: pointer; transition: all 0.2s ease;">'
+                    f'💬 {html_escape(p_name)}'
+                    f'</button>'
+                )
+            chips_block = f'''
+            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(165, 200, 255, 0.15);">
+                <span style="font-size: 0.8rem; color: #A5C8FF; font-weight: 600;">Saved Prompts ({len(saved_analyses_map)}):</span>
+                {''.join(chips_html)}
+            </div>
+            '''
+
+        model_display_name = next((m['name'] for m in AVAILABLE_GEMINI_MODELS if m['id'] == selected_model), selected_model)
+        saved_json = json.dumps(saved_analyses_map).replace('</script>', '<\\/script>').replace('<!--', '<\\!--')
+
+        if analysis_result:
+            analysis_meta_badge = f'''
+            <div class="analysis-meta-bar" style="background: rgba(165, 200, 255, 0.08); border: 1px solid rgba(165, 200, 255, 0.2); border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; font-size: 0.85rem; color: #E1E8F0;">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                    <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                        <span>💡 <strong>Prompt:</strong> <span id="active-prompt-label" style="color: #A5C8FF; font-weight: 600;">{html_escape(active_prompt)}</span></span>
+                        <span>🤖 <strong>Model:</strong> <span id="active-model-label" style="color: #C5B8FF;">{html_escape(model_display_name)}</span></span>
+                        <span style="background: rgba(90, 240, 165, 0.15); color: #5af0a5; padding: 2px 8px; border-radius: 12px; font-size: 0.78rem; font-weight: 600;">⚡ Saved</span>
+                    </div>
+                    <div>
+                        <button type="button" onclick="reanalyzeWithForce()" style="background: none; border: none; padding: 0; color: #A8D2FF; text-decoration: underline; font-size: 0.82rem; cursor: pointer; font-family: inherit;">Force re-generate with AI</button>
+                    </div>
+                </div>
+                {chips_block}
+            </div>
+            <script>
+            window.SAVED_ANALYSES = {saved_json};
+            </script>
+            '''
+        else:
+            analysis_meta_badge = f'''
+            <script>
+            window.SAVED_ANALYSES = {saved_json};
+            </script>
+            '''
 
         bands = get_distinct_bands_cached()
         band_options = ''
@@ -11562,6 +12425,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
 
         lyrics_text_attr = html.escape(lyrics_text, quote=True)
         content = PAGE_HTML.replace('{message_block}', message)\
+                           .replace('{analysis_meta_badge}', analysis_meta_badge)\
                            .replace('{lyrics_text}', html_escape(lyrics_text))\
                            .replace('{lyrics_text_attr}', lyrics_text_attr)\
                            .replace('{artist_value}', artist_value)\
@@ -11575,6 +12439,9 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                            .replace('{theaudiodb_widget}', theaudiodb_widget)\
                            .replace('{lastfm_widget}', lastfm_widget)\
                            .replace('{band_rating_widget}', band_rating_widget)\
+                           .replace('{track_intel_display}', track_intel_display)\
+                           .replace('{track_intel_preview}', track_intel_preview)\
+                           .replace('{similar_songs_display}', similar_songs_display)\
                            .replace('{similar_songs_widget}', similar_songs_widget)\
                            .replace('{artist_info_btn_display}', artist_info_btn_display)\
                            .replace('{model_options}', model_options)\
@@ -13147,6 +14014,8 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         try:
             tracks = spotify.fetch_recently_played(access_token, limit=50)
             inserted = database.save_spotify_history_items(current_user['email'], tracks)
+            with _spotify_sync_lock:
+                _last_spotify_sync[current_user['email'].lower().strip()] = time.time()
             self.send_response(200)
             self.send_header('Content-Type', 'application/json; charset=utf-8')
             self.end_headers()
@@ -13191,17 +14060,17 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                         'spotify_url': token_rec.get('spotify_profile_url') or '',
                     }
                     try:
-                        tracks = spotify.fetch_recently_played(access_token, limit=50)
-                        if tracks:
-                            database.save_spotify_history_items(current_user['email'], tracks)
+                        fresh_tracks = spotify.fetch_recently_played(access_token, limit=50)
+                        if fresh_tracks:
+                            database.save_spotify_history_items(current_user['email'], fresh_tracks)
+                        with _spotify_sync_lock:
+                            _last_spotify_sync[current_user['email'].lower().strip()] = time.time()
                         top_artists = spotify.fetch_top_artists(access_token, limit=20)
                         now_playing = spotify.fetch_currently_playing(access_token)
                     except Exception as e:
                         print(f"Spotify fetch error: {e}")
                     
-                    if not tracks:
-                        tracks = database.get_spotify_history(current_user['email'], limit=50)
-                    
+                    tracks = database.get_spotify_history(current_user['email'], limit=50)
                     analytics = spotify.compute_analytics(tracks, top_artists=top_artists)
                 else:
                     is_connected = False

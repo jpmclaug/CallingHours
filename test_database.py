@@ -439,11 +439,36 @@ class TestDatabase(unittest.TestCase):
         database.save_spotify_history_items("testuser@example.com", items, db_path=self.db_path)
         self.assertEqual(database.get_spotify_history_count("testuser@example.com", db_path=self.db_path), 2)
 
-        # 5. Fetch history
+        # 5. Fetch history and verify normalized aliases
         hist = database.get_spotify_history("testuser@example.com", limit=10, db_path=self.db_path)
         self.assertEqual(len(hist), 2)
         self.assertEqual(hist[0]["track_name"], "Bleed American")
+        self.assertEqual(hist[0]["name"], "Bleed American")
+        self.assertEqual(hist[0]["artist"], "Jimmy Eat World")
+        self.assertEqual(hist[0]["track_id"], "trk_1")
         self.assertEqual(hist[1]["track_name"], "Kisses")
+        self.assertEqual(hist[1]["name"], "Kisses")
+        self.assertEqual(hist[1]["track_id"], "trk_2")
+
+        # 5b. Save items using Spotify Extended Streaming History export format
+        ext_items = [
+            {
+                "ts": "2024-05-01T12:00:00Z",
+                "master_metadata_track_name": "Modern Color",
+                "master_metadata_album_artist_name": "One Step Closer",
+                "master_metadata_album_album_name": "Songs for the Finished",
+                "spotify_track_uri": "spotify:track:ext_trk_999",
+                "ms_played": 185000,
+            }
+        ]
+        ext_inserted = database.save_spotify_history_items("testuser@example.com", ext_items, db_path=self.db_path)
+        self.assertEqual(ext_inserted, 1)
+        self.assertEqual(database.get_spotify_history_count("testuser@example.com", db_path=self.db_path), 3)
+
+        # Re-saving identical item is ignored (no double counting)
+        ext_dup = database.save_spotify_history_items("testuser@example.com", ext_items, db_path=self.db_path)
+        self.assertEqual(ext_dup, 0)
+        self.assertEqual(database.get_spotify_history_count("testuser@example.com", db_path=self.db_path), 3)
 
         # 6. Delete token (disconnect)
         database.delete_spotify_token("testuser@example.com", db_path=self.db_path)
@@ -678,6 +703,85 @@ class TestDatabase(unittest.TestCase):
         deleted = database.delete_band_rating("Nickelback", user_email="test@example.com", db_path=self.db_path)
         self.assertTrue(deleted)
         self.assertIsNone(database.get_band_rating("Nickelback", user_email="test@example.com", db_path=self.db_path))
+
+    def test_prompt_analysis_storage_and_caching(self):
+        # 1. Save initial analysis using "Default Analysis"
+        database.save_analysis(
+            artist="Deftones",
+            song="Digital Bath",
+            analysis="Default analysis of Digital Bath.",
+            model_name="gemini-3.8-flash",
+            prompt_name="Default Analysis",
+            prompt_text="Analyze lyrics:\n{lyrics_text}",
+            lyrics="You move like I want to...",
+            db_path=self.db_path
+        )
+
+        # Retrieve by exact prompt_name
+        cached_default = database.get_analysis("Deftones", "Digital Bath", prompt_name="Default Analysis", db_path=self.db_path)
+        self.assertIsNotNone(cached_default)
+        self.assertEqual(cached_default["prompt_name"], "Default Analysis")
+        self.assertEqual(cached_default["analysis"], "Default analysis of Digital Bath.")
+        self.assertEqual(cached_default["model_name"], "gemini-3.8-flash")
+
+        # 2. Save a SECOND analysis using a different prompt "Top 5 Breakdown"
+        database.save_analysis(
+            artist="Deftones",
+            song="Digital Bath",
+            analysis="Top 5 Breakdown analysis of Digital Bath.",
+            model_name="gemini-3.5-flash-lite",
+            prompt_name="Top 5 Breakdown",
+            prompt_text="5 characteristic breakdown:\n{lyrics_text}",
+            lyrics="You move like I want to...",
+            db_path=self.db_path
+        )
+
+        # Retrieve "Top 5 Breakdown"
+        cached_top5 = database.get_analysis("Deftones", "Digital Bath", prompt_name="Top 5 Breakdown", db_path=self.db_path)
+        self.assertIsNotNone(cached_top5)
+        self.assertEqual(cached_top5["prompt_name"], "Top 5 Breakdown")
+        self.assertEqual(cached_top5["analysis"], "Top 5 Breakdown analysis of Digital Bath.")
+        self.assertEqual(cached_top5["model_name"], "gemini-3.5-flash-lite")
+
+        # CRUCIAL: "Default Analysis" MUST STILL BE PRESERVED and not overwritten!
+        cached_default_again = database.get_analysis("Deftones", "Digital Bath", prompt_name="Default Analysis", db_path=self.db_path)
+        self.assertIsNotNone(cached_default_again)
+        self.assertEqual(cached_default_again["analysis"], "Default analysis of Digital Bath.")
+
+        # 3. get_song_analyses retrieves all saved prompt results for this song
+        all_analyses = database.get_song_analyses("Deftones", "Digital Bath", db_path=self.db_path)
+        self.assertEqual(len(all_analyses), 2)
+        prompt_names = {a["prompt_name"] for a in all_analyses}
+        self.assertIn("Default Analysis", prompt_names)
+        self.assertIn("Top 5 Breakdown", prompt_names)
+
+        # 4. Unknown prompt returns None
+        self.assertIsNone(database.get_analysis("Deftones", "Digital Bath", prompt_name="Nonexistent Prompt", db_path=self.db_path))
+
+        # 5. Overwriting/re-analyzing the SAME prompt updates that prompt's results
+        database.save_analysis(
+            artist="Deftones",
+            song="Digital Bath",
+            analysis="Updated Default analysis of Digital Bath.",
+            model_name="gemini-3.8-flash",
+            prompt_name="Default Analysis",
+            db_path=self.db_path
+        )
+        updated_default = database.get_analysis("Deftones", "Digital Bath", prompt_name="Default Analysis", db_path=self.db_path)
+        self.assertEqual(updated_default["analysis"], "Updated Default analysis of Digital Bath.")
+        # "Top 5 Breakdown" is still intact
+        cached_top5_after = database.get_analysis("Deftones", "Digital Bath", prompt_name="Top 5 Breakdown", db_path=self.db_path)
+        self.assertEqual(cached_top5_after["analysis"], "Top 5 Breakdown analysis of Digital Bath.")
+
+        # 6. Searches record still reflects active/latest analysis
+        search_rec = database.get_search("Deftones", "Digital Bath", db_path=self.db_path)
+        self.assertIsNotNone(search_rec)
+        self.assertTrue(search_rec["has_analysis"])
+
+        # 7. delete_search removes both search and song_analyses
+        database.delete_search(search_rec["id"], db_path=self.db_path)
+        self.assertIsNone(database.get_analysis("Deftones", "Digital Bath", prompt_name="Default Analysis", db_path=self.db_path))
+        self.assertEqual(len(database.get_song_analyses("Deftones", "Digital Bath", db_path=self.db_path)), 0)
 
 
 if __name__ == "__main__":
