@@ -1068,11 +1068,11 @@ class TestAppIntegration(unittest.TestCase):
             self.assertIn('Interactive Demo Preview Mode', html)
             self.assertIn('Jimmy Eat World', html)
             self.assertIn('Slowdive', html)
-            self.assertIn('Listening by Time of Day', html)
-            self.assertIn('Activity by Day of Week', html)
-            self.assertIn('Release Era Breakdown', html)
-            self.assertIn('Listening History Stream', html)
-            self.assertIn('✨ Analyze Lyrics', html)
+            self.assertIn('When You Listen', html)
+            self.assertIn('Day of Week Rhythm', html)
+            self.assertIn('Year-Over-Year Listening Volume', html)
+            self.assertIn('Listening History Archive', html)
+            self.assertIn('Analyze Lyrics', html)
 
         # 4. Verify API status endpoint
         with self.authed_get("/api/spotify/status") as resp:
