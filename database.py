@@ -2541,6 +2541,232 @@ def get_artist_spotify_stats(
     }
 
 
+_spotify_advanced_cache: Dict[str, Tuple[float, int, Dict[str, Any]]] = {}
+
+def get_spotify_advanced_analytics(user_email: str, db_path: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Compute rich all-time analytics from the full Spotify stream archive using SQL aggregations.
+
+    Returns a dict with:
+      time_of_day: {morning, afternoon, evening, night} -> {count, percent}
+      day_of_week: {Sun..Sat} -> {count, percent}
+      year_over_year: list of {year, count} sorted ascending
+      best_days: list of {date, count} top 5
+      best_hour: int (0-23)
+      best_hour_count: int
+      last_7d: int
+      last_30d: int
+      top_artists_30d: list of {artist, count}
+      top_artists_7d: list of {artist, count}
+      peak_year: str
+      peak_year_count: int
+    """
+    clean_email = user_email.lower().strip()
+    if not clean_email:
+        return {}
+
+    target = get_db_target(db_path)
+    now_ts = time.time()
+    mut_ver = get_db_mutation_version()
+    cache_key = f"adv:{clean_email}:{target}"
+    cache_entry = _spotify_advanced_cache.get(cache_key)
+    if cache_entry:
+        cached_time, cached_ver, cached_data = cache_entry
+        if (now_ts - cached_time < 300) and (cached_ver == mut_ver):
+            return cached_data
+
+    with get_connection(target) as conn:
+        cursor = conn.cursor()
+        ph = "%s" if is_postgres(target) else "?"
+        pg = is_postgres(target)
+
+        # ----- Time of Day breakdown (all-time) -----
+        if pg:
+            tod_sql = f"""
+                SELECT
+                    CASE
+                        WHEN EXTRACT(HOUR FROM played_at::timestamp) BETWEEN 5 AND 11 THEN 'morning'
+                        WHEN EXTRACT(HOUR FROM played_at::timestamp) BETWEEN 12 AND 17 THEN 'afternoon'
+                        WHEN EXTRACT(HOUR FROM played_at::timestamp) BETWEEN 18 AND 22 THEN 'evening'
+                        ELSE 'night'
+                    END AS period,
+                    COUNT(*) AS cnt
+                FROM spotify_history
+                WHERE LOWER(user_email) = {ph}
+                GROUP BY period
+            """
+        else:
+            tod_sql = f"""
+                SELECT
+                    CASE
+                        WHEN CAST(strftime('%H', played_at) AS INTEGER) BETWEEN 5 AND 11 THEN 'morning'
+                        WHEN CAST(strftime('%H', played_at) AS INTEGER) BETWEEN 12 AND 17 THEN 'afternoon'
+                        WHEN CAST(strftime('%H', played_at) AS INTEGER) BETWEEN 18 AND 22 THEN 'evening'
+                        ELSE 'night'
+                    END AS period,
+                    COUNT(*) AS cnt
+                FROM spotify_history
+                WHERE LOWER(user_email) = {ph}
+                GROUP BY period
+            """
+        cursor.execute(tod_sql, (clean_email,))
+        tod_raw = {r[0]: int(r[1]) for r in cursor.fetchall()}
+        tod_total = max(sum(tod_raw.values()), 1)
+        time_of_day = {}
+        for slot in ('morning', 'afternoon', 'evening', 'night'):
+            cnt = tod_raw.get(slot, 0)
+            time_of_day[slot] = {"count": cnt, "percent": round(cnt / tod_total * 100, 1)}
+
+        # ----- Day of Week breakdown (all-time) -----
+        # DOW: 0=Sunday in both Postgres EXTRACT(DOW) and SQLite strftime('%w')
+        if pg:
+            dow_sql = f"""
+                SELECT EXTRACT(DOW FROM played_at::timestamp)::int AS dow, COUNT(*) AS cnt
+                FROM spotify_history WHERE LOWER(user_email) = {ph}
+                GROUP BY dow ORDER BY dow
+            """
+        else:
+            dow_sql = f"""
+                SELECT CAST(strftime('%w', played_at) AS INTEGER) AS dow, COUNT(*) AS cnt
+                FROM spotify_history WHERE LOWER(user_email) = {ph}
+                GROUP BY dow ORDER BY dow
+            """
+        cursor.execute(dow_sql, (clean_email,))
+        dow_num_map = {int(r[0]): int(r[1]) for r in cursor.fetchall()}
+        # 0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat
+        day_labels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+        dow_total = max(sum(dow_num_map.values()), 1)
+        day_of_week = {}
+        for i, day_label in enumerate(day_labels):
+            cnt = dow_num_map.get(i, 0)
+            day_of_week[day_label] = {"count": cnt, "percent": round(cnt / dow_total * 100, 1)}
+
+        # ----- Year-Over-Year trend -----
+        if pg:
+            yoy_sql = f"""
+                SELECT EXTRACT(YEAR FROM played_at::timestamp)::int AS yr, COUNT(*) AS cnt
+                FROM spotify_history WHERE LOWER(user_email) = {ph}
+                GROUP BY yr ORDER BY yr ASC
+            """
+        else:
+            yoy_sql = f"""
+                SELECT CAST(strftime('%Y', played_at) AS INTEGER) AS yr, COUNT(*) AS cnt
+                FROM spotify_history WHERE LOWER(user_email) = {ph}
+                GROUP BY yr ORDER BY yr ASC
+            """
+        cursor.execute(yoy_sql, (clean_email,))
+        year_rows = cursor.fetchall()
+        year_over_year = [{"year": int(r[0]), "count": int(r[1])} for r in year_rows if r[0]]
+
+        peak_entry = max(year_over_year, key=lambda x: x["count"]) if year_over_year else {}
+        peak_year = str(peak_entry.get("year", ""))
+        peak_year_count = peak_entry.get("count", 0)
+
+        # ----- Best Single Listening Days -----
+        if pg:
+            best_days_sql = f"""
+                SELECT DATE(played_at::timestamp)::text AS day, COUNT(*) AS cnt
+                FROM spotify_history WHERE LOWER(user_email) = {ph}
+                GROUP BY day ORDER BY cnt DESC LIMIT 5
+            """
+        else:
+            best_days_sql = f"""
+                SELECT strftime('%Y-%m-%d', played_at) AS day, COUNT(*) AS cnt
+                FROM spotify_history WHERE LOWER(user_email) = {ph}
+                GROUP BY day ORDER BY cnt DESC LIMIT 5
+            """
+        cursor.execute(best_days_sql, (clean_email,))
+        best_days = [{"date": str(r[0]), "count": int(r[1])} for r in cursor.fetchall()]
+
+        # ----- Best Hour of Day -----
+        if pg:
+            best_hr_sql = f"""
+                SELECT EXTRACT(HOUR FROM played_at::timestamp)::int AS hr, COUNT(*) AS cnt
+                FROM spotify_history WHERE LOWER(user_email) = {ph}
+                GROUP BY hr ORDER BY cnt DESC LIMIT 1
+            """
+        else:
+            best_hr_sql = f"""
+                SELECT CAST(strftime('%H', played_at) AS INTEGER) AS hr, COUNT(*) AS cnt
+                FROM spotify_history WHERE LOWER(user_email) = {ph}
+                GROUP BY hr ORDER BY cnt DESC LIMIT 1
+            """
+        cursor.execute(best_hr_sql, (clean_email,))
+        best_hr_row = cursor.fetchone()
+        best_hour = int(best_hr_row[0]) if best_hr_row else 21
+        best_hour_count = int(best_hr_row[1]) if best_hr_row else 0
+
+        # ----- Recent Activity Windows -----
+        if pg:
+            cursor.execute(f"""
+                SELECT COUNT(*) FROM spotify_history
+                WHERE LOWER(user_email) = {ph} AND played_at >= NOW() - INTERVAL '7 days'
+            """, (clean_email,))
+            last_7d = int((cursor.fetchone() or [0])[0])
+
+            cursor.execute(f"""
+                SELECT COUNT(*) FROM spotify_history
+                WHERE LOWER(user_email) = {ph} AND played_at >= NOW() - INTERVAL '30 days'
+            """, (clean_email,))
+            last_30d = int((cursor.fetchone() or [0])[0])
+
+            cursor.execute(f"""
+                SELECT artist_name, COUNT(*) as cnt FROM spotify_history
+                WHERE LOWER(user_email) = {ph} AND played_at >= NOW() - INTERVAL '30 days'
+                GROUP BY artist_name ORDER BY cnt DESC LIMIT 5
+            """, (clean_email,))
+            top_artists_30d = [{"artist": r[0], "count": int(r[1])} for r in cursor.fetchall()]
+
+            cursor.execute(f"""
+                SELECT artist_name, COUNT(*) as cnt FROM spotify_history
+                WHERE LOWER(user_email) = {ph} AND played_at >= NOW() - INTERVAL '7 days'
+                GROUP BY artist_name ORDER BY cnt DESC LIMIT 5
+            """, (clean_email,))
+            top_artists_7d = [{"artist": r[0], "count": int(r[1])} for r in cursor.fetchall()]
+        else:
+            cursor.execute(f"""
+                SELECT COUNT(*) FROM spotify_history
+                WHERE LOWER(user_email) = {ph} AND played_at >= datetime('now', '-7 days')
+            """, (clean_email,))
+            last_7d = int((cursor.fetchone() or [0])[0])
+
+            cursor.execute(f"""
+                SELECT COUNT(*) FROM spotify_history
+                WHERE LOWER(user_email) = {ph} AND played_at >= datetime('now', '-30 days')
+            """, (clean_email,))
+            last_30d = int((cursor.fetchone() or [0])[0])
+
+            cursor.execute(f"""
+                SELECT artist_name, COUNT(*) as cnt FROM spotify_history
+                WHERE LOWER(user_email) = {ph} AND played_at >= datetime('now', '-30 days')
+                GROUP BY artist_name ORDER BY cnt DESC LIMIT 5
+            """, (clean_email,))
+            top_artists_30d = [{"artist": r[0], "count": int(r[1])} for r in cursor.fetchall()]
+
+            cursor.execute(f"""
+                SELECT artist_name, COUNT(*) as cnt FROM spotify_history
+                WHERE LOWER(user_email) = {ph} AND played_at >= datetime('now', '-7 days')
+                GROUP BY artist_name ORDER BY cnt DESC LIMIT 5
+            """, (clean_email,))
+            top_artists_7d = [{"artist": r[0], "count": int(r[1])} for r in cursor.fetchall()]
+
+    result = {
+        "time_of_day": time_of_day,
+        "day_of_week": day_of_week,
+        "year_over_year": year_over_year,
+        "best_days": best_days,
+        "best_hour": best_hour,
+        "best_hour_count": best_hour_count,
+        "last_7d": last_7d,
+        "last_30d": last_30d,
+        "top_artists_30d": top_artists_30d,
+        "top_artists_7d": top_artists_7d,
+        "peak_year": peak_year,
+        "peak_year_count": peak_year_count,
+    }
+    _spotify_advanced_cache[cache_key] = (now_ts, mut_ver, result)
+    return result
+
 
 def get_analyzed_songs(
     artist: Optional[str] = None,

@@ -14494,34 +14494,76 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             </div>
             '''
 
-        # 4. KPI Cards
-        kpis = [
-            ("🎧 Recent Plays", str(analytics.get('total_tracks', 0)), "Tracks in listening sample"),
-            ("⏱️ Total Audio", html_escape(analytics.get('total_duration_formatted', '0m')), "Continuous listening time"),
-            ("👥 Unique Artists", str(analytics.get('unique_artists_count', 0)), f"Across {analytics.get('unique_albums_count', 0)} distinct albums"),
-            ("⭐ Avg Popularity", f"{analytics.get('avg_popularity', 0)}/100", html_escape(analytics.get('popularity_vibe', ''))),
-            ("🎭 Archetype", html_escape(analytics.get('persona', 'Explorer')), html_escape(analytics.get('persona_desc', ''))),
-        ]
-        kpi_cards = []
-        for label, val, sub in kpis:
-            kpi_cards.append(f'''
-            <div class="spotify-kpi-card">
-                <div class="kpi-label">{label}</div>
-                <div class="kpi-value">{val}</div>
-                <div class="kpi-subtext">{sub}</div>
-            </div>
-            ''')
-        kpi_grid_html = f'<div class="spotify-kpi-grid">{"".join(kpi_cards)}</div>'
+        # 4. Advanced Analytics — All driven from the full archive
+        adv = database.get_spotify_advanced_analytics(current_user['email']) if not is_demo else {}
+        hour_to_label = lambda h: f"{h % 12 or 12}{'am' if h < 12 else 'pm'}"
 
-        # 5. Visual Habit Analytics Grid
-        # Time of Day
-        tod_data = analytics.get('time_of_day', {})
+        # Recent Activity KPI Banner
+        last_7d = adv.get('last_7d', 0)
+        last_30d = adv.get('last_30d', 0)
+        peak_year = adv.get('peak_year', '')
+        peak_year_count = adv.get('peak_year_count', 0)
+        best_hour_raw = adv.get('best_hour', 21)
+        best_hour_label = hour_to_label(best_hour_raw)
+        best_hour_count = adv.get('best_hour_count', 0)
+        tot_tr = lifetime_stats.get('total_tracks', 0)
+        tot_hrs = lifetime_stats.get('total_hours', 0.0)
+        u_art = lifetime_stats.get('unique_artists', 0)
+        days_continuous = round(tot_hrs / 24, 1) if tot_hrs else 0.0
+        best_days_list = adv.get('best_days', [])
+        top_art_30d = adv.get('top_artists_30d', [])
+        top_art_7d = adv.get('top_artists_7d', [])
+
+        # --- KPI Row 1: All-Time Lifetime Stats ---
+        kpi_grid_html = f'''
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 8px;">
+            <div class="spotify-kpi-card">
+                <div class="kpi-label">🎧 Lifetime Streams</div>
+                <div class="kpi-value">{tot_tr:,}</div>
+                <div class="kpi-subtext">All-time recorded plays</div>
+            </div>
+            <div class="spotify-kpi-card">
+                <div class="kpi-label">⏱️ Total Listening Time</div>
+                <div class="kpi-value">{tot_hrs:,.0f} hrs</div>
+                <div class="kpi-subtext">{days_continuous:,.1f} days non-stop</div>
+            </div>
+            <div class="spotify-kpi-card">
+                <div class="kpi-label">👥 Unique Artists</div>
+                <div class="kpi-value">{u_art:,}</div>
+                <div class="kpi-subtext">Distinct artists ever heard</div>
+            </div>
+            <div class="spotify-kpi-card">
+                <div class="kpi-label">📅 Last 7 Days</div>
+                <div class="kpi-value">{last_7d:,}</div>
+                <div class="kpi-subtext">Streams this week</div>
+            </div>
+            <div class="spotify-kpi-card">
+                <div class="kpi-label">📆 Last 30 Days</div>
+                <div class="kpi-value">{last_30d:,}</div>
+                <div class="kpi-subtext">Streams this month</div>
+            </div>
+            <div class="spotify-kpi-card">
+                <div class="kpi-label">📈 Peak Year</div>
+                <div class="kpi-value">{peak_year}</div>
+                <div class="kpi-subtext">{peak_year_count:,} streams that year</div>
+            </div>
+            <div class="spotify-kpi-card">
+                <div class="kpi-label">🕙 Most Active Hour</div>
+                <div class="kpi-value">{best_hour_label}</div>
+                <div class="kpi-subtext">{best_hour_count:,} plays at this hour</div>
+            </div>
+        </div>
+        '''
+
+        # 5. Analytics Grid — All-Time SQL-backed blocks
+        # All-Time Time of Day
+        tod_data = adv.get('time_of_day', {})
         tod_rows = []
         tod_styles = {
-            'morning': ('🌅 Morning', '#F59E0B'),
-            'afternoon': ('☀️ Afternoon', '#3B82F6'),
-            'evening': ('🌆 Evening', '#8B5CF6'),
-            'night': ('🌙 Late Night', '#10B981'),
+            'morning': ('🌅 Morning (5am–11am)', '#F59E0B'),
+            'afternoon': ('☀️ Afternoon (12pm–5pm)', '#3B82F6'),
+            'evening': ('🌆 Evening (6pm–10pm)', '#8B5CF6'),
+            'night': ('🌙 Late Night (11pm–4am)', '#10B981'),
         }
         for key_name, (label, color) in tod_styles.items():
             entry = tod_data.get(key_name, {})
@@ -14531,7 +14573,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             <div class="time-bar-row">
                 <div class="time-bar-header">
                     <span>{label}</span>
-                    <span style="font-weight: 700; color: #E1E8F0;">{pct}% <span style="font-weight: 400; color: rgba(225, 232, 240, 0.5);">({cnt})</span></span>
+                    <span style="font-weight: 700; color: #E1E8F0;">{pct}% <span style="font-weight: 400; color: rgba(225, 232, 240, 0.5);">({cnt:,})</span></span>
                 </div>
                 <div class="time-bar-bg">
                     <div class="time-bar-fill" style="width: {pct}%; background: {color};"></div>
@@ -14541,34 +14583,36 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         tod_html = f'''
         <div class="analytics-block">
             <div class="analytics-block-title">
-                <span>⏱️ Listening by Time of Day</span>
-                <span style="font-size: 0.75rem; color: #A5C8FF; font-weight: 400;">24-hour cycle</span>
+                <span>⏱️ When You Listen</span>
+                <span style="font-size: 0.75rem; color: #6EE7B7; font-weight: 600; background: rgba(110, 231, 183, 0.1); padding: 2px 8px; border-radius: 10px;">All-Time · {tot_tr:,} streams</span>
             </div>
             {"".join(tod_rows)}
         </div>
         '''
 
-        # Day of Week
-        dow_data = analytics.get('day_of_week', {})
+        # All-Time Day of Week
+        dow_data = adv.get('day_of_week', {})
         max_dow = max([v.get('count', 0) for v in dow_data.values()] or [1]) or 1
         dow_cols = []
         for day in ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]:
             d_entry = dow_data.get(day, {})
             cnt = d_entry.get('count', 0)
             pct = d_entry.get('percent', 0)
-            h_pct = max(int((cnt / max_dow) * 85), 6) if cnt > 0 else 4
+            h_pct = max(int((cnt / max_dow) * 85), 4) if cnt > 0 else 4
             dow_cols.append(f'''
             <div class="dow-col">
-                <div class="dow-count">{cnt}</div>
-                <div class="dow-bar-fill" style="height: {h_pct}%;" title="{day}: {cnt} plays ({pct}%)"></div>
+                <div class="dow-count">{cnt:,}</div>
+                <div class="dow-bar-fill" style="height: {h_pct}%;" title="{day}: {cnt:,} plays ({pct}%)"></div>
                 <div class="dow-label">{day}</div>
             </div>
             ''')
+        # also add Sunday at end for visual completeness
+        sun_entry = dow_data.get('Sun', {})
         dow_html = f'''
         <div class="analytics-block">
             <div class="analytics-block-title">
-                <span>📅 Activity by Day of Week</span>
-                <span style="font-size: 0.75rem; color: #A5C8FF; font-weight: 400;">Weekly distribution</span>
+                <span>📅 Day of Week Rhythm</span>
+                <span style="font-size: 0.75rem; color: #6EE7B7; font-weight: 600; background: rgba(110, 231, 183, 0.1); padding: 2px 8px; border-radius: 10px;">All-Time</span>
             </div>
             <div class="dow-bars-container">
                 {"".join(dow_cols)}
@@ -14576,85 +14620,33 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         </div>
         '''
 
-        # Top Artists
-        top_art_items = []
-        for a in analytics.get('top_artists', [])[:6]:
-            a_name = html_escape(a.get('artist') or '')
-            cnt = a.get('count', 0)
-            pct = a.get('percent', 0)
-            art_link = f'/artist?artist={urllib.parse.quote(a.get("artist") or "")}'
-            top_art_items.append(f'''
-            <div class="artist-rank-item">
-                <a href="{art_link}" style="color: #FFFFFF; font-weight: 700; text-decoration: none; font-size: 0.88rem;" title="Explore Artist Intelligence">{a_name}</a>
-                <span style="font-size: 0.78rem; color: #1DB954; font-weight: 700; background: rgba(29, 185, 84, 0.15); padding: 3px 8px; border-radius: 8px;">{cnt} plays ({pct}%)</span>
+        # Year-Over-Year Trend Block
+        yoy_data = adv.get('year_over_year', [])
+        yoy_max = max([y['count'] for y in yoy_data] or [1]) or 1
+        yoy_bars = []
+        for y in yoy_data:
+            bar_pct = max(int((y['count'] / yoy_max) * 100), 3)
+            is_peak = str(y['year']) == peak_year
+            bar_color = '#1DB954' if is_peak else 'rgba(110, 231, 183, 0.45)'
+            label_color = '#1DB954' if is_peak else 'rgba(225, 232, 240, 0.6)'
+            yoy_bars.append(f'''
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 4px; flex: 1; min-width: 28px;">
+                <div style="font-size: 0.65rem; color: {label_color}; font-weight: {'800' if is_peak else '400'};">{y['count']:,}</div>
+                <div style="width: 100%; height: {bar_pct}%; background: {bar_color}; border-radius: 4px 4px 0 0; min-height: 4px; transition: height 0.3s;" title="{y['year']}: {y['count']:,} streams"></div>
+                <div style="font-size: 0.68rem; color: {'#1DB954' if is_peak else 'rgba(225, 232, 240, 0.5)'}; font-weight: {'800' if is_peak else '400'}; writing-mode: vertical-rl; transform: rotate(180deg);">{y['year']}</div>
             </div>
             ''')
-        top_art_html = f'''
-        <div class="analytics-block">
+        yoy_html = f'''
+        <div class="analytics-block" style="grid-column: 1 / -1;">
             <div class="analytics-block-title">
-                <span>👑 Top Artists in History</span>
-                <span style="font-size: 0.75rem; color: #A5C8FF; font-weight: 400;">Frequency</span>
+                <span>📈 Year-Over-Year Listening Volume</span>
+                <span style="font-size: 0.75rem; color: #6EE7B7; font-weight: 600; background: rgba(110, 231, 183, 0.1); padding: 2px 8px; border-radius: 10px;">All-Time · Peak: {peak_year} ({peak_year_count:,} streams)</span>
             </div>
-            {"".join(top_art_items) if top_art_items else '<div style="color: rgba(225, 232, 240, 0.5); font-style: italic; font-size: 0.85rem; padding: 20px 0; text-align: center;">No artist history available yet.</div>'}
+            <div style="display: flex; align-items: flex-end; gap: 4px; height: 120px; padding: 0 4px;">
+                {"".join(yoy_bars)}
+            </div>
         </div>
         '''
-
-        # Release Eras
-        era_data = analytics.get('release_eras', {})
-        era_rows = []
-        era_colors = {
-            '2020s': '#10B981',
-            '2010s': '#3B82F6',
-            '2000s': '#8B5CF6',
-            '1990s': '#EC4899',
-            '1980s': '#F59E0B',
-            'Classic': '#6B7280',
-        }
-        for era_name, color in era_colors.items():
-            e_entry = era_data.get(era_name, {})
-            pct = e_entry.get('percent', 0)
-            cnt = e_entry.get('count', 0)
-            if cnt > 0 or era_name in ('2020s', '2010s', '2000s'):
-                era_rows.append(f'''
-                <div class="time-bar-row">
-                    <div class="time-bar-header">
-                        <span>{era_name}</span>
-                        <span style="font-weight: 700; color: #E1E8F0;">{pct}% <span style="font-weight: 400; color: rgba(225, 232, 240, 0.5);">({cnt})</span></span>
-                    </div>
-                    <div class="time-bar-bg">
-                        <div class="time-bar-fill" style="width: {pct}%; background: {color};"></div>
-                    </div>
-                </div>
-                ''')
-        eras_html = f'''
-        <div class="analytics-block">
-            <div class="analytics-block-title">
-                <span>📻 Release Era Breakdown</span>
-                <span style="font-size: 0.75rem; color: #A5C8FF; font-weight: 400;">Decades</span>
-            </div>
-            {"".join(era_rows)}
-        </div>
-        '''
-
-        # Top Genres
-        genre_chips = []
-        for g in analytics.get('top_genres', []):
-            g_name = html_escape(g.get('genre') or '')
-            g_cnt = g.get('count', 0)
-            genre_chips.append(f'<span class="genre-chip">{g_name} <span style="opacity: 0.7; font-size: 0.7rem;">&bull; {g_cnt}</span></span>')
-        genres_html = ''
-        if genre_chips:
-            genres_html = f'''
-            <div class="analytics-block" style="grid-column: 1 / -1;">
-                <div class="analytics-block-title">
-                    <span>🏷️ Top Genre Landscape</span>
-                    <span style="font-size: 0.75rem; color: #A5C8FF; font-weight: 400;">Derived from your top artists</span>
-                </div>
-                <div style="display: flex; flex-wrap: wrap; gap: 4px;">
-                    {"".join(genre_chips)}
-                </div>
-            </div>
-            '''
 
         # All-Time Top Artists (Lifetime Archive)
         alltime_art_items = []
@@ -14671,18 +14663,17 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 <span style="font-size: 0.78rem; color: #1DB954; font-weight: 700; background: rgba(29, 185, 84, 0.15); padding: 3px 8px; border-radius: 8px;">{cnt:,} plays</span>
             </div>
             ''')
-
         alltime_art_html = f'''
         <div class="analytics-block">
             <div class="analytics-block-title">
                 <span>👑 All-Time Top Artists</span>
-                <span style="font-size: 0.75rem; color: #A5C8FF; font-weight: 400;">Lifetime Archive</span>
+                <span style="font-size: 0.75rem; color: #6EE7B7; font-weight: 600; background: rgba(110, 231, 183, 0.1); padding: 2px 8px; border-radius: 10px;">All-Time · {tot_tr:,} streams</span>
             </div>
             {"".join(alltime_art_items) if alltime_art_items else '<div style="color: rgba(225, 232, 240, 0.5); font-style: italic; font-size: 0.85rem; padding: 20px 0; text-align: center;">No artist history available yet.</div>'}
         </div>
         '''
 
-        # All-Time Top Tracks (Lifetime Archive)
+        # All-Time Top Tracks
         alltime_trk_items = []
         for rank_idx, tr in enumerate(lifetime_stats.get('top_tracks', [])[:10]):
             t_name = html_escape(tr.get('name') or '')
@@ -14705,26 +14696,89 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 </div>
             </div>
             ''')
-
         alltime_trk_html = f'''
         <div class="analytics-block">
             <div class="analytics-block-title">
-                <span>🏆 All-Time Top Played Songs</span>
-                <span style="font-size: 0.75rem; color: #A5C8FF; font-weight: 400;">Lifetime Archive</span>
+                <span>🏆 All-Time Top Tracks</span>
+                <span style="font-size: 0.75rem; color: #6EE7B7; font-weight: 600; background: rgba(110, 231, 183, 0.1); padding: 2px 8px; border-radius: 10px;">All-Time</span>
             </div>
             {"".join(alltime_trk_items) if alltime_trk_items else '<div style="color: rgba(225, 232, 240, 0.5); font-style: italic; font-size: 0.85rem; padding: 20px 0; text-align: center;">No song history available yet.</div>'}
         </div>
         '''
 
+        # Best Listening Days
+        best_days_rows = []
+        for i, bd in enumerate(best_days_list):
+            medal = "🥇" if i == 0 else ("🥈" if i == 1 else ("🥉" if i == 2 else f"#{i+1}"))
+            best_days_rows.append(f'''
+            <div class="artist-rank-item">
+                <span style="font-size: 0.88rem; color: #FFFFFF; font-weight: 700;">
+                    <span style="color: #6EE7B7; margin-right: 4px;">{medal}</span>{bd["date"]}
+                </span>
+                <span style="font-size: 0.78rem; color: #1DB954; font-weight: 700; background: rgba(29, 185, 84, 0.15); padding: 3px 8px; border-radius: 8px;">{bd["count"]:,} streams</span>
+            </div>
+            ''')
+        best_days_html = f'''
+        <div class="analytics-block">
+            <div class="analytics-block-title">
+                <span>🔥 Best Listening Days</span>
+                <span style="font-size: 0.75rem; color: #6EE7B7; font-weight: 600; background: rgba(110, 231, 183, 0.1); padding: 2px 8px; border-radius: 10px;">All-Time Records</span>
+            </div>
+            {"".join(best_days_rows) if best_days_rows else '<div style="color: rgba(225, 232, 240, 0.5); font-style: italic; font-size: 0.85rem; padding: 10px 0;">No data yet.</div>'}
+        </div>
+        '''
+
+        # Recent Hot Artists (last 30 days and last 7 days)
+        def _artist_list_html(artist_list, empty_msg):
+            rows = []
+            for rank_idx, a in enumerate(artist_list):
+                a_name = html_escape(a.get('artist') or '')
+                cnt = a.get('count', 0)
+                art_link = f'/artist?artist={urllib.parse.quote(a.get("artist") or "")}'
+                medal = "🥇 " if rank_idx == 0 else ("🥈 " if rank_idx == 1 else ("🥉 " if rank_idx == 2 else f"#{rank_idx + 1} "))
+                rows.append(f'''
+                <div class="artist-rank-item">
+                    <a href="{art_link}" style="color: #FFFFFF; font-weight: 700; text-decoration: none; font-size: 0.88rem;">
+                        <span style="color: #6EE7B7; font-size: 0.8rem; margin-right: 4px;">{medal}</span>{a_name}
+                    </a>
+                    <span style="font-size: 0.78rem; color: #1DB954; font-weight: 700; background: rgba(29, 185, 84, 0.15); padding: 3px 8px; border-radius: 8px;">{cnt} plays</span>
+                </div>''')
+            return "".join(rows) if rows else f'<div style="color: rgba(225, 232, 240, 0.5); font-style: italic; font-size: 0.85rem; padding: 10px 0;">{empty_msg}</div>'
+
+        recent_30d_art_html = f'''
+        <div class="analytics-block">
+            <div class="analytics-block-title">
+                <span>🎯 Hot Right Now</span>
+                <span style="font-size: 0.75rem; color: #F59E0B; font-weight: 600; background: rgba(245, 158, 11, 0.12); padding: 2px 8px; border-radius: 10px;">Last 30 Days · {last_30d:,} streams</span>
+            </div>
+            {_artist_list_html(top_art_30d, "No streams in last 30 days.")}
+        </div>
+        '''
+
+        recent_7d_art_html = f'''
+        <div class="analytics-block">
+            <div class="analytics-block-title">
+                <span>⚡ This Week</span>
+                <span style="font-size: 0.75rem; color: #F59E0B; font-weight: 600; background: rgba(245, 158, 11, 0.12); padding: 2px 8px; border-radius: 10px;">Last 7 Days · {last_7d:,} streams</span>
+            </div>
+            {_artist_list_html(top_art_7d, "No streams in last 7 days.")}
+        </div>
+        '''
+
         analytics_grid_html = f'''
+        <div style="margin-bottom: 8px; padding: 4px 0;">
+            <h2 style="font-family: 'Montserrat', sans-serif; font-size: 1.1rem; font-weight: 800; color: #FFFFFF; margin: 0 0 4px 0;">📊 Listening Intelligence</h2>
+            <div style="font-size: 0.82rem; color: #A5C8FF;">All analytics sourced from your complete {tot_tr:,}-stream personal archive</div>
+        </div>
         <div class="spotify-analytics-grid">
+            {yoy_html}
             {alltime_art_html if lifetime_stats.get('top_artists') else ''}
             {alltime_trk_html if lifetime_stats.get('top_tracks') else ''}
             {tod_html}
             {dow_html}
-            {top_art_html}
-            {eras_html}
-            {genres_html}
+            {best_days_html}
+            {recent_30d_art_html}
+            {recent_7d_art_html}
         </div>
         '''
 
@@ -14853,7 +14907,6 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
 
         {message_banner_html}
         {state_card_html}
-        {lifetime_banner_html if (is_connected or is_demo or has_history) else ''}
         {now_playing_html}
         {kpi_grid_html if (is_connected or is_demo or has_history) else ''}
         {analytics_grid_html if (is_connected or is_demo or has_history) else ''}

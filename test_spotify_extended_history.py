@@ -284,8 +284,7 @@ class TestSpotifyExtendedHistoryAndAutoSync(unittest.TestCase):
         handler.render_spotify_page(demo=True)
         rendered_spotify_html = b"".join(output_chunks).decode("utf-8", errors="ignore")
         self.assertIn("Spotify Listening Intelligence", rendered_spotify_html)
-        self.assertIn("15-Year Personal Streaming Intelligence Archive", rendered_spotify_html)
-        self.assertIn("Lifetime Plays", rendered_spotify_html)
+        self.assertIn("Lifetime Streams", rendered_spotify_html)
         self.assertIn("spotify-pagination-bar", rendered_spotify_html)
         self.assertIn("Search 98,000+ songs", rendered_spotify_html)
 
@@ -298,6 +297,81 @@ class TestSpotifyExtendedHistoryAndAutoSync(unittest.TestCase):
         if "Your Personal Listening History with Bane" in rendered_artist_html:
             self.assertIn("Lifetime Plays", rendered_artist_html)
             self.assertIn("Your Most Streamed Bane Songs", rendered_artist_html)
+
+    def test_advanced_analytics(self):
+        """Verify get_spotify_advanced_analytics returns correct SQL-backed all-time stats."""
+        user = "test_adv@example.com"
+        # Seed streams across different days/hours/days-of-week
+        items = [
+            {
+                "track_id": "adv_1",
+                "played_at": "2020-01-06T14:00:00Z",  # Mon afternoon
+                "name": "Track 1",
+                "artist": "Band A",
+                "album": "Album 1",
+                "duration_ms": 180000,
+            },
+            {
+                "track_id": "adv_2",
+                "played_at": "2021-03-07T21:00:00Z",  # Sun evening
+                "name": "Track 2",
+                "artist": "Band A",
+                "album": "Album 1",
+                "duration_ms": 180000,
+            },
+            {
+                "track_id": "adv_3",
+                "played_at": "2022-06-04T22:00:00Z",  # Sat night
+                "name": "Track 3",
+                "artist": "Band B",
+                "album": "Album 2",
+                "duration_ms": 300000,
+            },
+        ]
+        database.save_spotify_history_items(user, items, db_path=self.db_path)
+
+        adv = database.get_spotify_advanced_analytics(user, db_path=self.db_path)
+
+        # Should have time_of_day breakdown
+        self.assertIn("time_of_day", adv)
+        tod = adv["time_of_day"]
+        self.assertIn("morning", tod)
+        self.assertIn("afternoon", tod)
+        self.assertIn("evening", tod)
+        self.assertIn("night", tod)
+        # 1 afternoon (14:00), 2 evening (21:00 and 22:00 are both in 18-22 range), 0 night
+        self.assertEqual(tod["afternoon"]["count"], 1)
+        self.assertEqual(tod["evening"]["count"], 2)
+        self.assertEqual(tod["night"]["count"], 0)
+        self.assertEqual(tod["morning"]["count"], 0)
+
+        # Should have day_of_week breakdown (all 7 slots present)
+        self.assertIn("day_of_week", adv)
+        dow = adv["day_of_week"]
+        for d in ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]:
+            self.assertIn(d, dow)
+        # Mon (Jan 6 2020), Sun (Mar 7 2021), Sat (Jun 4 2022)
+        self.assertEqual(dow["Mon"]["count"], 1)
+        self.assertEqual(dow["Sun"]["count"], 1)
+        self.assertEqual(dow["Sat"]["count"], 1)
+
+        # Year-over-year should have 3 entries: 2020, 2021, 2022
+        self.assertIn("year_over_year", adv)
+        yoy_years = [y["year"] for y in adv["year_over_year"]]
+        self.assertIn(2020, yoy_years)
+        self.assertIn(2021, yoy_years)
+        self.assertIn(2022, yoy_years)
+
+        # Peak year should be one of them (each has 1 stream, so any is valid)
+        self.assertIn(adv["peak_year"], ["2020", "2021", "2022"])
+        self.assertEqual(adv["peak_year_count"], 1)
+
+        # Best days should include the 3 days
+        self.assertIn("best_days", adv)
+        self.assertEqual(len(adv["best_days"]), 3)
+
+        # Best hour should be one of 14, 21, 22
+        self.assertIn(adv["best_hour"], [14, 21, 22])
 
 
 if __name__ == "__main__":
