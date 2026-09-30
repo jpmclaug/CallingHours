@@ -6221,10 +6221,12 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             position: relative;
             z-index: 2;
             width: min(1380px, 96vw);
+            max-width: 100%;
             margin: 0 auto 60px auto;
             display: flex;
             flex-direction: column;
             gap: 20px;
+            box-sizing: border-box;
         }
 
         /* Top Header & Navigation */
@@ -6235,11 +6237,16 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             gap: 16px;
             flex-wrap: wrap;
             padding-bottom: 4px;
+            width: 100%;
+            max-width: 100%;
+            box-sizing: border-box;
         }
         .playlist-heading-group {
             display: flex;
             flex-direction: column;
             gap: 4px;
+            min-width: 0;
+            max-width: 100%;
         }
         .playlist-main-title {
             font-size: 2rem;
@@ -6251,6 +6258,7 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             gap: 12px;
             margin: 0;
             letter-spacing: -0.02em;
+            word-break: break-word;
         }
         .playlist-studio-pill {
             font-size: 0.72rem;
@@ -6262,6 +6270,7 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             padding: 3px 10px;
             border-radius: 12px;
             box-shadow: 0 2px 8px rgba(29, 185, 84, 0.3);
+            white-space: nowrap;
         }
         .playlist-sub-title {
             color: rgba(225, 232, 240, 0.72);
@@ -6269,6 +6278,7 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             margin: 0;
             max-width: 680px;
             line-height: 1.45;
+            word-break: break-word;
         }
         .playlist-tabs-nav {
             display: flex;
@@ -6279,6 +6289,8 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             border-radius: 24px;
             border: 1px solid rgba(165, 200, 255, 0.22);
             box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+            max-width: 100%;
+            box-sizing: border-box;
         }
         .playlist-tab-btn {
             background: transparent;
@@ -6295,6 +6307,7 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             display: inline-flex;
             align-items: center;
             gap: 6px;
+            white-space: nowrap;
         }
         .playlist-tab-btn:hover {
             color: #FFFFFF;
@@ -6312,10 +6325,13 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             grid-template-columns: 390px 1fr;
             gap: 22px;
             align-items: start;
+            width: 100%;
+            max-width: 100%;
+            box-sizing: border-box;
         }
         @media (max-width: 1080px) {
             .playlist-workbench {
-                grid-template-columns: 1fr;
+                grid-template-columns: minmax(0, 1fr) !important;
             }
         }
 
@@ -6523,16 +6539,26 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             display: flex;
             flex-direction: column;
             gap: 14px;
+            width: 100%;
+            max-width: 100%;
+            box-sizing: border-box;
         }
         .playlist-form-row {
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 12px;
+            width: 100%;
+            max-width: 100%;
+            box-sizing: border-box;
         }
         .playlist-input-group {
             display: flex;
             flex-direction: column;
             gap: 5px;
+            width: 100%;
+            max-width: 100%;
+            min-width: 0;
+            box-sizing: border-box;
         }
         .playlist-input-group label {
             font-size: 0.75rem;
@@ -6542,7 +6568,8 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             letter-spacing: 0.04em;
         }
         .playlist-input-group select,
-        .playlist-input-group input[type="text"] {
+        .playlist-input-group input[type="text"],
+        .playlist-input-group textarea {
             background: rgba(5, 10, 20, 0.85);
             border: 1px solid rgba(165, 200, 255, 0.28);
             border-radius: 8px;
@@ -6553,12 +6580,46 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             outline: none;
             transition: all 0.2s ease;
             width: 100%;
+            max-width: 100%;
+            min-width: 0;
             box-sizing: border-box;
         }
         .playlist-input-group select:focus,
-        .playlist-input-group input[type="text"]:focus {
+        .playlist-input-group input[type="text"]:focus,
+        .playlist-input-group textarea:focus {
             border-color: #A5C8FF;
             box-shadow: 0 0 10px rgba(165, 200, 255, 0.25);
+        }
+        .playlist-title-input-row {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            width: 100%;
+            max-width: 100%;
+            min-width: 0;
+            box-sizing: border-box;
+        }
+        .playlist-quick-load-wrap {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+            max-width: 100%;
+            min-width: 0;
+            box-sizing: border-box;
+        }
+        .playlist-quick-load-select {
+            background: rgba(5, 10, 20, 0.85);
+            border: 1px solid rgba(165, 200, 255, 0.3);
+            border-radius: 6px;
+            padding: 6px 10px;
+            color: #FFFFFF;
+            font-size: 0.8rem;
+            outline: none;
+            cursor: pointer;
+            max-width: 100%;
+            min-width: 0;
+            box-sizing: border-box;
         }
         .deep-cuts-label {
             display: flex;
@@ -6947,6 +7008,210 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             opacity: 1;
             transform: translateY(0);
         }
+
+        /* Mobile & Tablet Responsive Optimizations */
+        @media (max-width: 1080px) {
+            .playlist-page-container {
+                width: 100% !important;
+                max-width: 100vw !important;
+                padding: 0 14px !important;
+                margin-bottom: 120px !important;
+                padding-bottom: 40px !important;
+                box-sizing: border-box !important;
+            }
+            .playlist-workbench {
+                grid-template-columns: minmax(0, 1fr) !important;
+                gap: 16px;
+            }
+            .playlist-studio-rail,
+            .playlist-studio-stage {
+                width: 100% !important;
+                max-width: 100% !important;
+                min-width: 0 !important;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .playlist-top-bar {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 12px;
+                width: 100%;
+            }
+            .playlist-heading-group {
+                width: 100%;
+            }
+            .playlist-main-title {
+                font-size: 1.45rem !important;
+                flex-wrap: wrap;
+                gap: 8px;
+                line-height: 1.25;
+            }
+            .playlist-sub-title {
+                font-size: 0.82rem !important;
+                max-width: 100%;
+            }
+            .playlist-tabs-nav {
+                width: 100% !important;
+                display: flex;
+                border-radius: 14px;
+                padding: 3px;
+                box-sizing: border-box;
+            }
+            .playlist-tab-btn {
+                flex: 1;
+                justify-content: center;
+                text-align: center;
+                padding: 8px 6px !important;
+                font-size: 0.78rem !important;
+                border-radius: 12px;
+            }
+            .playlist-card {
+                padding: 16px 14px !important;
+                border-radius: 14px;
+                width: 100% !important;
+                max-width: 100% !important;
+                box-sizing: border-box !important;
+            }
+            #generated-playlist-section {
+                padding: 16px 14px !important;
+            }
+            .playlist-form-row {
+                grid-template-columns: 1fr !important;
+                gap: 10px;
+            }
+            .stage-hero-deck {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 12px;
+            }
+            .playlist-hero-info {
+                width: 100% !important;
+                min-width: 0 !important;
+            }
+            .playlist-hero-title {
+                font-size: 1.15rem !important;
+                word-break: break-word;
+            }
+            .playlist-actions-toolbar {
+                display: grid !important;
+                grid-template-columns: 1fr 1fr;
+                gap: 8px;
+                width: 100%;
+                margin-top: 12px;
+            }
+            .playlist-actions-toolbar .btn-playlist-spotify {
+                grid-column: 1 / -1;
+                justify-content: center;
+                padding: 10px 14px;
+                font-size: 0.88rem;
+            }
+            .playlist-actions-toolbar .btn-playlist-action {
+                justify-content: center;
+                text-align: center;
+                padding: 7px 10px;
+                font-size: 0.78rem;
+            }
+            .playlist-title-input-row {
+                flex-direction: column !important;
+                align-items: stretch !important;
+                gap: 8px !important;
+            }
+            .playlist-title-input-row .btn-reset-title {
+                width: 100% !important;
+                justify-content: center;
+                height: 36px;
+            }
+            .playlist-quick-load-wrap {
+                width: 100% !important;
+                margin-top: 6px;
+            }
+            .playlist-quick-load-select {
+                width: 100% !important;
+                max-width: 100% !important;
+            }
+            .tracklist-header-bar {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 8px;
+            }
+            .tracklist-search-box {
+                width: 100% !important;
+                max-width: 100% !important;
+                box-sizing: border-box;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .playlist-page-container {
+                padding: 0 8px !important;
+                gap: 12px;
+            }
+            .playlist-card {
+                padding: 14px 10px !important;
+            }
+            #generated-playlist-section {
+                padding: 14px 10px !important;
+            }
+            .playlist-main-title {
+                font-size: 1.25rem !important;
+            }
+            .playlist-tab-btn {
+                font-size: 0.74rem !important;
+                padding: 6px 3px !important;
+            }
+            .playlist-mini-kpis {
+                grid-template-columns: repeat(3, 1fr) !important;
+                gap: 4px;
+                padding: 8px;
+            }
+            .mini-kpi-spotify {
+                grid-column: 1 / -1;
+                border-left: none !important;
+                border-top: 1px solid rgba(165, 200, 255, 0.15);
+                padding-left: 0 !important;
+                padding-top: 6px;
+                margin-top: 2px;
+                justify-content: center;
+                width: 100%;
+            }
+            .mini-kpi-val {
+                font-size: 0.95rem !important;
+            }
+            .mini-kpi-lbl {
+                font-size: 0.6rem !important;
+            }
+            .playlist-hero-art {
+                width: 52px;
+                height: 52px;
+                border-radius: 10px;
+            }
+            .hero-art-icon {
+                font-size: 1.4rem;
+            }
+            .metric-pill {
+                font-size: 0.68rem;
+                padding: 2px 6px;
+            }
+            .playlist-input-group select,
+            .playlist-input-group input[type="text"] {
+                font-size: 0.82rem;
+                padding: 7px 9px;
+            }
+            .btn-generate-primary {
+                padding: 10px 14px;
+                font-size: 0.86rem;
+            }
+            .playlist-tracklist-row td {
+                padding: 8px 6px;
+            }
+            .playlist-track-title {
+                font-size: 0.84rem;
+            }
+            .playlist-track-artist {
+                font-size: 0.74rem;
+            }
+        }
     </style>
 
     <div class="playlist-page-container">
@@ -7171,7 +7436,7 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
                                         <label for="input-playlist-name">Playlist Title</label>
                                         <span id="title-mode-hint" style="font-size: 0.72rem; color: #A5C8FF;">(Auto-refreshes)</span>
                                     </div>
-                                    <div style="display: flex; gap: 8px; align-items: center;">
+                                    <div class="playlist-title-input-row">
                                         <input type="text" name="name" id="input-playlist-name" value="{active_playlist_title}" placeholder="Playlist Title" style="flex: 1;" oninput="onTitleManualEdit()">
                                         <button type="button" id="btn-reset-name" onclick="resetPlaylistName()" class="btn-playlist-action btn-playlist-outline btn-reset-title" title="Reset to default autogenerated title">
                                             ↺ Auto Title
@@ -7387,11 +7652,15 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
                 const mixModeSelect = document.getElementById('select-mix-mode');
                 const mixMode = mixModeSelect ? mixModeSelect.value : 'alternating';
                 const artList = rawArt ? rawArt.split(',').map(s => s.trim()).filter(Boolean) : [];
-                const artSummary = artList.length ? artList.slice(0, 3).join(', ') + (artList.length > 3 ? `, +${artList.length - 3} more` : '') : 'Multi-Artist';
-                if (mixMode === 'thematic') {
-                    newName = `Thematic Blend (${artSummary})`;
+                if (artList.length) {
+                    const artSummary = artList.slice(0, 3).join(', ') + (artList.length > 3 ? `, +${artList.length - 3} more` : '');
+                    if (mixMode === 'thematic') {
+                        newName = `Thematic Blend (${artSummary})`;
+                    } else {
+                        newName = `Top Tracks Rotation (${artSummary})`;
+                    }
                 } else {
-                    newName = `Top Tracks Rotation (${artSummary})`;
+                    newName = mixMode === 'thematic' ? 'Thematic Multi-Artist Blend' : 'Multi-Artist Top Tracks Rotation';
                 }
             } else if (mode === 'setlist_fm') {
                 const artistSelect = document.getElementById('select-setlist-artist');
@@ -7406,11 +7675,11 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
                 }
                 if (!artist) {
                     const fallbackInput = document.getElementById('input-setlist-artist');
-                    artist = (fallbackInput && fallbackInput.value.trim()) ? fallbackInput.value.trim() : 'Artist';
+                    artist = (fallbackInput && fallbackInput.value.trim()) ? fallbackInput.value.trim() : '';
                 }
                 const yearSelect = document.getElementById('select-year');
                 const year = (yearSelect && yearSelect.value.trim()) ? yearSelect.value.trim() : new Date().getFullYear();
-                newName = `${artist}: ${year} Average Setlist`;
+                newName = artist ? `${artist}: ${year} Average Setlist` : 'Average Setlist by Year';
             }
 
             if (newName) {
@@ -7467,6 +7736,9 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
                 return;
             } else {
                 if (customContainer) customContainer.style.display = 'none';
+                if (!selectEl.value) {
+                    return;
+                }
                 updatePlaylistName('artist');
                 submitGeneratorForm();
             }
@@ -7505,6 +7777,15 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             const modeInput = form.querySelector('input[name="mode"]');
             const mode = modeInput ? modeInput.value : '';
 
+            if (mode === 'artist') {
+                const artistSelect = document.getElementById('select-artist');
+                if (artistSelect && !artistSelect.value) {
+                    showToast("Please select an artist first.");
+                    if (artistSelect) artistSelect.focus();
+                    return;
+                }
+            }
+
             if (mode === 'multi_artist') {
                 const artistsInput = document.getElementById('input-multi-artists');
                 const rawVal = artistsInput ? artistsInput.value.trim() : '';
@@ -7529,6 +7810,10 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
                     const opt = new Option(`${customVal} (Custom)`, customVal, true, true);
                     artistSelect.add(opt, artistSelect.options.length - 1);
                     artistSelect.value = customVal;
+                } else if (artistSelect && !artistSelect.value) {
+                    showToast("Please select an artist first.");
+                    if (artistSelect) artistSelect.focus();
+                    return;
                 }
             }
 
@@ -13273,7 +13558,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 library_band_names.add(b['artist'].strip())
         if 'Haywire 617' in library_band_names:
             library_band_names.add('Haywire')
-        sorted_library_bands = sorted(list(library_band_names), key=lambda x: x.lower()) if library_band_names else ['Jimmy Eat World']
+        sorted_library_bands = sorted(list(library_band_names), key=lambda x: x.lower()) if library_band_names else []
 
         def _is_matching_artist(a1: str, a2: str) -> bool:
             if not a1 or not a2:
@@ -13367,13 +13652,16 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
 
         if not songs and not saved_id:
             if active_mode == 'artist':
-                if not selected_artist and analyzed_artists:
-                    selected_artist = analyzed_artists[0]['artist']
-                songs = database.get_analyzed_songs(artist=selected_artist, order_by=order_by, limit=limit)
-                default_title = f"Calling Hours: {selected_artist} (Analyzed)" if selected_artist else "Calling Hours: Artist Tracks"
+                if selected_artist:
+                    songs = database.get_analyzed_songs(artist=selected_artist, order_by=order_by, limit=limit)
+                    default_title = f"Calling Hours: {selected_artist} (Analyzed)"
+                    active_playlist_desc = f"Lyrical analysis collection for {selected_artist}."
+                else:
+                    songs = []
+                    default_title = "Calling Hours: Artist Tracks"
+                    active_playlist_desc = "Select an artist from your library to generate their playlist."
                 if not active_playlist_title or active_playlist_title.startswith("Calling Hours:") or active_playlist_title.endswith("Average Setlist"):
                     active_playlist_title = default_title
-                active_playlist_desc = f"Lyrical analysis collection for {selected_artist}." if selected_artist else "Analyzed songs for selected artist."
             elif active_mode == 'tag':
                 if not selected_tag and analyzed_tags:
                     selected_tag = analyzed_tags[0]['tag']
@@ -13457,173 +13745,172 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                     active_playlist_title = default_title
                 active_playlist_desc = "Analyzed songs matched from your recent Spotify listening history."
             elif active_mode == 'setlist_fm':
-                if not selected_artist:
-                    if analyzed_artists:
-                        selected_artist = analyzed_artists[0]['artist']
-                    elif sorted_library_bands:
-                        selected_artist = sorted_library_bands[0]
-                    else:
-                        selected_artist = 'Haywire'
                 if not selected_year:
                     selected_year = str(datetime.now().year)
 
-                setlist_data = setlistfm.fetch_average_setlist_by_year(
-                    artist_name=selected_artist,
-                    year=selected_year,
-                    api_key=SETLIST_FM_API_KEY
-                )
+                if selected_artist:
+                    setlist_data = setlistfm.fetch_average_setlist_by_year(
+                        artist_name=selected_artist,
+                        year=selected_year,
+                        api_key=SETLIST_FM_API_KEY
+                    )
 
-                raw_tracks = setlist_data.get('tracks', [])
-                total_shows = setlist_data.get('total_concerts', 0)
-                considered_shows = setlist_data.get('considered_concerts', 0)
+                    raw_tracks = setlist_data.get('tracks', [])
+                    total_shows = setlist_data.get('total_concerts', 0)
+                    considered_shows = setlist_data.get('considered_concerts', 0)
 
-                analyzed_db_songs = database.get_analyzed_songs(artist=selected_artist)
-                db_song_map = {}
-                for dbs in analyzed_db_songs:
-                    norm_k = (dbs.get('song_normalized') or dbs.get('song', '')).strip().lower()
-                    db_song_map[norm_k] = dbs
+                    analyzed_db_songs = database.get_analyzed_songs(artist=selected_artist)
+                    db_song_map = {}
+                    for dbs in analyzed_db_songs:
+                        norm_k = (dbs.get('song_normalized') or dbs.get('song', '')).strip().lower()
+                        db_song_map[norm_k] = dbs
 
-                enriched_tracks = []
-                for t in raw_tracks:
-                    s_name = t.get('song', '').strip()
-                    norm_s = s_name.lower()
-                    db_match = db_song_map.get(norm_s)
+                    enriched_tracks = []
+                    for t in raw_tracks:
+                        s_name = t.get('song', '').strip()
+                        norm_s = s_name.lower()
+                        db_match = db_song_map.get(norm_s)
 
-                    display_song = (db_match.get('song') if db_match else None) or s_name
-                    item = {
-                        'id': db_match.get('id') if db_match else None,
-                        'search_id': db_match.get('id') if db_match else None,
-                        'artist': t.get('artist') or selected_artist,
-                        'song': display_song,
-                        'model_name': db_match.get('model_name') if db_match else None,
-                        'track_tags': db_match.get('track_tags') if db_match else [],
-                        'theaudiodb_data': db_match.get('theaudiodb_data') if db_match else None,
-                        'spotify_id': db_match.get('spotify_id') if db_match else None,
-                        'play_count': t.get('play_count', 0),
-                        'total_concerts': t.get('total_concerts', total_shows),
-                        'play_ratio': t.get('play_ratio', 1.0),
-                        'avg_position': t.get('avg_position', t.get('position', 1)),
-                        'is_analyzed': bool(db_match),
-                    }
-                    enriched_tracks.append(item)
+                        display_song = (db_match.get('song') if db_match else None) or s_name
+                        item = {
+                            'id': db_match.get('id') if db_match else None,
+                            'search_id': db_match.get('id') if db_match else None,
+                            'artist': t.get('artist') or selected_artist,
+                            'song': display_song,
+                            'model_name': db_match.get('model_name') if db_match else None,
+                            'track_tags': db_match.get('track_tags') if db_match else [],
+                            'theaudiodb_data': db_match.get('theaudiodb_data') if db_match else None,
+                            'spotify_id': db_match.get('spotify_id') if db_match else None,
+                            'play_count': t.get('play_count', 0),
+                            'total_concerts': t.get('total_concerts', total_shows),
+                            'play_ratio': t.get('play_ratio', 1.0),
+                            'avg_position': t.get('avg_position', t.get('position', 1)),
+                            'is_analyzed': bool(db_match),
+                        }
+                        enriched_tracks.append(item)
 
-                if order_by == 'song ASC':
-                    enriched_tracks.sort(key=lambda x: x['song'].lower())
-                elif order_by == 'artist ASC':
-                    enriched_tracks.sort(key=lambda x: x['artist'].lower())
-                elif order_by == 'play_count DESC':
-                    enriched_tracks.sort(key=lambda x: x.get('play_count', 0), reverse=True)
+                    if order_by == 'song ASC':
+                        enriched_tracks.sort(key=lambda x: x['song'].lower())
+                    elif order_by == 'artist ASC':
+                        enriched_tracks.sort(key=lambda x: x['artist'].lower())
+                    elif order_by == 'play_count DESC':
+                        enriched_tracks.sort(key=lambda x: x.get('play_count', 0), reverse=True)
 
-                if limit and limit > 0:
-                    enriched_tracks = enriched_tracks[:limit]
+                    if limit and limit > 0:
+                        enriched_tracks = enriched_tracks[:limit]
 
-                songs = enriched_tracks
-                default_title = f"{selected_artist}: {selected_year} Average Setlist"
+                    songs = enriched_tracks
+                    default_title = f"{selected_artist}: {selected_year} Average Setlist"
+                    active_playlist_desc = f"Average tour setlist based on {total_shows} concerts in {selected_year} from Setlist.fm."
+                else:
+                    songs = []
+                    default_title = "Average Setlist by Year"
+                    active_playlist_desc = "Select an artist and tour year to load their average tour setlist."
+
                 if not active_playlist_title or active_playlist_title.endswith("Average Setlist") or active_playlist_title.startswith("Calling Hours:"):
                     active_playlist_title = default_title
-                active_playlist_desc = f"Average tour setlist based on {total_shows} concerts in {selected_year} from Setlist.fm."
             elif active_mode == 'multi_artist':
                 raw_arts = selected_artists or selected_artist
                 if raw_arts:
                     artists_list = [a.strip() for a in raw_arts.split(',') if a.strip()]
                 else:
-                    cand = [a['artist'] for a in analyzed_artists if a.get('artist')] + sorted_library_bands
-                    seen_c = set()
-                    uniq_c = []
-                    for c in cand:
-                        s_c = c.strip()
-                        if s_c.lower() not in seen_c:
-                            seen_c.add(s_c.lower())
-                            uniq_c.append(s_c)
-                    artists_list = uniq_c[:2] if len(uniq_c) >= 2 else ['Jimmy Eat World', 'Taking Back Sunday']
+                    artists_list = []
 
-                selected_artists = ", ".join(artists_list)
+                if artists_list:
+                    selected_artists = ", ".join(artists_list)
 
-                catalog = playlist_curator.fetch_multi_artist_catalog(
-                    artists=artists_list,
-                    limit_per_artist=selected_per_artist,
-                    user_email=current_user['email'],
-                    db_path=DATABASE_PATH
-                )
-
-                detected_themes_for_save = []
-                if selected_mix_mode == 'thematic':
-                    thematic_res = playlist_curator.mix_thematic(
-                        catalog,
-                        gemini_api_key=GEMINI_API_KEY,
-                        model_name=DEFAULT_GEMINI_MODEL,
-                        limit=limit,
-                        force_refresh=force_refresh
+                    catalog = playlist_curator.fetch_multi_artist_catalog(
+                        artists=artists_list,
+                        limit_per_artist=selected_per_artist,
+                        user_email=current_user['email'],
+                        db_path=DATABASE_PATH
                     )
-                    songs = thematic_res.get('tracks', [])
-                    themes = thematic_res.get('themes', [])
-                    detected_themes_for_save = themes
-                    curator_notes = thematic_res.get('curator_notes', '')
-                    art_parenthetical = ", ".join(artists_list)
-                    auto_title = thematic_res.get('playlist_title') or f"Thematic Blend ({art_parenthetical})"
-                    auto_desc = thematic_res.get('playlist_description') or f"Thematic mix of top tracks from {art_parenthetical}."
-                    if not active_playlist_title or active_playlist_title.startswith("Calling Hours:") or active_playlist_title.endswith("Average Setlist") or "Alternating" in active_playlist_title or "Rotation" in active_playlist_title or "Thematic" in active_playlist_title:
-                        active_playlist_title = auto_title
-                    active_playlist_desc = auto_desc
 
-                    theme_pills = []
-                    for th in themes:
-                        th_name = html_escape(th.get('name', ''))
-                        th_cnt = th.get('track_count', 0)
-                        th_icon = th.get('icon', '🎭')
-                        th_desc = html_escape(th.get('description', ''))
-                        theme_pills.append(f'<span class="playlist-tag-chip" style="background: rgba(197, 184, 255, 0.18); border-color: rgba(197, 184, 255, 0.4); color: #C5B8FF; font-size: 0.78rem; font-weight: 700;" title="{th_desc}">{th_icon} {th_name} ({th_cnt})</span>')
+                    detected_themes_for_save = []
+                    if selected_mix_mode == 'thematic':
+                        thematic_res = playlist_curator.mix_thematic(
+                            catalog,
+                            gemini_api_key=GEMINI_API_KEY,
+                            model_name=DEFAULT_GEMINI_MODEL,
+                            limit=limit,
+                            force_refresh=force_refresh
+                        )
+                        songs = thematic_res.get('tracks', [])
+                        themes = thematic_res.get('themes', [])
+                        detected_themes_for_save = themes
+                        curator_notes = thematic_res.get('curator_notes', '')
+                        art_parenthetical = ", ".join(artists_list)
+                        auto_title = thematic_res.get('playlist_title') or f"Thematic Blend ({art_parenthetical})"
+                        auto_desc = thematic_res.get('playlist_description') or f"Thematic mix of top tracks from {art_parenthetical}."
+                        if not active_playlist_title or active_playlist_title.startswith("Calling Hours:") or active_playlist_title.endswith("Average Setlist") or "Alternating" in active_playlist_title or "Rotation" in active_playlist_title or "Thematic" in active_playlist_title:
+                            active_playlist_title = auto_title
+                        active_playlist_desc = auto_desc
 
-                    engine_label = "Google Gemini AI" if thematic_res.get('engine') == 'gemini' else "Sonic & Tag Intelligence Engine"
-                    is_cached = bool(thematic_res.get('_cached'))
-                    cached_badge = ''
-                    refresh_url = f"/playlists?mode=multi_artist&artists={urllib.parse.quote(selected_artists)}&mix_mode=thematic&per_artist={selected_per_artist}&limit={limit or ''}&refresh=1"
-                    if is_cached:
-                        cached_badge = '<span style="font-size: 0.74rem; background: rgba(46, 213, 115, 0.18); border: 1px solid rgba(46, 213, 115, 0.4); color: #2ED573; padding: 2px 8px; border-radius: 10px; font-weight: 700;" title="Loaded instantly from database cache. No duplicate Gemini API call.">⚡ Cached Curation</span>'
-                    refresh_btn = f'<a href="{refresh_url}" style="font-size: 0.74rem; color: #A5C8FF; text-decoration: none; border: 1px solid rgba(165, 200, 255, 0.35); padding: 2px 8px; border-radius: 10px; background: rgba(255, 255, 255, 0.05); transition: all 0.2s ease; display: inline-flex; align-items: center; gap: 4px;" title="Re-run Gemini thematic lyric &amp; audio analysis">↻ Re-analyze with Gemini</a>'
-                    thematic_synergy_card_html = f'''
-                    <div style="background: linear-gradient(135deg, rgba(25, 70, 133, 0.3) 0%, rgba(11, 30, 63, 0.6) 100%); border: 1px solid rgba(197, 184, 255, 0.35); border-radius: 12px; padding: 16px 20px; margin-bottom: 20px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 8px;">
-                            <div style="display: flex; align-items: center; gap: 8px;">
-                                <span style="font-size: 1.1rem;">🎭</span>
-                                <h4 style="margin: 0; font-size: 0.98rem; font-weight: 800; font-family: 'Montserrat', sans-serif; color: #FFFFFF;">
-                                    Thematic Track Analysis &amp; Detected Themes
-                                </h4>
+                        theme_pills = []
+                        for th in themes:
+                            th_name = html_escape(th.get('name', ''))
+                            th_cnt = th.get('track_count', 0)
+                            th_icon = th.get('icon', '🎭')
+                            th_desc = html_escape(th.get('description', ''))
+                            theme_pills.append(f'<span class="playlist-tag-chip" style="background: rgba(197, 184, 255, 0.18); border-color: rgba(197, 184, 255, 0.4); color: #C5B8FF; font-size: 0.78rem; font-weight: 700;" title="{th_desc}">{th_icon} {th_name} ({th_cnt})</span>')
+
+                        engine_label = "Google Gemini AI" if thematic_res.get('engine') == 'gemini' else "Sonic & Tag Intelligence Engine"
+                        is_cached = bool(thematic_res.get('_cached'))
+                        cached_badge = ''
+                        refresh_url = f"/playlists?mode=multi_artist&artists={urllib.parse.quote(selected_artists)}&mix_mode=thematic&per_artist={selected_per_artist}&limit={limit or ''}&refresh=1"
+                        if is_cached:
+                            cached_badge = '<span style="font-size: 0.74rem; background: rgba(46, 213, 115, 0.18); border: 1px solid rgba(46, 213, 115, 0.4); color: #2ED573; padding: 2px 8px; border-radius: 10px; font-weight: 700;" title="Loaded instantly from database cache. No duplicate Gemini API call.">⚡ Cached Curation</span>'
+                        refresh_btn = f'<a href="{refresh_url}" style="font-size: 0.74rem; color: #A5C8FF; text-decoration: none; border: 1px solid rgba(165, 200, 255, 0.35); padding: 2px 8px; border-radius: 10px; background: rgba(255, 255, 255, 0.05); transition: all 0.2s ease; display: inline-flex; align-items: center; gap: 4px;" title="Re-run Gemini thematic lyric &amp; audio analysis">↻ Re-analyze with Gemini</a>'
+                        thematic_synergy_card_html = f'''
+                        <div style="background: linear-gradient(135deg, rgba(25, 70, 133, 0.3) 0%, rgba(11, 30, 63, 0.6) 100%); border: 1px solid rgba(197, 184, 255, 0.35); border-radius: 12px; padding: 16px 20px; margin-bottom: 20px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 8px;">
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <span style="font-size: 1.1rem;">🎭</span>
+                                    <h4 style="margin: 0; font-size: 0.98rem; font-weight: 800; font-family: 'Montserrat', sans-serif; color: #FFFFFF;">
+                                        Thematic Track Analysis &amp; Detected Themes
+                                    </h4>
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                                    {cached_badge}
+                                    {refresh_btn}
+                                    <span style="font-size: 0.74rem; background: rgba(197, 184, 255, 0.15); border: 1px solid rgba(197, 184, 255, 0.3); color: #C5B8FF; padding: 2px 8px; border-radius: 10px; font-weight: 600;">
+                                        Powered by {engine_label}
+                                    </span>
+                                </div>
                             </div>
-                            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                                {cached_badge}
-                                {refresh_btn}
-                                <span style="font-size: 0.74rem; background: rgba(197, 184, 255, 0.15); border: 1px solid rgba(197, 184, 255, 0.3); color: #C5B8FF; padding: 2px 8px; border-radius: 10px; font-weight: 600;">
-                                    Powered by {engine_label}
-                                </span>
+                            <div style="font-size: 0.84rem; color: rgba(225, 232, 240, 0.85); line-height: 1.45; margin-bottom: 12px;">
+                                {html_escape(curator_notes or auto_desc)}
+                            </div>
+                            <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+                                <span style="font-size: 0.75rem; color: #A5C8FF; font-weight: 700;">Discovered Themes:</span>
+                                {"".join(theme_pills) if theme_pills else '<span style="font-size: 0.78rem; color: rgba(225, 232, 240, 0.6); font-style: italic;">Adaptive Multi-Artist Harmony</span>'}
                             </div>
                         </div>
-                        <div style="font-size: 0.84rem; color: rgba(225, 232, 240, 0.85); line-height: 1.45; margin-bottom: 12px;">
-                            {html_escape(curator_notes or auto_desc)}
-                        </div>
-                        <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
-                            <span style="font-size: 0.75rem; color: #A5C8FF; font-weight: 700;">Discovered Themes:</span>
-                            {"".join(theme_pills) if theme_pills else '<span style="font-size: 0.78rem; color: rgba(225, 232, 240, 0.6); font-style: italic;">Adaptive Multi-Artist Harmony</span>'}
-                        </div>
-                    </div>
-                    '''
+                        '''
+                    else:
+                        alternating_tracks = playlist_curator.mix_alternating(catalog, limit=limit)
+                        songs = alternating_tracks
+                        art_parenthetical = ", ".join(artists_list)
+                        auto_title = f"Top Tracks Rotation ({art_parenthetical})"
+                        auto_desc = f"Alternating round-robin sequence of top tracks from {art_parenthetical}."
+                        if not active_playlist_title or active_playlist_title.startswith("Calling Hours:") or active_playlist_title.endswith("Average Setlist") or "Thematic" in active_playlist_title or "Alternating" in active_playlist_title or "Rotation" in active_playlist_title:
+                            active_playlist_title = auto_title
+                        active_playlist_desc = auto_desc
+                        thematic_synergy_card_html = ""
+
+                    if order_by == 'artist ASC':
+                        songs.sort(key=lambda x: x.get('artist', '').lower())
+                    elif order_by == 'song ASC':
+                        songs.sort(key=lambda x: x.get('song', '').lower())
+                    elif order_by == 'popularity DESC':
+                        songs.sort(key=lambda x: int(x.get('popularity', 0) or x.get('playcount', 0)), reverse=True)
                 else:
-                    alternating_tracks = playlist_curator.mix_alternating(catalog, limit=limit)
-                    songs = alternating_tracks
-                    art_parenthetical = ", ".join(artists_list)
-                    auto_title = f"Top Tracks Rotation ({art_parenthetical})"
-                    auto_desc = f"Alternating round-robin sequence of top tracks from {art_parenthetical}."
-                    if not active_playlist_title or active_playlist_title.startswith("Calling Hours:") or active_playlist_title.endswith("Average Setlist") or "Thematic" in active_playlist_title or "Alternating" in active_playlist_title or "Rotation" in active_playlist_title:
-                        active_playlist_title = auto_title
-                    active_playlist_desc = auto_desc
+                    songs = []
                     thematic_synergy_card_html = ""
-
-                if order_by == 'artist ASC':
-                    songs.sort(key=lambda x: x.get('artist', '').lower())
-                elif order_by == 'song ASC':
-                    songs.sort(key=lambda x: x.get('song', '').lower())
-                elif order_by == 'popularity DESC':
-                    songs.sort(key=lambda x: int(x.get('popularity', 0) or x.get('playcount', 0)), reverse=True)
+                    default_title = "Thematic Multi-Artist Blend" if selected_mix_mode == 'thematic' else "Multi-Artist Top Tracks Rotation"
+                    if not active_playlist_title or active_playlist_title.startswith("Calling Hours:") or active_playlist_title.endswith("Average Setlist") or "Thematic" in active_playlist_title or "Alternating" in active_playlist_title or "Rotation" in active_playlist_title:
+                        active_playlist_title = default_title
+                    active_playlist_desc = "Select or enter 2 or more artists to blend their top tracks into a seamless playlist."
             elif active_mode == 'ai_prompt':
                 all_catalog = database.get_analyzed_songs()
                 ai_prompt_query = selected_prompt or 'melancholy midnight drive with heavy emotional chorus'
@@ -13818,10 +14105,12 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 f'>{html_escape(a["artist"])} ({a["song_count"]})</option>'
                 for a in analyzed_artists
             )
+            placeholder_opt = '<option value="" disabled' + (' selected' if not selected_artist else '') + '>-- Select an Artist / Band --</option>'
             mode_specific_inputs = f'''
                 <div class="playlist-input-group">
                     <label for="select-artist">Select Artist</label>
                     <select name="artist" id="select-artist" onchange="onCriteriaChange('artist')">
+                        {placeholder_opt if analyzed_artists else ''}
                         {artist_opts or '<option value="">No analyzed artists yet</option>'}
                     </select>
                 </div>
@@ -13874,13 +14163,6 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 </div>
             '''
         elif active_mode == 'setlist_fm':
-            if not selected_artist:
-                if analyzed_artists:
-                    selected_artist = analyzed_artists[0]['artist']
-                elif sorted_library_bands:
-                    selected_artist = sorted_library_bands[0]
-                else:
-                    selected_artist = 'Haywire'
             if not selected_year:
                 selected_year = str(datetime.now().year)
 
@@ -13897,12 +14179,15 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             is_custom_artist = bool(selected_artist and not any(_is_matching_artist(b, selected_artist) for b in sorted_library_bands))
 
             band_options = []
+            if not selected_artist:
+                band_options.append('<option value="" disabled selected>-- Select an Artist / Band --</option>')
+
             for b in sorted_library_bands:
-                is_sel = _is_matching_artist(b, selected_artist) if not is_custom_artist else False
+                is_sel = _is_matching_artist(b, selected_artist) if (selected_artist and not is_custom_artist) else False
                 band_options.append(f'<option value="{html_escape(b)}"{" selected" if is_sel else ""}>{html_escape(b)}</option>')
 
             if is_custom_artist:
-                band_options.insert(0, f'<option value="{html_escape(selected_artist)}" selected>{html_escape(selected_artist)} (Custom)</option>')
+                band_options.insert(0 if selected_artist else 1, f'<option value="{html_escape(selected_artist)}" selected>{html_escape(selected_artist)} (Custom)</option>')
 
             band_options.append('<option value="__custom__">✏️ Enter Another Band...</option>')
             band_opts_html = "".join(band_options)
@@ -13928,7 +14213,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 </div>
             '''
         elif active_mode == 'multi_artist':
-            raw_arts_disp = selected_artists or (", ".join(artists_list) if 'artists_list' in locals() else "Jimmy Eat World, Taking Back Sunday")
+            raw_arts_disp = selected_artists or ""
 
             # Quick suggestion chips from library & analyzed bands
             quick_chips = []
@@ -14014,10 +14299,16 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         clean_tracks_for_json: List[Dict[str, Any]] = []
 
         if not songs:
-            tracklist_html = '''
+            if active_mode in ('artist', 'setlist_fm') and not selected_artist:
+                empty_msg = "Please select or enter an artist/band above to generate this playlist."
+            elif active_mode == 'multi_artist' and not (selected_artists or selected_artist):
+                empty_msg = "Please enter or pick 2 or more artists above to generate a blend."
+            else:
+                empty_msg = "No analyzed songs match your current criteria. Analyze songs from the Song tab to add them to your collection!"
+            tracklist_html = f'''
                 <tr class="playlist-tracklist-row">
                     <td colspan="5" style="text-align: center; padding: 40px; color: #A5C8FF; font-style: italic;">
-                        No analyzed songs match your current criteria. Analyze songs from the Song tab to add them to your collection!
+                        {empty_msg}
                     </td>
                 </tr>
             '''
@@ -14197,9 +14488,9 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 for p in saved_playlists
             )
             saved_playlist_quick_dropdown_html = f'''
-                <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                <div class="playlist-quick-load-wrap">
                     <span style="font-size: 0.76rem; color: #A5C8FF; font-weight: 700; text-transform: uppercase;">📁 Quick Load:</span>
-                    <select id="quick-select-saved-playlist" onchange="loadSavedPlaylist(this.value)" style="background: rgba(5, 10, 20, 0.85); border: 1px solid rgba(165, 200, 255, 0.3); border-radius: 6px; padding: 4px 10px; color: #FFFFFF; font-size: 0.8rem; outline: none; cursor: pointer;">
+                    <select id="quick-select-saved-playlist" class="playlist-quick-load-select" onchange="loadSavedPlaylist(this.value)">
                         <option value="">-- Load Saved Playlist ({len(saved_playlists)}) --</option>
                         {saved_options}
                     </select>

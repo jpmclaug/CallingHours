@@ -167,6 +167,54 @@ class TestEnhancementsComprehensive(unittest.TestCase):
             self.assertTrue(body.startswith("#EXTM3U"))
             self.assertIn("Artist Alpha", body)
 
+    def test_09_playlists_mobile_responsiveness(self):
+        """Verify /playlists includes responsive mobile styles for headers, workbench, and inputs."""
+        with self.authed_get("/playlists") as resp:
+            self.assertEqual(resp.status, 200)
+            html = resp.read().decode('utf-8')
+            # Check responsive container and grid rules
+            self.assertIn(".playlist-page-container", html)
+            self.assertIn("@media (max-width: 1080px)", html)
+            self.assertIn("grid-template-columns: minmax(0, 1fr) !important;", html)
+            self.assertIn("@media (max-width: 768px)", html)
+            self.assertIn(".playlist-form-row", html)
+            self.assertIn(".playlist-quick-load-wrap", html)
+            self.assertIn(".playlist-quick-load-select", html)
+            self.assertIn(".playlist-title-input-row", html)
+            self.assertIn("word-break: break-word;", html)
+
+    def test_10_playlists_no_prepopulation(self):
+        """Verify generator modes do NOT prepopulate default bands when query params are absent."""
+        # 1. Mode = artist without param
+        with self.authed_get("/playlists?mode=artist") as resp:
+            self.assertEqual(resp.status, 200)
+            html = resp.read().decode('utf-8')
+            self.assertIn("-- Select an Artist / Band --", html)
+            self.assertIn("Please select or enter an artist/band above to generate this playlist.", html)
+
+        # 2. Mode = setlist_fm without param
+        with self.authed_get("/playlists?mode=setlist_fm") as resp:
+            self.assertEqual(resp.status, 200)
+            html = resp.read().decode('utf-8')
+            self.assertIn("-- Select an Artist / Band --", html)
+            self.assertIn("Please select or enter an artist/band above to generate this playlist.", html)
+            # Default title should be generic, not prepopulated band
+            self.assertIn("Average Setlist by Year", html)
+
+        # 3. Mode = multi_artist without param
+        with self.authed_get("/playlists?mode=multi_artist") as resp:
+            self.assertEqual(resp.status, 200)
+            html = resp.read().decode('utf-8')
+            self.assertIn('id="input-multi-artists" value=""', html)
+            self.assertIn("Please enter or pick 2 or more artists above to generate a blend.", html)
+
+        # 4. Mode = artist WITH param should load the requested artist
+        with self.authed_get("/playlists?mode=artist&artist=Slowdive") as resp:
+            self.assertEqual(resp.status, 200)
+            html = resp.read().decode('utf-8')
+            self.assertIn("Calling Hours: Slowdive (Analyzed)", html)
+
 if __name__ == "__main__":
     unittest.main()
+
 
