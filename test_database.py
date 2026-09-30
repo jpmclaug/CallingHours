@@ -478,6 +478,81 @@ class TestDatabase(unittest.TestCase):
         database.clear_spotify_history("testuser@example.com", db_path=self.db_path)
         self.assertEqual(database.get_spotify_history_count("testuser@example.com", db_path=self.db_path), 0)
 
+    def test_spotify_listening_timeline_rollups_phases_and_genres(self):
+        email = "timeline@example.com"
+        plays = [
+            ("2024-01", "Signal Fire", 2),
+            ("2024-02", "Signal Fire", 10),
+            ("2024-03", "Signal Fire", 12),
+            ("2024-04", "Signal Fire", 2),
+            ("2024-01", "Unenriched Band", 1),
+            ("2024-01", "Ritual", 1),
+            ("2024-02", "Ritual", 1),
+            ("2024-03", "Ritual", 1),
+            ("2024-04", "Ritual", 4),
+            ("2024-01", "Perennial", 9),
+            ("2024-02", "Perennial", 9),
+            ("2024-03", "Perennial", 9),
+        ]
+        history = []
+        for month, artist, count in plays:
+            for play_index in range(count):
+                history.append({
+                    "track_id": f"{artist}-{month}-{play_index}",
+                    "played_at": f"{month}-05T{play_index % 24:02d}:00:00Z",
+                    "name": f"Track {play_index}",
+                    "artist": artist,
+                    "album": "Archive Album",
+                    "duration_ms": 180000,
+                })
+        database.save_spotify_history_items(email, history, db_path=self.db_path)
+        database.upsert_artist_enrichment(
+            "Signal Fire",
+            {
+                "genre": "emo",
+                "tags": [{"name": "indie rock"}, {"name": "emo"}],
+            },
+            db_path=self.db_path,
+        )
+
+        monthly = database.get_spotify_listening_timeline(
+            email, granularity="month", artist_limit=1, db_path=self.db_path
+        )
+        self.assertEqual([bucket["key"] for bucket in monthly["buckets"]], [
+            "2024-01", "2024-02", "2024-03", "2024-04"
+        ])
+        february = monthly["buckets"][1]
+        self.assertEqual(february["artists"][0]["artist"], "Signal Fire")
+        self.assertEqual(february["artists"][0]["genres"], ["emo", "indie rock"])
+        self.assertLess(monthly["genre_coverage_percent"], 100)
+        sustained = [
+            phase for phase in monthly["phases"]
+            if phase["artist"] == "Signal Fire" and phase["type"] == "sustained"
+        ]
+        self.assertEqual(len(sustained), 1)
+        self.assertEqual((sustained[0]["start"], sustained[0]["end"]), ("2024-02", "2024-03"))
+        self.assertEqual(sustained[0]["play_count"], 22)
+        spike = next(phase for phase in monthly["phases"] if phase["artist"] == "Ritual")
+        self.assertEqual((spike["type"], spike["start"], spike["end"]), ("spike", "2024-04", "2024-04"))
+
+        quarterly = database.get_spotify_listening_timeline(
+            email, granularity="quarter", artist_limit=1, db_path=self.db_path
+        )
+        self.assertEqual([bucket["key"] for bucket in quarterly["buckets"]], ["2024-Q1", "2024-Q2"])
+        self.assertEqual(quarterly["buckets"][0]["artists"][0]["artist"], "Perennial")
+        self.assertEqual(quarterly["buckets"][0]["artists"][0]["count"], 27)
+        yearly = database.get_spotify_listening_timeline(
+            email, granularity="year", db_path=self.db_path
+        )
+        self.assertEqual(yearly["buckets"][0]["key"], "2024")
+        self.assertEqual(yearly["total_plays"], len(history))
+
+    def test_spotify_listening_timeline_rejects_unknown_granularity(self):
+        with self.assertRaises(ValueError):
+            database.get_spotify_listening_timeline(
+                "timeline@example.com", granularity="week", db_path=self.db_path
+            )
+
     def test_playlist_generation_and_storage(self):
         # 1. Initially no analyzed songs
         self.assertEqual(database.get_analyzed_songs_count(db_path=self.db_path), 0)
@@ -786,6 +861,3 @@ class TestDatabase(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
-
-

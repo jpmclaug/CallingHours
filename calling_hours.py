@@ -6898,6 +6898,123 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
         let currentAudio = null;
         let currentAudioBtn = null;
 
+        function spotifyTimelineEscape(value) {
+            const node = document.createElement('span');
+            node.textContent = value == null ? '' : String(value);
+            return node.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+
+        function spotifyTimelineColor(name) {
+            const colors = ['#1DB954', '#38BDF8', '#A78BFA', '#F59E0B', '#F472B6', '#2DD4BF', '#FB7185', '#818CF8'];
+            let hash = 0;
+            for (let i = 0; i < name.length; i++) {
+                hash = ((hash << 5) - hash) + name.charCodeAt(i);
+                hash |= 0;
+            }
+            return colors[Math.abs(hash) % colors.length];
+        }
+
+        async function loadSpotifyListeningTimeline() {
+            const panel = document.getElementById('spotify-timeline-panel');
+            const chart = document.getElementById('spotify-timeline-chart');
+            const legend = document.getElementById('spotify-timeline-legend');
+            const phasesEl = document.getElementById('spotify-phase-highlights');
+            const meta = document.getElementById('spotify-timeline-meta');
+            const granularity = document.getElementById('spotify-timeline-granularity');
+            if (!panel || !chart || !phasesEl || !granularity) return;
+
+            chart.innerHTML = '<div style="color:#A5C8FF;padding:24px;">Loading your listening timeline…</div>';
+            try {
+                const response = await fetch(`/api/spotify/timeline?granularity=${encodeURIComponent(granularity.value)}&artist_limit=5`);
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.error || 'Unable to load listening timeline.');
+                }
+
+                if (meta) {
+                    meta.textContent = `${Number(data.total_plays || 0).toLocaleString()} archived plays · genre tags cover ${Number(data.genre_coverage_percent || 0).toFixed(1)}% of plays`;
+                }
+                if (!data.buckets || data.buckets.length === 0) {
+                    chart.innerHTML = '<div style="color:rgba(225,232,240,.65);padding:24px;">No Spotify archive is available yet. Sync or import listening history to build a timeline.</div>';
+                    if (legend) legend.innerHTML = '';
+                } else {
+                    const maxPlays = Math.max(...data.buckets.map(bucket => Number(bucket.total_plays || 0)), 1);
+                    const artistTotals = {};
+                    data.buckets.forEach(bucket => (bucket.artists || []).forEach(artist => {
+                        artistTotals[artist.artist] = (artistTotals[artist.artist] || 0) + Number(artist.count || 0);
+                    }));
+                    if (legend) {
+                        legend.innerHTML = Object.entries(artistTotals)
+                            .sort((left, right) => right[1] - left[1])
+                            .slice(0, 10)
+                            .map(([artist]) => `<span style="display:inline-flex;align-items:center;gap:5px;font-size:.7rem;color:#DCE7F6;"><span style="width:9px;height:9px;border-radius:2px;background:${spotifyTimelineColor(artist)};"></span>${spotifyTimelineEscape(artist)}</span>`)
+                            .join('');
+                    }
+                    const columns = data.buckets.map(bucket => {
+                        const total = Number(bucket.total_plays || 0);
+                        const height = total ? Math.max(4, Math.round(total / maxPlays * 170)) : 0;
+                        const artists = (bucket.artists || []).slice(0, 5);
+                        const topPlays = artists.reduce((sum, artist) => sum + Number(artist.count || 0), 0);
+                        const artistSegments = artists.map(artist => {
+                            const segmentHeight = total ? height * Number(artist.count || 0) / total : 0;
+                            return `<div title="${spotifyTimelineEscape(`${artist.artist}: ${artist.count} plays`)}" style="height:${segmentHeight}px;min-height:${segmentHeight > 0 ? 1 : 0}px;background:${spotifyTimelineColor(artist.artist)};"></div>`;
+                        }).join('');
+                        const otherHeight = total ? Math.max(0, height * (total - topPlays) / total) : 0;
+                        const otherSegment = otherHeight > 0 ? `<div title="Other artists" style="height:${otherHeight}px;background:rgba(165,200,255,.32);"></div>` : '';
+                        const leader = artists[0];
+                        const leadingName = leader ? spotifyTimelineEscape(leader.artist) : 'No plays';
+                        const topGenres = (bucket.genres || []).slice(0, 2).map(item =>
+                            `<span style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#A5C8FF;">${spotifyTimelineEscape(item.genre)}</span>`
+                        ).join('');
+                        const shortLabel = spotifyTimelineEscape(String(bucket.label || bucket.key).replace(/ 20(\\d{2})$/, " '$1"));
+                        return `
+                            <div style="width:68px;min-width:68px;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:5px;" title="${spotifyTimelineEscape(`${bucket.label}: ${total.toLocaleString()} plays`)}">
+                                <div style="height:174px;width:40px;display:flex;flex-direction:column;justify-content:flex-end;align-items:stretch;border-bottom:1px solid rgba(165,200,255,.25);">
+                                    ${artistSegments}${otherSegment}
+                                </div>
+                                <div style="font-size:.62rem;color:#E1E8F0;text-align:center;width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${total.toLocaleString()}</div>
+                                <div style="font-size:.65rem;color:#A5C8FF;text-align:center;white-space:nowrap;">${shortLabel}</div>
+                                <div style="font-size:.64rem;text-align:center;width:100%;min-height:32px;overflow:hidden;">
+                                    <div style="color:#FFFFFF;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${leadingName}">${leadingName}</div>
+                                    ${topGenres}
+                                </div>
+                            </div>`;
+                    }).join('');
+                    chart.innerHTML = `<div style="display:flex;align-items:flex-end;gap:8px;min-width:max-content;min-height:275px;padding:10px 4px 2px;">${columns}</div>`;
+                }
+
+                const phases = (data.phases || []).slice(0, 12);
+                if (!phases.length) {
+                    phasesEl.innerHTML = '<div style="color:rgba(225,232,240,.65);padding:12px 0;">No clear above-baseline listening phases detected yet. As your archive grows, sustained runs and unusually concentrated months may stand out.</div>';
+                } else {
+                    phasesEl.innerHTML = phases.map(phase => {
+                        const artist = spotifyTimelineEscape(phase.artist);
+                        const artistUrl = `/artist?artist=${encodeURIComponent(phase.artist || '')}`;
+                        const typeLabel = phase.type === 'sustained' ? 'Sustained focus' : 'Listening spike';
+                        const genres = phase.genres && phase.genres.length
+                            ? phase.genres.map(genre => `<span style="display:inline-block;background:rgba(165,200,255,.1);border:1px solid rgba(165,200,255,.18);border-radius:10px;padding:2px 7px;margin:2px;color:#A5C8FF;font-size:.7rem;">${spotifyTimelineEscape(genre)}</span>`).join('')
+                            : '<span style="font-size:.72rem;color:rgba(225,232,240,.5);font-style:italic;">Genre tags not enriched yet</span>';
+                        return `
+                            <div style="background:rgba(14,38,80,.5);border:1px solid rgba(110,231,183,.16);border-radius:10px;padding:12px;">
+                                <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start;">
+                                    <a href="${artistUrl}" style="color:#FFFFFF;font-weight:800;text-decoration:none;">${artist}</a>
+                                    <span style="font-size:.66rem;color:#6EE7B7;white-space:nowrap;">${typeLabel}</span>
+                                </div>
+                                <div style="font-size:.76rem;color:#A5C8FF;margin-top:5px;">${spotifyTimelineEscape(phase.label)} · ${Number(phase.play_count || 0).toLocaleString()} plays · ${Number(phase.peak_share_percent || 0).toFixed(1)}% peak monthly share</div>
+                                <div style="margin-top:6px;">${genres}</div>
+                            </div>`;
+                    }).join('');
+                }
+            } catch (error) {
+                chart.innerHTML = `<div style="color:#FCA5A5;padding:24px;">${spotifyTimelineEscape(error.message || 'Unable to load listening timeline.')}</div>`;
+                phasesEl.innerHTML = '';
+            }
+        }
+
+        if (document.getElementById('spotify-timeline-panel')) {
+            loadSpotifyListeningTimeline();
+        }
+
         function toggleAudioPreview(btn, url) {
             if (!url) return;
             if (currentAudio && !currentAudio.paused) {
@@ -11192,6 +11309,10 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             self.handle_api_spotify_slice(parsed.query)
             return
 
+        if parsed.path == '/api/spotify/timeline':
+            self.handle_api_spotify_timeline(parsed.query)
+            return
+
         if parsed.path == '/api/spotify/enrich-artists':
             self.handle_api_spotify_enrich_artists(parsed.query)
             return
@@ -14468,6 +14589,44 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(json.dumps({'error': str(e)}).encode('utf-8'))
 
+    def handle_api_spotify_timeline(self, query_string: str):
+        """Return the signed-in user's archive-backed artist and genre timeline."""
+        current_user = self.get_current_user()
+        if not current_user:
+            self.send_response(401)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(json.dumps({'error': 'Unauthorized'}).encode('utf-8'))
+            return
+
+        params = urllib.parse.parse_qs(query_string)
+        granularity = params.get('granularity', ['month'])[0].strip().lower()
+        artist_limit_raw = params.get('artist_limit', ['5'])[0].strip()
+        artist_limit = int(artist_limit_raw) if artist_limit_raw.isdigit() else 5
+        artist_limit = max(1, min(artist_limit, 12))
+
+        try:
+            timeline = database.get_spotify_listening_timeline(
+                current_user['email'],
+                granularity=granularity,
+                artist_limit=artist_limit,
+            )
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(json.dumps(timeline).encode('utf-8'))
+        except ValueError as e:
+            self.send_response(400)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(json.dumps({'error': str(e)}).encode('utf-8'))
+        except Exception as e:
+            print(f"Spotify listening timeline error: {e}")
+            self.send_response(500)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(json.dumps({'error': 'Unable to load Spotify listening timeline.'}).encode('utf-8'))
+
     def handle_api_spotify_enrichment_status(self):
         """API handler returning current coverage stats of artist enrichment."""
         current_user = self.get_current_user()
@@ -15160,6 +15319,38 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         </div>
         '''
 
+        timeline_html = '''
+        <section class="slicer-card" id="spotify-timeline-panel" aria-labelledby="spotify-timeline-title">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap;">
+                <div>
+                    <h2 id="spotify-timeline-title" style="font-family:'Montserrat',sans-serif;font-size:1.2rem;font-weight:800;color:#FFFFFF;margin:0;">🎸 Your Listening Eras</h2>
+                    <div style="font-size:.82rem;color:#A5C8FF;margin-top:5px;">Follow your most-played bands and their genre tags through your archive. Artist colors stay consistent across the timeline.</div>
+                </div>
+                <label style="font-size:.76rem;color:#A5C8FF;font-weight:700;min-width:150px;">
+                    VIEW BY
+                    <select id="spotify-timeline-granularity" class="slicer-select" style="margin-top:5px;" onchange="loadSpotifyListeningTimeline()">
+                        <option value="month">Monthly</option>
+                        <option value="quarter">Quarterly</option>
+                        <option value="year">Yearly</option>
+                    </select>
+                </label>
+            </div>
+            <div id="spotify-timeline-meta" style="font-size:.76rem;color:#6EE7B7;margin-top:10px;"></div>
+            <div id="spotify-timeline-legend" style="display:flex;gap:10px;flex-wrap:wrap;margin:8px 0;" aria-label="Artist color legend"></div>
+            <div id="spotify-timeline-chart" role="img" aria-label="Artist and genre listening timeline" style="overflow-x:auto;margin-top:10px;border-top:1px solid rgba(165,200,255,.12);border-bottom:1px solid rgba(165,200,255,.12);">
+                <div style="color:#A5C8FF;padding:24px;">Loading your listening timeline…</div>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-top:18px;">
+                <h3 style="font-family:'Montserrat',sans-serif;font-size:1rem;font-weight:800;color:#FFFFFF;margin:0;">Listening phases</h3>
+                <span style="font-size:.72rem;color:rgba(225,232,240,.55);">Based on your own monthly listening pattern, not a fixed play-count cutoff</span>
+            </div>
+            <div id="spotify-phase-highlights" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:9px;margin-top:10px;"></div>
+            <div style="font-size:.7rem;color:rgba(225,232,240,.48);margin-top:12px;">
+                A phase is a sustained run of strong months or an unusually concentrated listening spike. Genre totals overlap when an artist has multiple tags; tags come from artist enrichment and may be incomplete.
+            </div>
+        </section>
+        '''
+
         # Interactive Slicer and Artist Metadata Enrichment Section
         slicer_html = f'''
         <!-- Enrichment Controls & Status Banner -->
@@ -15427,6 +15618,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         {now_playing_html}
         {kpi_grid_html if (is_connected or is_demo or has_history) else ''}
         {analytics_grid_html if (is_connected or is_demo or has_history) else ''}
+        {timeline_html if (has_history and not is_demo) else ''}
         {slicer_html if (is_connected or is_demo or has_history) else ''}
         {history_feed_html if (is_connected or is_demo or has_history) else ''}
         '''

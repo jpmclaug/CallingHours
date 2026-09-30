@@ -6,6 +6,7 @@ import secrets
 import json
 import re
 import time
+import statistics
 from contextlib import contextmanager
 from datetime import datetime, date, timedelta, timezone
 from typing import Optional, List, Dict, Any, Union, Tuple
@@ -2837,6 +2838,314 @@ def get_spotify_advanced_analytics(user_email: str, db_path: Optional[str] = Non
     return result
 
 
+_spotify_timeline_cache: Dict[str, Tuple[float, int, Dict[str, Any]]] = {}
+
+
+def get_spotify_listening_timeline(
+    user_email: str,
+    granularity: str = "month",
+    artist_limit: int = 5,
+    db_path: Optional[str] = None
+) -> Dict[str, Any]:
+    """Return an archive-backed artist and genre timeline with listener-relative phases."""
+    clean_email = user_email.lower().strip()
+    if not clean_email:
+        return {"buckets": [], "phases": [], "genre_coverage_percent": 0.0}
+
+    granularity = granularity.lower().strip()
+    if granularity not in {"month", "quarter", "year"}:
+        raise ValueError("granularity must be 'month', 'quarter', or 'year'")
+    artist_limit = max(1, min(int(artist_limit), 12))
+
+    target = get_db_target(db_path)
+    cache_key = f"{clean_email}:{target}:{granularity}:{artist_limit}"
+    now_ts = time.time()
+    mutation_version = get_db_mutation_version()
+    cached = _spotify_timeline_cache.get(cache_key)
+    if cached:
+        cached_time, cached_version, cached_data = cached
+        if now_ts - cached_time < 300 and cached_version == mutation_version:
+            return cached_data
+
+    month_expr = (
+        "TO_CHAR(sh.played_at::timestamp, 'YYYY-MM')"
+        if is_postgres(target)
+        else "strftime('%Y-%m', sh.played_at)"
+    )
+    with get_connection(target) as conn:
+        cursor = conn.cursor()
+        ph = "%s" if is_postgres(target) else "?"
+        cursor.execute(f"""
+            SELECT
+                {month_expr} AS month_key,
+                LOWER(TRIM(sh.artist_name)) AS artist_key,
+                MIN(TRIM(sh.artist_name)) AS artist_name,
+                COUNT(*) AS play_count,
+                MAX(sae.genre) AS genre,
+                MAX(sae.lastfm_tags) AS lastfm_tags
+            FROM spotify_history sh
+            LEFT JOIN spotify_artist_enrichment sae
+                ON LOWER(TRIM(sh.artist_name)) = sae.artist_name_lower
+            WHERE LOWER(sh.user_email) = {ph}
+              AND sh.played_at IS NOT NULL
+              AND TRIM(CAST(sh.played_at AS TEXT)) <> ''
+            GROUP BY month_key, artist_key
+            ORDER BY month_key, play_count DESC
+        """, (clean_email,))
+        rows = cursor.fetchall()
+
+    def parse_genres(primary_genre: Any, raw_tags: Any) -> List[str]:
+        values: List[str] = []
+        if primary_genre:
+            values.append(str(primary_genre).strip())
+        if raw_tags:
+            try:
+                tags = json.loads(raw_tags) if isinstance(raw_tags, str) else raw_tags
+            except (TypeError, ValueError):
+                tags = []
+            if isinstance(tags, dict):
+                tags = [tags]
+            if isinstance(tags, list):
+                for tag in tags:
+                    if isinstance(tag, dict):
+                        name = tag.get("name") or tag.get("tag")
+                    else:
+                        name = tag
+                    if isinstance(name, str) and name.strip():
+                        values.append(name.strip())
+
+        unique: List[str] = []
+        seen = set()
+        for value in values:
+            normalized = value.casefold()
+            if normalized not in seen:
+                seen.add(normalized)
+                unique.append(value)
+            if len(unique) == 4:
+                break
+        return unique
+
+    monthly_artists: Dict[str, Dict[str, Dict[str, Any]]] = {}
+    monthly_totals: Dict[str, int] = {}
+    artist_metadata: Dict[str, Dict[str, Any]] = {}
+    for row in rows:
+        month_key, artist_key, artist_name, play_count, genre, raw_tags = row
+        if not month_key or not artist_key:
+            continue
+        month_key = str(month_key)
+        artist_key = str(artist_key)
+        count = int(play_count or 0)
+        genres = parse_genres(genre, raw_tags)
+        monthly_artists.setdefault(month_key, {})[artist_key] = {
+            "artist": str(artist_name or artist_key),
+            "count": count,
+        }
+        monthly_totals[month_key] = monthly_totals.get(month_key, 0) + count
+        artist_metadata[artist_key] = {
+            "artist": str(artist_name or artist_key),
+            "genres": genres,
+        }
+
+    if not monthly_artists:
+        result = {
+            "granularity": granularity,
+            "buckets": [],
+            "phases": [],
+            "genre_coverage_percent": 0.0,
+            "total_plays": 0,
+        }
+        _spotify_timeline_cache[cache_key] = (now_ts, mutation_version, result)
+        return result
+
+    first_month = datetime.strptime(min(monthly_artists), "%Y-%m").date()
+    last_month = datetime.strptime(max(monthly_artists), "%Y-%m").date()
+    month_keys: List[str] = []
+    year, month = first_month.year, first_month.month
+    while (year, month) <= (last_month.year, last_month.month):
+        month_keys.append(f"{year:04d}-{month:02d}")
+        if month == 12:
+            year, month = year + 1, 1
+        else:
+            month += 1
+
+    total_plays = sum(monthly_totals.values())
+    artist_months: Dict[str, Dict[str, Dict[str, Any]]] = {}
+    genre_plays_with_metadata = 0
+    monthly_buckets: List[Dict[str, Any]] = []
+    for month_key in month_keys:
+        artists = monthly_artists.get(month_key, {})
+        month_total = monthly_totals.get(month_key, 0)
+        artist_months[month_key] = {}
+        genre_counts: Dict[str, int] = {}
+        for artist_key, entry in artists.items():
+            share = entry["count"] / month_total if month_total else 0.0
+            artist_months[month_key][artist_key] = {
+                "count": entry["count"],
+                "share": share,
+            }
+            genres = artist_metadata[artist_key]["genres"]
+            if genres:
+                genre_plays_with_metadata += entry["count"]
+                for genre_name in genres:
+                    genre_counts[genre_name] = genre_counts.get(genre_name, 0) + entry["count"]
+
+        ranked_artists = sorted(artists.items(), key=lambda item: (-item[1]["count"], item[1]["artist"].casefold()))
+        monthly_buckets.append({
+            "key": month_key,
+            "label": datetime.strptime(month_key, "%Y-%m").strftime("%b %Y"),
+            "total_plays": month_total,
+            "artists": [
+                {
+                    "artist": entry["artist"],
+                    "count": entry["count"],
+                    "share_percent": round(entry["count"] / month_total * 100, 1) if month_total else 0.0,
+                    "genres": artist_metadata[artist_key]["genres"],
+                }
+                for artist_key, entry in ranked_artists[:artist_limit]
+            ],
+            "genres": [
+                {"genre": genre_name, "count": count}
+                for genre_name, count in sorted(genre_counts.items(), key=lambda item: (-item[1], item[0].casefold()))[:8]
+            ],
+        })
+
+    phases: List[Dict[str, Any]] = []
+    artist_keys = set(artist_metadata)
+    for artist_key in artist_keys:
+        active = []
+        for month_key in month_keys:
+            entry = artist_months[month_key].get(artist_key)
+            if entry and entry["count"]:
+                active.append(entry)
+        if not active:
+            continue
+        average_active_month_plays = sum(item["count"] for item in active) / len(active)
+        typical_share = statistics.median(item["share"] for item in active)
+        strong_months: List[Tuple[str, int, float]] = []
+        for month_key in month_keys:
+            entry = artist_months[month_key].get(artist_key)
+            if not entry:
+                continue
+            count = entry["count"]
+            share = entry["share"]
+            if count >= 3 and (
+                count >= average_active_month_plays * 1.5
+                or (typical_share > 0 and share >= typical_share * 1.8)
+            ):
+                strong_months.append((month_key, count, share))
+
+        runs: List[List[Tuple[str, int, float]]] = []
+        for strong_month in strong_months:
+            if runs:
+                prior = datetime.strptime(runs[-1][-1][0], "%Y-%m").date()
+                current = datetime.strptime(strong_month[0], "%Y-%m").date()
+                next_year = prior.year + (1 if prior.month == 12 else 0)
+                next_month = 1 if prior.month == 12 else prior.month + 1
+                if (current.year, current.month) == (next_year, next_month):
+                    runs[-1].append(strong_month)
+                    continue
+            runs.append([strong_month])
+
+        for run in runs:
+            run_share_multiple = max(item[2] for item in run) / typical_share if typical_share else 0.0
+            is_sustained = len(run) >= 2
+            is_unusual_spike = len(run) == 1 and run[0][1] >= 4 and run_share_multiple >= 2.5
+            if not is_sustained and not is_unusual_spike:
+                continue
+            first_key, last_key = run[0][0], run[-1][0]
+            phases.append({
+                "artist": artist_metadata[artist_key]["artist"],
+                "start": first_key,
+                "end": last_key,
+                "label": (
+                    datetime.strptime(first_key, "%Y-%m").strftime("%b %Y")
+                    if first_key == last_key else
+                    f"{datetime.strptime(first_key, '%Y-%m').strftime('%b %Y')} – "
+                    f"{datetime.strptime(last_key, '%Y-%m').strftime('%b %Y')}"
+                ),
+                "months": len(run),
+                "play_count": sum(item[1] for item in run),
+                "peak_share_percent": round(max(item[2] for item in run) * 100, 1),
+                "type": "sustained" if is_sustained else "spike",
+                "genres": artist_metadata[artist_key]["genres"],
+            })
+    phases.sort(
+        key=lambda phase: (phase["end"], phase["play_count"], phase["artist"].casefold()),
+        reverse=True
+    )
+
+    def bucket_key(month_key: str) -> str:
+        if granularity == "month":
+            return month_key
+        year_num, month_num = (int(part) for part in month_key.split("-"))
+        if granularity == "year":
+            return str(year_num)
+        quarter = (month_num - 1) // 3 + 1
+        return f"{year_num}-Q{quarter}"
+
+    rolled: Dict[str, Dict[str, Any]] = {}
+    rolled_order: List[str] = []
+    for month_key in month_keys:
+        key = bucket_key(month_key)
+        if key not in rolled:
+            rolled[key] = {"total_plays": 0, "artists": {}, "genres": {}}
+            rolled_order.append(key)
+        target_bucket = rolled[key]
+        target_bucket["total_plays"] += monthly_totals.get(month_key, 0)
+        for artist_key, entry in monthly_artists.get(month_key, {}).items():
+            artist_entry = target_bucket["artists"].setdefault(
+                artist_metadata[artist_key]["artist"],
+                {"count": 0, "genres": artist_metadata[artist_key]["genres"]}
+            )
+            artist_entry["count"] += entry["count"]
+            for genre_name in artist_metadata[artist_key]["genres"]:
+                target_bucket["genres"][genre_name] = (
+                    target_bucket["genres"].get(genre_name, 0) + entry["count"]
+                )
+
+    buckets = []
+    for key in rolled_order:
+        source = rolled[key]
+        if granularity == "month":
+            label = datetime.strptime(key, "%Y-%m").strftime("%b %Y")
+        elif granularity == "quarter":
+            label = key.replace("-Q", " · Q")
+        else:
+            label = key
+        ranked_artists = sorted(
+            source["artists"].items(),
+            key=lambda item: (-item[1]["count"], item[0].casefold())
+        )
+        buckets.append({
+            "key": key,
+            "label": label,
+            "total_plays": source["total_plays"],
+            "artists": [
+                {
+                    "artist": artist_name,
+                    "count": entry["count"],
+                    "share_percent": round(entry["count"] / source["total_plays"] * 100, 1) if source["total_plays"] else 0.0,
+                    "genres": entry["genres"],
+                }
+                for artist_name, entry in ranked_artists[:artist_limit]
+            ],
+            "genres": [
+                {"genre": genre_name, "count": count}
+                for genre_name, count in sorted(source["genres"].items(), key=lambda item: (-item[1], item[0].casefold()))[:8]
+            ],
+        })
+
+    result = {
+        "granularity": granularity,
+        "buckets": buckets,
+        "phases": phases[:30],
+        "genre_coverage_percent": round(genre_plays_with_metadata / total_plays * 100, 1) if total_plays else 0.0,
+        "total_plays": total_plays,
+    }
+    _spotify_timeline_cache[cache_key] = (now_ts, mutation_version, result)
+    return result
+
+
 def get_filtered_top_artists(
     user_email: str,
     period: str = 'all',
@@ -4124,7 +4433,5 @@ def get_band_rating_stats(
         'by_rating': by_rating,
         'average_ranked_rating': avg_rating,
     }
-
-
 
 

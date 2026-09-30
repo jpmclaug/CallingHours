@@ -1097,6 +1097,15 @@ class TestAppIntegration(unittest.TestCase):
             data = json.loads(resp.read().decode('utf-8'))
             self.assertIn('playing', data)
 
+    def test_spotify_timeline_api_endpoint(self):
+        with self.authed_get("/api/spotify/timeline?granularity=year") as resp:
+            self.assertEqual(resp.status, 200)
+            data = json.loads(resp.read().decode('utf-8'))
+            self.assertEqual(data.get('granularity'), 'year')
+            self.assertIn('buckets', data)
+            self.assertIn('phases', data)
+            self.assertIn('genre_coverage_percent', data)
+
     @patch("spotify.exchange_code_for_token")
     @patch("spotify.fetch_user_profile")
     @patch("spotify.fetch_recently_played")
@@ -2052,8 +2061,6 @@ class TestAppIntegration(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
-
 
 
 
