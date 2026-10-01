@@ -2820,6 +2820,69 @@ def get_spotify_advanced_analytics(user_email: str, db_path: Optional[str] = Non
             """, (clean_email,))
             top_artists_7d = [{"artist": r[0], "count": int(r[1])} for r in cursor.fetchall()]
 
+        # ----- Hourly breakdown (all 24 hours) -----
+        if pg:
+            hr_sql = f"""
+                SELECT EXTRACT(HOUR FROM played_at::timestamp)::int AS hr, COUNT(*) AS cnt
+                FROM spotify_history WHERE LOWER(user_email) = {ph}
+                GROUP BY hr ORDER BY hr ASC
+            """
+        else:
+            hr_sql = f"""
+                SELECT CAST(strftime('%H', played_at) AS INTEGER) AS hr, COUNT(*) AS cnt
+                FROM spotify_history WHERE LOWER(user_email) = {ph}
+                GROUP BY hr ORDER BY hr ASC
+            """
+        cursor.execute(hr_sql, (clean_email,))
+        hr_raw = {int(r[0]): int(r[1]) for r in cursor.fetchall()}
+        hourly_max = max(hr_raw.values(), default=1) or 1
+        hourly_breakdown = [
+            {"hour": h, "count": hr_raw.get(h, 0), "percent": round(hr_raw.get(h, 0) / hourly_max * 100, 1)}
+            for h in range(24)
+        ]
+
+        # ----- Monthly seasonality (month 1-12, all years combined) -----
+        if pg:
+            mo_sql = f"""
+                SELECT EXTRACT(MONTH FROM played_at::timestamp)::int AS mo, COUNT(*) AS cnt
+                FROM spotify_history WHERE LOWER(user_email) = {ph}
+                GROUP BY mo ORDER BY mo ASC
+            """
+        else:
+            mo_sql = f"""
+                SELECT CAST(strftime('%m', played_at) AS INTEGER) AS mo, COUNT(*) AS cnt
+                FROM spotify_history WHERE LOWER(user_email) = {ph}
+                GROUP BY mo ORDER BY mo ASC
+            """
+        cursor.execute(mo_sql, (clean_email,))
+        mo_raw = {int(r[0]): int(r[1]) for r in cursor.fetchall()}
+        month_total = max(sum(mo_raw.values()), 1)
+        monthly_seasonality = [
+            {"month": m, "count": mo_raw.get(m, 0), "percent": round(mo_raw.get(m, 0) / month_total * 100, 1)}
+            for m in range(1, 13)
+        ]
+
+        # ----- Unique track count -----
+        cursor.execute(
+            f"SELECT COUNT(DISTINCT track_name) FROM spotify_history WHERE LOWER(user_email) = {ph}",
+            (clean_email,)
+        )
+        unique_tracks = int((cursor.fetchone() or [0])[0])
+
+        # ----- Average streams per active day -----
+        if pg:
+            cursor.execute(f"""
+                SELECT COUNT(*), COUNT(DISTINCT DATE(played_at::timestamp))
+                FROM spotify_history WHERE LOWER(user_email) = {ph}
+            """, (clean_email,))
+        else:
+            cursor.execute(f"""
+                SELECT COUNT(*), COUNT(DISTINCT strftime('%Y-%m-%d', played_at))
+                FROM spotify_history WHERE LOWER(user_email) = {ph}
+            """, (clean_email,))
+        total_streams_for_avg, active_days = cursor.fetchone() or (0, 1)
+        avg_per_day = round((total_streams_for_avg or 0) / max(active_days or 1, 1), 1)
+
     result = {
         "time_of_day": time_of_day,
         "day_of_week": day_of_week,
@@ -2833,6 +2896,10 @@ def get_spotify_advanced_analytics(user_email: str, db_path: Optional[str] = Non
         "top_artists_7d": top_artists_7d,
         "peak_year": peak_year,
         "peak_year_count": peak_year_count,
+        "hourly_breakdown": hourly_breakdown,
+        "monthly_seasonality": monthly_seasonality,
+        "unique_tracks": unique_tracks,
+        "avg_per_day": avg_per_day,
     }
     _spotify_advanced_cache[cache_key] = (now_ts, mut_ver, result)
     return result

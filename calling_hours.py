@@ -6888,6 +6888,304 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             gap: 14px;
             margin-bottom: 20px;
         }
+        /* ── New Analytics UI ─────────────────────────────── */
+        .sh-section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            gap: 12px;
+            flex-wrap: wrap;
+            padding-bottom: 4px;
+        }
+        .sh-section-title {
+            font-family: 'Montserrat', sans-serif;
+            font-size: 1.2rem;
+            font-weight: 800;
+            color: #FFFFFF;
+            margin: 0 0 2px 0;
+        }
+        .sh-section-sub {
+            font-size: 0.82rem;
+            color: #A5C8FF;
+        }
+        /* KPI row */
+        .sh-kpi-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+            gap: 14px;
+            margin-bottom: 4px;
+        }
+        .sh-kpi-card {
+            background: rgba(14, 38, 80, 0.58);
+            border: 1px solid rgba(165, 200, 255, 0.18);
+            border-radius: 14px;
+            padding: 16px 20px;
+            display: flex;
+            align-items: flex-start;
+            gap: 14px;
+            transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+        }
+        .sh-kpi-card:hover {
+            transform: translateY(-2px);
+            border-color: rgba(29, 185, 84, 0.4);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+        }
+        .sh-kpi-card.sh-kpi-accent-green {
+            border-color: rgba(29, 185, 84, 0.35);
+            background: rgba(10, 36, 25, 0.6);
+        }
+        .sh-kpi-icon {
+            font-size: 1.5rem;
+            line-height: 1;
+            flex-shrink: 0;
+            margin-top: 2px;
+        }
+        .sh-kpi-body { flex: 1; min-width: 0; }
+        .sh-kpi-value {
+            font-size: 1.6rem;
+            font-weight: 900;
+            color: #FFFFFF;
+            font-family: 'Montserrat', sans-serif;
+            line-height: 1.2;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .sh-kpi-label {
+            font-size: 0.76rem;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: #A5C8FF;
+            font-weight: 700;
+            margin-top: 4px;
+        }
+        .sh-kpi-sub {
+            font-size: 0.74rem;
+            color: rgba(225, 232, 240, 0.6);
+            margin-top: 3px;
+        }
+        /* Badges */
+        .sh-badge-green {
+            font-size: 0.74rem;
+            color: #6EE7B7;
+            font-weight: 600;
+            background: rgba(110, 231, 183, 0.12);
+            border: 1px solid rgba(110, 231, 183, 0.25);
+            padding: 2px 9px;
+            border-radius: 10px;
+            white-space: nowrap;
+        }
+        .sh-badge-blue {
+            font-size: 0.74rem;
+            color: #93C5FD;
+            font-weight: 600;
+            background: rgba(59, 130, 246, 0.12);
+            border: 1px solid rgba(59, 130, 246, 0.25);
+            padding: 2px 9px;
+            border-radius: 10px;
+            white-space: nowrap;
+        }
+        .sh-badge-amber {
+            font-size: 0.74rem;
+            color: #FCD34D;
+            font-weight: 600;
+            background: rgba(245, 158, 11, 0.12);
+            border: 1px solid rgba(245, 158, 11, 0.25);
+            padding: 2px 9px;
+            border-radius: 10px;
+            white-space: nowrap;
+        }
+        /* Rank / play count reusable */
+        .sh-rank-medal {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 24px;
+            font-size: 0.8rem;
+            flex-shrink: 0;
+        }
+        .sh-play-badge {
+            font-size: 0.76rem;
+            color: #1DB954;
+            font-weight: 700;
+            background: rgba(29, 185, 84, 0.15);
+            padding: 3px 9px;
+            border-radius: 8px;
+            white-space: nowrap;
+        }
+        .sh-empty {
+            color: rgba(225, 232, 240, 0.5);
+            font-style: italic;
+            font-size: 0.85rem;
+            padding: 14px 0;
+            text-align: center;
+        }
+        .sh-full-width { grid-column: 1 / -1; }
+        /* YoY chart */
+        .yoy-chart-area {
+            display: flex;
+            align-items: flex-end;
+            gap: 4px;
+            height: 140px;
+            padding: 8px 4px 0;
+            position: relative;
+        }
+        .yoy-col {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            flex: 1;
+            min-width: 28px;
+            height: 100%;
+            justify-content: flex-end;
+        }
+        .yoy-count {
+            font-size: 0.62rem;
+            text-align: center;
+            line-height: 1.2;
+        }
+        .yoy-bar-fill {
+            width: 100%;
+            border-radius: 4px 4px 0 0;
+            min-height: 4px;
+            transition: height 0.4s cubic-bezier(0.4,0,0.2,1);
+        }
+        .yoy-year {
+            font-size: 0.66rem;
+            writing-mode: vertical-rl;
+            transform: rotate(180deg);
+            text-align: center;
+        }
+        .yoy-peak-badge {
+            font-size: 0.55rem;
+            font-weight: 800;
+            color: #1DB954;
+            background: rgba(29, 185, 84, 0.15);
+            border: 1px solid rgba(29, 185, 84, 0.35);
+            border-radius: 4px;
+            padding: 1px 4px;
+            letter-spacing: 0.04em;
+            white-space: nowrap;
+        }
+        /* 24-hour heatmap */
+        .sh-heatmap-grid {
+            display: grid;
+            grid-template-columns: repeat(12, 1fr);
+            gap: 6px;
+            margin: 12px 0 8px;
+        }
+        @media (max-width: 640px) {
+            .sh-heatmap-grid { grid-template-columns: repeat(8, 1fr); }
+        }
+        .sh-heatcell {
+            border-radius: 8px;
+            padding: 8px 4px 6px;
+            text-align: center;
+            cursor: default;
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+            border: 1px solid rgba(255,255,255,0.06);
+        }
+        .sh-heatcell:hover {
+            transform: scale(1.08);
+            box-shadow: 0 4px 14px rgba(0,0,0,0.4);
+        }
+        .sh-heatcell-peak {
+            border-color: rgba(245, 158, 11, 0.5) !important;
+            box-shadow: 0 0 10px rgba(245, 158, 11, 0.25);
+        }
+        .sh-heatcell-label {
+            font-size: 0.65rem;
+            color: rgba(225, 232, 240, 0.75);
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        .sh-heatcell-count {
+            font-size: 0.6rem;
+            color: rgba(225, 232, 240, 0.55);
+            margin-top: 3px;
+        }
+        .sh-heatmap-legend {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 4px;
+        }
+        .sh-heatmap-legend-bar {
+            flex: 1;
+            height: 6px;
+            border-radius: 3px;
+            background: linear-gradient(to right, rgba(59,130,246,0.3), rgba(29,185,84,0.6), rgba(245,158,11,0.9));
+        }
+        /* Monthly seasonality */
+        .mo-bars-container {
+            display: flex;
+            align-items: flex-end;
+            justify-content: space-between;
+            gap: 6px;
+            height: 120px;
+            padding-top: 20px;
+            margin-top: 8px;
+        }
+        .mo-col {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
+            height: 100%;
+            justify-content: flex-end;
+        }
+        .mo-bar-fill {
+            width: 100%;
+            max-width: 26px;
+            border-radius: 4px 4px 0 0;
+            min-height: 4px;
+            transition: height 0.5s ease;
+        }
+        .mo-label {
+            font-size: 0.68rem;
+            color: #A5C8FF;
+            font-weight: 600;
+        }
+        .mo-count {
+            font-size: 0.6rem;
+            color: rgba(225, 232, 240, 0.6);
+        }
+        /* Time of day bars — renamed to avoid conflicts */
+        .sh-tod-row {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            margin-bottom: 10px;
+        }
+        .sh-tod-meta {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.82rem;
+            color: #E1E8F0;
+        }
+        .sh-tod-label { font-weight: 600; }
+        .sh-tod-range {
+            font-size: 0.74rem;
+            color: rgba(225,232,240,0.55);
+            margin-left: 5px;
+            font-weight: 400;
+        }
+        .sh-tod-pct { }
+        .sh-bar-bg {
+            width: 100%;
+            height: 8px;
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .sh-bar-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+        }
     </style>
 
     <div class="spotify-page-container">
@@ -14799,62 +15097,6 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
 
         has_history = bool(lifetime_stats.get('total_tracks', 0) > 0)
 
-        # Lifetime KPI Banner
-        lifetime_banner_html = ''
-        if has_history:
-            tot_tr = lifetime_stats.get('total_tracks', 0)
-            tot_hrs = lifetime_stats.get('total_hours', 0.0)
-            u_art = lifetime_stats.get('unique_artists', 0)
-            fy = lifetime_stats.get('first_year') or ''
-            ly = lifetime_stats.get('last_year') or ''
-            span_str = f"{fy} – {ly}" if (fy and ly and fy != ly) else (fy or "Lifetime")
-            days_continuous = round(tot_hrs / 24, 1) if tot_hrs else 0.0
-
-            lifetime_banner_html = f'''
-            <div class="spotify-lifetime-banner">
-                <div class="lifetime-header">
-                    <div style="display: flex; align-items: center; gap: 12px;">
-                        <span style="font-size: 1.6rem;">🏛️</span>
-                        <div>
-                            <h3 style="margin: 0; font-family: \'Montserrat\', sans-serif; font-size: 1.2rem; color: #FFFFFF; font-weight: 800;">
-                                15-Year Personal Streaming Intelligence Archive
-                            </h3>
-                            <div style="font-size: 0.82rem; color: #A5C8FF; margin-top: 3px;">
-                                Spanning {span_str} &bull; Auto-syncs live on application launch
-                            </div>
-                        </div>
-                    </div>
-                    <div>
-                        <span style="background: rgba(29, 185, 84, 0.2); border: 1px solid rgba(29, 185, 84, 0.5); color: #6EE7B7; font-size: 0.8rem; font-weight: 800; padding: 4px 14px; border-radius: 20px;">
-                            ⚡ {tot_tr:,} Lifetime Streams
-                        </span>
-                    </div>
-                </div>
-                <div class="lifetime-kpi-row">
-                    <div class="lifetime-stat-box">
-                        <span class="stat-box-label">🎧 Lifetime Plays</span>
-                        <span class="stat-box-val">{tot_tr:,}</span>
-                        <span class="stat-box-sub">Total music streams</span>
-                    </div>
-                    <div class="lifetime-stat-box">
-                        <span class="stat-box-label">⏱️ Total Audio Time</span>
-                        <span class="stat-box-val">{tot_hrs:,.1f} hrs</span>
-                        <span class="stat-box-sub">~{days_continuous:,} days continuous listening</span>
-                    </div>
-                    <div class="lifetime-stat-box">
-                        <span class="stat-box-label">👥 Unique Artists</span>
-                        <span class="stat-box-val">{u_art:,}</span>
-                        <span class="stat-box-sub">Distinct artists discovered</span>
-                    </div>
-                    <div class="lifetime-stat-box">
-                        <span class="stat-box-label">📅 Historical Span</span>
-                        <span class="stat-box-val">{span_str}</span>
-                        <span class="stat-box-sub">15+ years of music memory</span>
-                    </div>
-                </div>
-            </div>
-            '''
-
         # Build UI Sections
         message_banner_html = f'<div class="message" style="margin-bottom: 20px;">{html_escape(message)}</div>' if message else ''
 
@@ -15035,7 +15277,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         adv = database.get_spotify_advanced_analytics(current_user['email']) if not is_demo else {}
         hour_to_label = lambda h: f"{h % 12 or 12}{'am' if h < 12 else 'pm'}"
 
-        # Recent Activity KPI Banner
+        # Pull all analytics data
         last_7d = adv.get('last_7d', 0)
         last_30d = adv.get('last_30d', 0)
         peak_year = adv.get('peak_year', '')
@@ -15050,70 +15292,207 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         best_days_list = adv.get('best_days', [])
         top_art_30d = adv.get('top_artists_30d', [])
         top_art_7d = adv.get('top_artists_7d', [])
+        u_tracks = adv.get('unique_tracks', 0)
+        avg_per_day = adv.get('avg_per_day', 0.0)
+        hourly_breakdown = adv.get('hourly_breakdown', [])
+        monthly_seasonality = adv.get('monthly_seasonality', [])
+        fy = lifetime_stats.get('first_year') or ''
+        ly = lifetime_stats.get('last_year') or ''
+        span_str = f"{fy}–{ly}" if (fy and ly and fy != ly) else (fy or "Lifetime")
 
-        # --- KPI Row 1: All-Time Lifetime Stats ---
+        # --- KPI Row: consolidated hero stats ---
         kpi_grid_html = f'''
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 8px;">
-            <div class="spotify-kpi-card">
-                <div class="kpi-label">🎧 Lifetime Streams</div>
-                <div class="kpi-value">{tot_tr:,}</div>
-                <div class="kpi-subtext">All-time recorded plays</div>
+        <div class="sh-kpi-row">
+            <div class="sh-kpi-card sh-kpi-accent-green">
+                <div class="sh-kpi-icon">🎧</div>
+                <div class="sh-kpi-body">
+                    <div class="sh-kpi-value">{tot_tr:,}</div>
+                    <div class="sh-kpi-label">Lifetime Streams</div>
+                    <div class="sh-kpi-sub">{span_str}</div>
+                </div>
             </div>
-            <div class="spotify-kpi-card">
-                <div class="kpi-label">⏱️ Total Listening Time</div>
-                <div class="kpi-value">{tot_hrs:,.0f} hrs</div>
-                <div class="kpi-subtext">{days_continuous:,.1f} days non-stop</div>
+            <div class="sh-kpi-card">
+                <div class="sh-kpi-icon">⏱️</div>
+                <div class="sh-kpi-body">
+                    <div class="sh-kpi-value">{tot_hrs:,.0f} hrs</div>
+                    <div class="sh-kpi-label">Total Listening Time</div>
+                    <div class="sh-kpi-sub">≈ {days_continuous:,.1f} days non-stop</div>
+                </div>
             </div>
-            <div class="spotify-kpi-card">
-                <div class="kpi-label">👥 Unique Artists</div>
-                <div class="kpi-value">{u_art:,}</div>
-                <div class="kpi-subtext">Distinct artists ever heard</div>
+            <div class="sh-kpi-card">
+                <div class="sh-kpi-icon">🎵</div>
+                <div class="sh-kpi-body">
+                    <div class="sh-kpi-value">{u_tracks:,}</div>
+                    <div class="sh-kpi-label">Unique Tracks</div>
+                    <div class="sh-kpi-sub">{u_art:,} distinct artists</div>
+                </div>
             </div>
-            <div class="spotify-kpi-card">
-                <div class="kpi-label">📅 Last 7 Days</div>
-                <div class="kpi-value">{last_7d:,}</div>
-                <div class="kpi-subtext">Streams this week</div>
+            <div class="sh-kpi-card">
+                <div class="sh-kpi-icon">📈</div>
+                <div class="sh-kpi-body">
+                    <div class="sh-kpi-value">{peak_year}</div>
+                    <div class="sh-kpi-label">Peak Year</div>
+                    <div class="sh-kpi-sub">{peak_year_count:,} streams</div>
+                </div>
             </div>
-            <div class="spotify-kpi-card">
-                <div class="kpi-label">📆 Last 30 Days</div>
-                <div class="kpi-value">{last_30d:,}</div>
-                <div class="kpi-subtext">Streams this month</div>
+            <div class="sh-kpi-card">
+                <div class="sh-kpi-icon">📆</div>
+                <div class="sh-kpi-body">
+                    <div class="sh-kpi-value">{last_30d:,}</div>
+                    <div class="sh-kpi-label">Last 30 Days</div>
+                    <div class="sh-kpi-sub">{last_7d:,} this week</div>
+                </div>
             </div>
-            <div class="spotify-kpi-card">
-                <div class="kpi-label">📈 Peak Year</div>
-                <div class="kpi-value">{peak_year}</div>
-                <div class="kpi-subtext">{peak_year_count:,} streams that year</div>
-            </div>
-            <div class="spotify-kpi-card">
-                <div class="kpi-label">🕙 Most Active Hour</div>
-                <div class="kpi-value">{best_hour_label}</div>
-                <div class="kpi-subtext">{best_hour_count:,} plays at this hour</div>
+            <div class="sh-kpi-card">
+                <div class="sh-kpi-icon">🕙</div>
+                <div class="sh-kpi-body">
+                    <div class="sh-kpi-value">{best_hour_label}</div>
+                    <div class="sh-kpi-label">Peak Hour</div>
+                    <div class="sh-kpi-sub">{best_hour_count:,} plays · avg {avg_per_day}/day</div>
+                </div>
             </div>
         </div>
         '''
 
-        # 5. Analytics Grid — All-Time SQL-backed blocks
-        # All-Time Time of Day
+        # --- Section Header ---
+        analytics_section_header = f'''
+        <div class="sh-section-header">
+            <div>
+                <h2 class="sh-section-title">📊 Listening Intelligence</h2>
+                <div class="sh-section-sub">All analytics sourced from your complete {tot_tr:,}-stream personal archive</div>
+            </div>
+        </div>
+        '''
+
+        # --- Year-Over-Year Trend (full-width, improved) ---
+        yoy_data = adv.get('year_over_year', [])
+        yoy_max = max([y['count'] for y in yoy_data] or [1]) or 1
+        yoy_bars = []
+        for y in yoy_data:
+            bar_pct = max(int((y['count'] / yoy_max) * 100), 3)
+            is_peak = str(y['year']) == peak_year
+            bar_color = 'linear-gradient(180deg, #1DB954 0%, #0d7031 100%)' if is_peak else 'rgba(110, 231, 183, 0.45)'
+            label_color = '#1DB954' if is_peak else 'rgba(225, 232, 240, 0.55)'
+            peak_mark = '<div class="yoy-peak-badge">PEAK</div>' if is_peak else ''
+            yoy_bars.append(f'''
+            <div class="yoy-col">
+                <div class="yoy-count" style="color: {label_color}; font-weight: {'800' if is_peak else '400'};">{y['count']:,}</div>
+                {peak_mark}
+                <div class="yoy-bar-fill" style="height: {bar_pct}%; background: {bar_color};" title="{y['year']}: {y['count']:,} streams"></div>
+                <div class="yoy-year" style="color: {'#1DB954' if is_peak else 'rgba(225, 232, 240, 0.5)'}; font-weight: {'800' if is_peak else '400'};">{y['year']}</div>
+            </div>
+            ''')
+        yoy_html = f'''
+        <div class="analytics-block sh-full-width">
+            <div class="analytics-block-title">
+                <span>📈 Year-Over-Year Listening Volume</span>
+                <span class="sh-badge-green">Peak: {peak_year} · {peak_year_count:,} streams</span>
+            </div>
+            <div class="yoy-chart-area">
+                {"".join(yoy_bars) if yoy_bars else '<div class="sh-empty">No yearly data yet.</div>'}
+            </div>
+        </div>
+        '''
+
+        # --- 24-Hour Heatmap ---
+        hour_labels_short = ['12a','1a','2a','3a','4a','5a','6a','7a','8a','9a','10a','11a',
+                              '12p','1p','2p','3p','4p','5p','6p','7p','8p','9p','10p','11p']
+        heatmap_cells = []
+        heatmap_max = max((h['count'] for h in hourly_breakdown), default=1) or 1
+        for h_data in hourly_breakdown:
+            hr = h_data['hour']
+            cnt = h_data['count']
+            intensity = cnt / heatmap_max
+            # Color gradient from cool blue → green → warm gold at peak
+            if intensity < 0.33:
+                cell_bg = f"rgba(59, 130, 246, {max(intensity * 2, 0.08):.2f})"
+            elif intensity < 0.66:
+                cell_bg = f"rgba(29, 185, 84, {0.2 + intensity * 0.5:.2f})"
+            else:
+                cell_bg = f"rgba(245, 158, 11, {0.3 + intensity * 0.6:.2f})"
+            is_peak_hr = (hr == best_hour_raw)
+            peak_ring = ' sh-heatcell-peak' if is_peak_hr else ''
+            heatmap_cells.append(f'''
+            <div class="sh-heatcell{peak_ring}" style="background:{cell_bg};" title="{hour_labels_short[hr]}: {cnt:,} plays">
+                <div class="sh-heatcell-label">{hour_labels_short[hr]}</div>
+                <div class="sh-heatcell-count">{cnt:,}</div>
+            </div>
+            ''')
+        heatmap_html = f'''
+        <div class="analytics-block sh-full-width">
+            <div class="analytics-block-title">
+                <span>🕐 24-Hour Listening Heatmap</span>
+                <span class="sh-badge-blue">Peak: {best_hour_label} · {best_hour_count:,} plays</span>
+            </div>
+            <div class="sh-heatmap-grid">
+                {"".join(heatmap_cells)}
+            </div>
+            <div class="sh-heatmap-legend">
+                <span style="color: rgba(225,232,240,0.5); font-size: 0.7rem;">Low activity</span>
+                <div class="sh-heatmap-legend-bar"></div>
+                <span style="color: rgba(225,232,240,0.5); font-size: 0.7rem;">Peak activity</span>
+            </div>
+        </div>
+        '''
+
+        # --- Monthly Seasonality ---
+        month_names = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+        season_colors = {
+            1: '#60A5FA', 2: '#60A5FA', 3: '#34D399',  # Winter/Spring
+            4: '#34D399', 5: '#34D399', 6: '#F59E0B',  # Spring/Summer
+            7: '#F59E0B', 8: '#F59E0B', 9: '#F97316',  # Summer/Fall
+            10: '#F97316', 11: '#818CF8', 12: '#818CF8'  # Fall/Winter
+        }
+        mo_max = max((m['count'] for m in monthly_seasonality), default=1) or 1
+        peak_mo_entry = max(monthly_seasonality, key=lambda x: x['count'], default={'month': 7, 'count': 0})
+        peak_mo_name = month_names[peak_mo_entry['month'] - 1] if monthly_seasonality else ''
+        mo_cols = []
+        for mo_data in monthly_seasonality:
+            mo = mo_data['month']
+            cnt = mo_data['count']
+            pct_of_max = max(int((cnt / mo_max) * 100), 3) if cnt > 0 else 3
+            is_peak_mo = (cnt == peak_mo_entry['count'] and cnt > 0)
+            color = season_colors.get(mo, '#A5C8FF')
+            mo_cols.append(f'''
+            <div class="mo-col">
+                <div class="mo-count" style="color: {'#FFFFFF' if is_peak_mo else 'rgba(225,232,240,0.6)'}; font-weight: {'800' if is_peak_mo else '400'};">{cnt:,}</div>
+                <div class="mo-bar-fill" style="height: {pct_of_max}%; background: {color}; {'box-shadow: 0 0 8px ' + color + '80;' if is_peak_mo else ''}" title="{month_names[mo - 1]}: {cnt:,} streams ({mo_data['percent']}% of total)"></div>
+                <div class="mo-label" style="color: {'#FFFFFF' if is_peak_mo else '#A5C8FF'}; font-weight: {'700' if is_peak_mo else '400'};">{month_names[mo - 1]}</div>
+            </div>
+            ''')
+        monthly_html = f'''
+        <div class="analytics-block sh-full-width">
+            <div class="analytics-block-title">
+                <span>🗓️ Monthly Seasonality</span>
+                <span class="sh-badge-amber">Peak month: {peak_mo_name} · {peak_mo_entry.get('count', 0):,} streams</span>
+            </div>
+            <div class="mo-bars-container">
+                {"".join(mo_cols) if mo_cols else '<div class="sh-empty">No monthly data yet.</div>'}
+            </div>
+        </div>
+        '''
+
+        # --- Time of Day ---
         tod_data = adv.get('time_of_day', {})
         tod_rows = []
         tod_styles = {
-            'morning': ('🌅 Morning (5am–11am)', '#F59E0B'),
-            'afternoon': ('☀️ Afternoon (12pm–5pm)', '#3B82F6'),
-            'evening': ('🌆 Evening (6pm–10pm)', '#8B5CF6'),
-            'night': ('🌙 Late Night (11pm–4am)', '#10B981'),
+            'morning':   ('🌅 Morning',    '5am – 11am',  '#F59E0B'),
+            'afternoon': ('☀️ Afternoon',  '12pm – 5pm',  '#3B82F6'),
+            'evening':   ('🌆 Evening',    '6pm – 10pm',  '#8B5CF6'),
+            'night':     ('🌙 Late Night', '11pm – 4am',  '#10B981'),
         }
-        for key_name, (label, color) in tod_styles.items():
+        for key_name, (label, time_range, color) in tod_styles.items():
             entry = tod_data.get(key_name, {})
             pct = entry.get('percent', 0)
             cnt = entry.get('count', 0)
             tod_rows.append(f'''
-            <div class="time-bar-row">
-                <div class="time-bar-header">
-                    <span>{label}</span>
-                    <span style="font-weight: 700; color: #E1E8F0;">{pct}% <span style="font-weight: 400; color: rgba(225, 232, 240, 0.5);">({cnt:,})</span></span>
+            <div class="sh-tod-row">
+                <div class="sh-tod-meta">
+                    <span class="sh-tod-label">{label} <span class="sh-tod-range">{time_range}</span></span>
+                    <span class="sh-tod-pct"><strong style="color:#E1E8F0;">{pct}%</strong> <span style="color:rgba(225,232,240,0.45); font-size:0.75rem;">({cnt:,})</span></span>
                 </div>
-                <div class="time-bar-bg">
-                    <div class="time-bar-fill" style="width: {pct}%; background: {color};"></div>
+                <div class="sh-bar-bg">
+                    <div class="sh-bar-fill" style="width: {pct}%; background: {color};"></div>
                 </div>
             </div>
             ''')
@@ -15121,13 +15500,13 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         <div class="analytics-block">
             <div class="analytics-block-title">
                 <span>⏱️ When You Listen</span>
-                <span style="font-size: 0.75rem; color: #6EE7B7; font-weight: 600; background: rgba(110, 231, 183, 0.1); padding: 2px 8px; border-radius: 10px;">All-Time · {tot_tr:,} streams</span>
+                <span class="sh-badge-green">All-Time</span>
             </div>
             {"".join(tod_rows)}
         </div>
         '''
 
-        # All-Time Day of Week
+        # --- Day of Week ---
         dow_data = adv.get('day_of_week', {})
         max_dow = max([v.get('count', 0) for v in dow_data.values()] or [1]) or 1
         dow_cols = []
@@ -15136,20 +15515,19 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             cnt = d_entry.get('count', 0)
             pct = d_entry.get('percent', 0)
             h_pct = max(int((cnt / max_dow) * 85), 4) if cnt > 0 else 4
+            is_peak_dow = (cnt == max_dow and cnt > 0)
             dow_cols.append(f'''
             <div class="dow-col">
-                <div class="dow-count">{cnt:,}</div>
-                <div class="dow-bar-fill" style="height: {h_pct}%;" title="{day}: {cnt:,} plays ({pct}%)"></div>
-                <div class="dow-label">{day}</div>
+                <div class="dow-count" style="color: {'#FFFFFF' if is_peak_dow else 'rgba(225,232,240,0.7)'}; font-weight: {'800' if is_peak_dow else '400'};">{cnt:,}</div>
+                <div class="dow-bar-fill" style="height: {h_pct}%; {'background: linear-gradient(180deg, #F59E0B 0%, #b45309 100%);' if is_peak_dow else ''}" title="{day}: {cnt:,} plays ({pct}%)"></div>
+                <div class="dow-label" style="color: {'#F59E0B' if is_peak_dow else '#A5C8FF'}; font-weight: {'700' if is_peak_dow else '400'};">{day}</div>
             </div>
             ''')
-        # also add Sunday at end for visual completeness
-        sun_entry = dow_data.get('Sun', {})
         dow_html = f'''
         <div class="analytics-block">
             <div class="analytics-block-title">
-                <span>📅 Day of Week Rhythm</span>
-                <span style="font-size: 0.75rem; color: #6EE7B7; font-weight: 600; background: rgba(110, 231, 183, 0.1); padding: 2px 8px; border-radius: 10px;">All-Time</span>
+                <span>📅 Day of Week</span>
+                <span class="sh-badge-green">All-Time</span>
             </div>
             <div class="dow-bars-container">
                 {"".join(dow_cols)}
@@ -15157,79 +15535,51 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         </div>
         '''
 
-        # Year-Over-Year Trend Block
-        yoy_data = adv.get('year_over_year', [])
-        yoy_max = max([y['count'] for y in yoy_data] or [1]) or 1
-        yoy_bars = []
-        for y in yoy_data:
-            bar_pct = max(int((y['count'] / yoy_max) * 100), 3)
-            is_peak = str(y['year']) == peak_year
-            bar_color = '#1DB954' if is_peak else 'rgba(110, 231, 183, 0.45)'
-            label_color = '#1DB954' if is_peak else 'rgba(225, 232, 240, 0.6)'
-            yoy_bars.append(f'''
-            <div style="display: flex; flex-direction: column; align-items: center; gap: 4px; flex: 1; min-width: 28px;">
-                <div style="font-size: 0.65rem; color: {label_color}; font-weight: {'800' if is_peak else '400'};">{y['count']:,}</div>
-                <div style="width: 100%; height: {bar_pct}%; background: {bar_color}; border-radius: 4px 4px 0 0; min-height: 4px; transition: height 0.3s;" title="{y['year']}: {y['count']:,} streams"></div>
-                <div style="font-size: 0.68rem; color: {'#1DB954' if is_peak else 'rgba(225, 232, 240, 0.5)'}; font-weight: {'800' if is_peak else '400'}; writing-mode: vertical-rl; transform: rotate(180deg);">{y['year']}</div>
-            </div>
-            ''')
-        yoy_html = f'''
-        <div class="analytics-block" style="grid-column: 1 / -1;">
-            <div class="analytics-block-title">
-                <span>📈 Year-Over-Year Listening Volume</span>
-                <span style="font-size: 0.75rem; color: #6EE7B7; font-weight: 600; background: rgba(110, 231, 183, 0.1); padding: 2px 8px; border-radius: 10px;">All-Time · Peak: {peak_year} ({peak_year_count:,} streams)</span>
-            </div>
-            <div style="display: flex; align-items: flex-end; gap: 4px; height: 120px; padding: 0 4px;">
-                {"".join(yoy_bars)}
-            </div>
-        </div>
-        '''
-
-        # All-Time Top Artists (Lifetime Archive)
+        # --- All-Time Top Artists ---
         alltime_art_items = []
         for rank_idx, a in enumerate(lifetime_stats.get('top_artists', [])[:10]):
             a_name = html_escape(a.get('artist') or '')
             cnt = a.get('count', 0)
             art_link = f'/artist?artist={urllib.parse.quote(a.get("artist") or "")}'
-            medal = "🥇 " if rank_idx == 0 else ("🥈 " if rank_idx == 1 else ("🥉 " if rank_idx == 2 else f"#{rank_idx + 1} "))
+            medal = "🥇" if rank_idx == 0 else ("🥈" if rank_idx == 1 else ("🥉" if rank_idx == 2 else f"#{rank_idx + 1}"))
             alltime_art_items.append(f'''
             <div class="artist-rank-item">
-                <a href="{art_link}" style="color: #FFFFFF; font-weight: 700; text-decoration: none; font-size: 0.88rem;" title="Explore Artist Intelligence">
-                    <span style="color: #6EE7B7; font-size: 0.8rem; font-weight: 800; margin-right: 4px;">{medal}</span>{a_name}
+                <a href="{art_link}" style="color: #FFFFFF; font-weight: 700; text-decoration: none; font-size: 0.88rem; display: flex; align-items: center; gap: 8px;" title="Explore Artist">
+                    <span class="sh-rank-medal">{medal}</span>{a_name}
                 </a>
-                <span style="font-size: 0.78rem; color: #1DB954; font-weight: 700; background: rgba(29, 185, 84, 0.15); padding: 3px 8px; border-radius: 8px;">{cnt:,} plays</span>
+                <span class="sh-play-badge">{cnt:,} plays</span>
             </div>
             ''')
         alltime_art_html = f'''
         <div class="analytics-block">
             <div class="analytics-block-title">
                 <span>👑 All-Time Top Artists</span>
-                <span style="font-size: 0.75rem; color: #6EE7B7; font-weight: 600; background: rgba(110, 231, 183, 0.1); padding: 2px 8px; border-radius: 10px;">All-Time · {tot_tr:,} streams</span>
+                <span class="sh-badge-green">All-Time</span>
             </div>
-            {"".join(alltime_art_items) if alltime_art_items else '<div style="color: rgba(225, 232, 240, 0.5); font-style: italic; font-size: 0.85rem; padding: 20px 0; text-align: center;">No artist history available yet.</div>'}
+            {"".join(alltime_art_items) if alltime_art_items else '<div class="sh-empty">No artist history available yet.</div>'}
         </div>
         '''
 
-        # All-Time Top Tracks
+        # --- All-Time Top Tracks ---
         alltime_trk_items = []
         for rank_idx, tr in enumerate(lifetime_stats.get('top_tracks', [])[:10]):
             t_name = html_escape(tr.get('name') or '')
             a_name = html_escape(tr.get('artist') or '')
             cnt = tr.get('count', 0)
-            s_url = html_escape(tr.get('spotify_url') or '')
             t_analyze = f'/?artist={urllib.parse.quote(tr.get("artist") or "")}&song={urllib.parse.quote(tr.get("name") or "")}&auto_analyze=1'
-            medal = "🥇 " if rank_idx == 0 else ("🥈 " if rank_idx == 1 else ("🥉 " if rank_idx == 2 else f"#{rank_idx + 1} "))
+            medal = "🥇" if rank_idx == 0 else ("🥈" if rank_idx == 1 else ("🥉" if rank_idx == 2 else f"#{rank_idx + 1}"))
             alltime_trk_items.append(f'''
             <div class="artist-rank-item" style="gap: 8px;">
-                <div style="min-width: 0; flex: 1;">
-                    <div style="font-weight: 700; font-size: 0.86rem; color: #FFFFFF; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                        <span style="color: #6EE7B7; font-size: 0.8rem; font-weight: 800; margin-right: 4px;">{medal}</span>{t_name}
+                <div style="min-width: 0; flex: 1; display: flex; align-items: center; gap: 8px;">
+                    <span class="sh-rank-medal">{medal}</span>
+                    <div style="min-width: 0;">
+                        <div style="font-weight: 700; font-size: 0.86rem; color: #FFFFFF; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{t_name}</div>
+                        <div style="font-size: 0.75rem; color: #A5C8FF; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{a_name}</div>
                     </div>
-                    <div style="font-size: 0.76rem; color: #A5C8FF; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{a_name}</div>
                 </div>
                 <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
-                    <span style="font-size: 0.76rem; color: #1DB954; font-weight: 700; background: rgba(29, 185, 84, 0.15); padding: 2px 7px; border-radius: 6px;">{cnt:,} plays</span>
-                    <a href="{t_analyze}" class="pill-btn primary" style="font-size: 0.72rem; padding: 2px 6px; text-decoration: none;" title="Analyze Lyrics">✨</a>
+                    <span class="sh-play-badge">{cnt:,}</span>
+                    <a href="{t_analyze}" class="pill-btn primary" style="font-size: 0.72rem; padding: 2px 7px; text-decoration: none;" title="Analyze Lyrics">✨</a>
                 </div>
             </div>
             ''')
@@ -15237,56 +15587,56 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         <div class="analytics-block">
             <div class="analytics-block-title">
                 <span>🏆 All-Time Top Tracks</span>
-                <span style="font-size: 0.75rem; color: #6EE7B7; font-weight: 600; background: rgba(110, 231, 183, 0.1); padding: 2px 8px; border-radius: 10px;">All-Time</span>
+                <span class="sh-badge-green">All-Time</span>
             </div>
-            {"".join(alltime_trk_items) if alltime_trk_items else '<div style="color: rgba(225, 232, 240, 0.5); font-style: italic; font-size: 0.85rem; padding: 20px 0; text-align: center;">No song history available yet.</div>'}
+            {"".join(alltime_trk_items) if alltime_trk_items else '<div class="sh-empty">No song history available yet.</div>'}
         </div>
         '''
 
-        # Best Listening Days
+        # --- Best Listening Days ---
         best_days_rows = []
         for i, bd in enumerate(best_days_list):
             medal = "🥇" if i == 0 else ("🥈" if i == 1 else ("🥉" if i == 2 else f"#{i+1}"))
             best_days_rows.append(f'''
             <div class="artist-rank-item">
-                <span style="font-size: 0.88rem; color: #FFFFFF; font-weight: 700;">
-                    <span style="color: #6EE7B7; margin-right: 4px;">{medal}</span>{bd["date"]}
+                <span style="font-size: 0.88rem; color: #FFFFFF; font-weight: 700; display: flex; align-items: center; gap: 8px;">
+                    <span class="sh-rank-medal">{medal}</span>{bd["date"]}
                 </span>
-                <span style="font-size: 0.78rem; color: #1DB954; font-weight: 700; background: rgba(29, 185, 84, 0.15); padding: 3px 8px; border-radius: 8px;">{bd["count"]:,} streams</span>
+                <span class="sh-play-badge">{bd["count"]:,} streams</span>
             </div>
             ''')
         best_days_html = f'''
         <div class="analytics-block">
             <div class="analytics-block-title">
                 <span>🔥 Best Listening Days</span>
-                <span style="font-size: 0.75rem; color: #6EE7B7; font-weight: 600; background: rgba(110, 231, 183, 0.1); padding: 2px 8px; border-radius: 10px;">All-Time Records</span>
+                <span class="sh-badge-amber">All-Time Records</span>
             </div>
-            {"".join(best_days_rows) if best_days_rows else '<div style="color: rgba(225, 232, 240, 0.5); font-style: italic; font-size: 0.85rem; padding: 10px 0;">No data yet.</div>'}
+            {"".join(best_days_rows) if best_days_rows else '<div class="sh-empty">No data yet.</div>'}
         </div>
         '''
 
-        # Recent Hot Artists (last 30 days and last 7 days)
+        # --- Recent Hot Artists ---
         def _artist_list_html(artist_list, empty_msg):
             rows = []
             for rank_idx, a in enumerate(artist_list):
                 a_name = html_escape(a.get('artist') or '')
                 cnt = a.get('count', 0)
                 art_link = f'/artist?artist={urllib.parse.quote(a.get("artist") or "")}'
-                medal = "🥇 " if rank_idx == 0 else ("🥈 " if rank_idx == 1 else ("🥉 " if rank_idx == 2 else f"#{rank_idx + 1} "))
+                medal = "🥇" if rank_idx == 0 else ("🥈" if rank_idx == 1 else ("🥉" if rank_idx == 2 else f"#{rank_idx + 1}"))
                 rows.append(f'''
                 <div class="artist-rank-item">
-                    <a href="{art_link}" style="color: #FFFFFF; font-weight: 700; text-decoration: none; font-size: 0.88rem;">
-                        <span style="color: #6EE7B7; font-size: 0.8rem; margin-right: 4px;">{medal}</span>{a_name}
+                    <a href="{art_link}" style="color: #FFFFFF; font-weight: 700; text-decoration: none; font-size: 0.88rem; display: flex; align-items: center; gap: 8px;">
+                        <span class="sh-rank-medal">{medal}</span>{a_name}
                     </a>
-                    <span style="font-size: 0.78rem; color: #1DB954; font-weight: 700; background: rgba(29, 185, 84, 0.15); padding: 3px 8px; border-radius: 8px;">{cnt} plays</span>
+                    <span class="sh-play-badge">{cnt} plays</span>
                 </div>''')
-            return "".join(rows) if rows else f'<div style="color: rgba(225, 232, 240, 0.5); font-style: italic; font-size: 0.85rem; padding: 10px 0;">{empty_msg}</div>'
+            return "".join(rows) if rows else f'<div class="sh-empty">{empty_msg}</div>'
 
         recent_30d_art_html = f'''
         <div class="analytics-block">
             <div class="analytics-block-title">
                 <span>🎯 Hot Right Now</span>
-                <span style="font-size: 0.75rem; color: #F59E0B; font-weight: 600; background: rgba(245, 158, 11, 0.12); padding: 2px 8px; border-radius: 10px;">Last 30 Days · {last_30d:,} streams</span>
+                <span class="sh-badge-amber">Last 30 Days · {last_30d:,} streams</span>
             </div>
             {_artist_list_html(top_art_30d, "No streams in last 30 days.")}
         </div>
@@ -15296,19 +15646,19 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         <div class="analytics-block">
             <div class="analytics-block-title">
                 <span>⚡ This Week</span>
-                <span style="font-size: 0.75rem; color: #F59E0B; font-weight: 600; background: rgba(245, 158, 11, 0.12); padding: 2px 8px; border-radius: 10px;">Last 7 Days · {last_7d:,} streams</span>
+                <span class="sh-badge-amber">Last 7 Days · {last_7d:,} streams</span>
             </div>
             {_artist_list_html(top_art_7d, "No streams in last 7 days.")}
         </div>
         '''
 
         analytics_grid_html = f'''
-        <div style="margin-bottom: 8px; padding: 4px 0;">
-            <h2 style="font-family: 'Montserrat', sans-serif; font-size: 1.1rem; font-weight: 800; color: #FFFFFF; margin: 0 0 4px 0;">📊 Listening Intelligence</h2>
-            <div style="font-size: 0.82rem; color: #A5C8FF;">All analytics sourced from your complete {tot_tr:,}-stream personal archive</div>
-        </div>
+        {analytics_section_header}
+        {kpi_grid_html}
         <div class="spotify-analytics-grid">
             {yoy_html}
+            {heatmap_html}
+            {monthly_html}
             {alltime_art_html if lifetime_stats.get('top_artists') else ''}
             {alltime_trk_html if lifetime_stats.get('top_tracks') else ''}
             {tod_html}
@@ -15318,6 +15668,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             {recent_7d_art_html}
         </div>
         '''
+
 
         timeline_html = '''
         <section class="slicer-card" id="spotify-timeline-panel" aria-labelledby="spotify-timeline-title">
@@ -15616,7 +15967,6 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         {message_banner_html}
         {state_card_html}
         {now_playing_html}
-        {kpi_grid_html if (is_connected or is_demo or has_history) else ''}
         {analytics_grid_html if (is_connected or is_demo or has_history) else ''}
         {timeline_html if (has_history and not is_demo) else ''}
         {slicer_html if (is_connected or is_demo or has_history) else ''}
