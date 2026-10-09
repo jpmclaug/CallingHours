@@ -1343,12 +1343,31 @@ def get_spotify_app_token(force_refresh: bool = False) -> Optional[str]:
 
 
 def get_artist_api_token(user_email: Optional[str] = None, db_module: Any = None) -> Optional[str]:
-    """Obtain a valid token for public catalog access: uses user session token if present, or app token."""
+    """Obtain a valid token for public catalog access: uses user session token if present, app token, or connected db user."""
     if user_email:
         user_tok = get_valid_access_token(user_email, db_module=db_module)
         if user_tok:
             return user_tok
-    return get_spotify_app_token()
+    app_tok = get_spotify_app_token()
+    if app_tok:
+        return app_tok
+
+    # Fallback to any connected user in the database
+    try:
+        import database
+        db = db_module or database
+        target = db.get_db_target()
+        with db.get_connection(target) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT user_email FROM spotify_tokens ORDER BY updated_at DESC LIMIT 1")
+            row = cursor.fetchone()
+            if row and row[0]:
+                fallback_tok = get_valid_access_token(row[0], db_module=db)
+                if fallback_tok:
+                    return fallback_tok
+    except Exception:
+        pass
+    return None
 
 
 def search_artist_profile(access_token: str, artist_name: str) -> Optional[Dict[str, Any]]:
@@ -2095,20 +2114,28 @@ def fetch_artist_albums(
     headers = {"Authorization": f"Bearer {access_token}"}
     items: List[Dict[str, Any]] = []
 
-    # 1. Query artist albums endpoint
+    # 1. Query artist albums endpoint with pagination (limit <= 10 supported by Spotify)
     if artist_id:
-        url = f"{SPOTIFY_API_BASE_URL}/artists/{artist_id}/albums"
-        params = {
-            "include_groups": "album,single",
-            "market": market,
-            "limit": 50,
-        }
-        try:
-            resp = requests.get(url, headers=headers, params=params, timeout=DEFAULT_TIMEOUT)
-            if resp.status_code == 200:
-                items = resp.json().get("items", [])
-        except Exception as e:
-            print(f"Spotify fetch_artist_albums error for {artist_id}: {e}")
+        for offset in (0, 10, 20):
+            url = f"{SPOTIFY_API_BASE_URL}/artists/{artist_id}/albums"
+            params = {
+                "include_groups": "album,single",
+                "market": market,
+                "limit": 10,
+                "offset": offset,
+            }
+            try:
+                resp = requests.get(url, headers=headers, params=params, timeout=DEFAULT_TIMEOUT)
+                if resp.status_code == 200:
+                    page_items = resp.json().get("items", [])
+                    items.extend(page_items)
+                    if len(page_items) < 10:
+                        break
+                else:
+                    break
+            except Exception as e:
+                print(f"Spotify fetch_artist_albums error for {artist_id}: {e}")
+                break
 
     # 2. Fallback to album search if albums endpoint returned nothing
     clean_target = (artist_name or "").strip()
@@ -2118,7 +2145,7 @@ def fetch_artist_albums(
             search_params = {
                 "q": f'artist:"{clean_target}"',
                 "type": "album",
-                "limit": 50,
+                "limit": 10,
                 "market": market
             }
             resp = requests.get(search_url, headers=headers, params=search_params, timeout=DEFAULT_TIMEOUT)
@@ -2277,17 +2304,24 @@ def get_or_fetch_artist_albums(
     # 2. Fallback to local Calling Hours streaming history and library
     try:
         import database
-        db_albums_data, _ = database.get_filtered_top_albums(
-            user_email=user_email,
-            artist=clean_artist,
-            limit=25,
-            db_path=db_path
-        )
-        if db_albums_data:
+        target_db = database.get_db_target(db_path)
+        with database.get_connection(target_db) as conn:
+            cursor = conn.cursor()
+            ph = "%s" if database.is_postgres(target_db) else "?"
+            cursor.execute(f"""
+                SELECT album_name, MAX(album_image_url) as img, COUNT(*) as play_cnt
+                FROM spotify_history
+                WHERE LOWER(artist_name) = LOWER({ph})
+                  AND album_name IS NOT NULL AND TRIM(album_name) != ''
+                GROUP BY album_name
+                ORDER BY play_cnt DESC
+                LIMIT 25
+            """, (clean_artist,))
+            h_rows = cursor.fetchall()
             local_albums = []
-            for alb in db_albums_data:
-                a_name = alb.get("album") or alb.get("album_name") or ""
-                if a_name:
+            if h_rows:
+                for r in h_rows:
+                    a_name = r[0]
                     local_albums.append({
                         "id": f"local_{abs(hash(a_name))}",
                         "name": a_name,
@@ -2295,8 +2329,33 @@ def get_or_fetch_artist_albums(
                         "album_type": "album",
                         "release_date": "",
                         "release_year": "",
-                        "total_tracks": alb.get("play_count") or 10,
-                        "image_url": alb.get("image_url") or "",
+                        "total_tracks": int(r[2]) if r[2] else 10,
+                        "image_url": r[1] or "",
+                        "spotify_url": "",
+                        "source": "local_database",
+                    })
+            if not local_albums:
+                cursor.execute(f"""
+                    SELECT DISTINCT album_name, album_release_date
+                    FROM tracks
+                    WHERE (LOWER(album_artist) = LOWER({ph}) OR LOWER(track_artist) = LOWER({ph}))
+                      AND album_name IS NOT NULL AND TRIM(album_name) != ''
+                    ORDER BY album_name ASC
+                    LIMIT 25
+                """, (clean_artist, clean_artist))
+                t_rows = cursor.fetchall()
+                for r in t_rows:
+                    a_name = r[0]
+                    r_yr = (r[1] or "")[:4] if r[1] else ""
+                    local_albums.append({
+                        "id": f"local_{abs(hash(a_name))}",
+                        "name": a_name,
+                        "album_group": "album",
+                        "album_type": "album",
+                        "release_date": r[1] or "",
+                        "release_year": r_yr,
+                        "total_tracks": 10,
+                        "image_url": "",
                         "spotify_url": "",
                         "source": "local_database",
                     })

@@ -230,6 +230,15 @@ class TestSpotifyAlbumAPIs(unittest.TestCase):
         self.assertEqual(albums[1]["id"], "alb_1")
         self.assertEqual(albums[1]["name"], "Clarity")
         self.assertEqual(albums[1]["release_year"], "1999")
+        # Verify limit requested was 10 (not 50)
+        first_call_params = mock_get.call_args_list[0][1].get("params", {})
+        self.assertEqual(first_call_params.get("limit"), 10)
+
+    @patch("spotify.get_artist_api_token", return_value=None)
+    def test_get_or_fetch_artist_albums_db_fallback(self, mock_tok):
+        # When token is None, fallback to database runs smoothly without error
+        albums = spotify.get_or_fetch_artist_albums("Turnstile")
+        self.assertIsInstance(albums, list)
 
     @patch("spotify.requests.get")
     def test_fetch_album_tracks(self, mock_get):

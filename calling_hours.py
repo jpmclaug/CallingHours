@@ -9147,20 +9147,26 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
         async function loadAlbumsForBand(idx, artistName, selectedAlbumId) {
             const selectEl = document.getElementById(`show-prep-album-select-${idx}`);
             if (!selectEl) return;
+            const cleanArtist = (artistName || '').trim();
+            if (!cleanArtist) {
+                selectEl.innerHTML = '<option value="">(Enter band name first)</option>';
+                return;
+            }
 
-            if (SHOW_PREP_ALBUMS_CACHE[artistName.toLowerCase()]) {
-                populateAlbumSelect(selectEl, SHOW_PREP_ALBUMS_CACHE[artistName.toLowerCase()], selectedAlbumId);
+            if (SHOW_PREP_ALBUMS_CACHE[cleanArtist.toLowerCase()]) {
+                populateAlbumSelect(selectEl, SHOW_PREP_ALBUMS_CACHE[cleanArtist.toLowerCase()], selectedAlbumId);
                 return;
             }
 
             selectEl.innerHTML = '<option value="">⏳ Loading discography albums...</option>';
             try {
-                const resp = await fetch(`/api/artist/albums?artist=${encodeURIComponent(artistName)}`);
+                const resp = await fetch(`/api/artist/albums?artist=${encodeURIComponent(cleanArtist)}`);
                 const data = await resp.json();
                 const albums = data.albums || [];
-                SHOW_PREP_ALBUMS_CACHE[artistName.toLowerCase()] = albums;
+                SHOW_PREP_ALBUMS_CACHE[cleanArtist.toLowerCase()] = albums;
                 populateAlbumSelect(selectEl, albums, selectedAlbumId);
             } catch (e) {
+                console.error('Error loading albums for', cleanArtist, e);
                 selectEl.innerHTML = '<option value="">⚠️ Error loading albums</option>';
             }
         }
@@ -9170,7 +9176,7 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
                 selectEl.innerHTML = '<option value="">(No studio albums found)</option>';
                 return;
             }
-            selectEl.innerHTML = '<option value="">-- Choose Album --</option>' + albums.map(a => {
+            selectEl.innerHTML = '<option value="">-- Choose Album (' + albums.length + ' available) --</option>' + albums.map(a => {
                 const isSel = (selectedAlbumId && (a.id === selectedAlbumId || a.name === selectedAlbumId)) ? ' selected' : '';
                 const yrStr = a.release_year ? ` (${a.release_year})` : '';
                 const trkStr = a.total_tracks ? ` - ${a.total_tracks} tracks` : '';
