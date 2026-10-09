@@ -2078,3 +2078,233 @@ def get_or_fetch_artist_spotify_data(
 
     return result
 
+
+def fetch_artist_albums(
+    access_token: str,
+    artist_id: str,
+    market: str = "US",
+    artist_name: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    """
+    Fetch an artist's discography albums from Spotify API.
+    Returns deduplicated list of albums with id, name, release date, year, total_tracks, and image.
+    """
+    if not access_token or (not artist_id and not artist_name):
+        return []
+
+    headers = {"Authorization": f"Bearer {access_token}"}
+    items: List[Dict[str, Any]] = []
+
+    # 1. Query artist albums endpoint
+    if artist_id:
+        url = f"{SPOTIFY_API_BASE_URL}/artists/{artist_id}/albums"
+        params = {
+            "include_groups": "album,single",
+            "market": market,
+            "limit": 50,
+        }
+        try:
+            resp = requests.get(url, headers=headers, params=params, timeout=DEFAULT_TIMEOUT)
+            if resp.status_code == 200:
+                items = resp.json().get("items", [])
+        except Exception as e:
+            print(f"Spotify fetch_artist_albums error for {artist_id}: {e}")
+
+    # 2. Fallback to album search if albums endpoint returned nothing
+    clean_target = (artist_name or "").strip()
+    if not items and clean_target:
+        try:
+            search_url = f"{SPOTIFY_API_BASE_URL}/search"
+            search_params = {
+                "q": f'artist:"{clean_target}"',
+                "type": "album",
+                "limit": 50,
+                "market": market
+            }
+            resp = requests.get(search_url, headers=headers, params=search_params, timeout=DEFAULT_TIMEOUT)
+            if resp.status_code == 200:
+                items = resp.json().get("albums", {}).get("items", [])
+        except Exception as se:
+            print(f"Spotify search fallback albums error for {clean_target}: {se}")
+
+    if not items:
+        return []
+
+    # Deduplicate by normalized name
+    albums: List[Dict[str, Any]] = []
+    seen_names = set()
+
+    for it in items:
+        raw_name = (it.get("name") or "").strip()
+        if not raw_name:
+            continue
+        # Strip common trailing tags for deduplication like (Deluxe Edition), (Remastered)
+        base_name = re.sub(r'\s*\((?:deluxe|expanded|remaster(?:ed)?|bonus track(?:s)?|anniversary).*?\)', '', raw_name, flags=re.IGNORECASE).strip().lower()
+        if base_name in seen_names:
+            continue
+        seen_names.add(base_name)
+
+        r_date = it.get("release_date") or ""
+        r_year = r_date[:4] if len(r_date) >= 4 and r_date[:4].isdigit() else ""
+        imgs = it.get("images") or []
+        img_url = imgs[0].get("url") if imgs else ""
+        ext_urls = it.get("external_urls") or {}
+
+        albums.append({
+            "id": it.get("id") or "",
+            "name": raw_name,
+            "album_group": it.get("album_group") or it.get("album_type") or "album",
+            "album_type": it.get("album_type") or "album",
+            "release_date": r_date,
+            "release_year": r_year,
+            "total_tracks": it.get("total_tracks") or 0,
+            "image_url": img_url,
+            "spotify_url": ext_urls.get("spotify", ""),
+            "uri": it.get("uri") or f"spotify:album:{it.get('id')}",
+        })
+
+    # Sort albums: studio albums first, then by release year descending
+    def _album_sort_key(a: Dict[str, Any]) -> Tuple[int, str]:
+        grp = a.get("album_group", "album").lower()
+        is_album = 1 if grp == "album" else 0
+        year_str = a.get("release_year") or "0000"
+        return (is_album, year_str)
+
+    albums.sort(key=_album_sort_key, reverse=True)
+    return albums
+
+
+def fetch_album_tracks(
+    access_token: str,
+    album_id: str,
+    market: str = "US"
+) -> List[Dict[str, Any]]:
+    """
+    Fetch all tracks for a specific album from Spotify API.
+    Returns ordered list of tracks with position, name, duration, spotify_id, and preview_url.
+    """
+    if not access_token or not album_id:
+        return []
+
+    headers = {"Authorization": f"Bearer {access_token}"}
+    album_name = ""
+    album_image = ""
+    release_year = ""
+    artist_name = ""
+    tracks_raw: List[Dict[str, Any]] = []
+
+    # 1. First attempt full album object fetch to get album cover and metadata
+    try:
+        url = f"{SPOTIFY_API_BASE_URL}/albums/{album_id}"
+        resp = requests.get(url, headers=headers, params={"market": market}, timeout=DEFAULT_TIMEOUT)
+        if resp.status_code == 200:
+            alb_data = resp.json()
+            album_name = alb_data.get("name") or ""
+            r_date = alb_data.get("release_date") or ""
+            release_year = r_date[:4] if len(r_date) >= 4 and r_date[:4].isdigit() else ""
+            imgs = alb_data.get("images") or []
+            album_image = imgs[0].get("url") if imgs else ""
+            arts = alb_data.get("artists") or []
+            artist_name = arts[0].get("name") if arts else ""
+            tracks_raw = alb_data.get("tracks", {}).get("items", [])
+    except Exception as e:
+        print(f"Spotify fetch_album error for {album_id}: {e}")
+
+    # 2. Fallback to /albums/{id}/tracks if full album object failed
+    if not tracks_raw:
+        try:
+            url = f"{SPOTIFY_API_BASE_URL}/albums/{album_id}/tracks"
+            resp = requests.get(url, headers=headers, params={"market": market, "limit": 50}, timeout=DEFAULT_TIMEOUT)
+            if resp.status_code == 200:
+                tracks_raw = resp.json().get("items", [])
+        except Exception as te:
+            print(f"Spotify fetch_album_tracks error for {album_id}: te={te}")
+
+    results: List[Dict[str, Any]] = []
+    for idx, t in enumerate(tracks_raw, 1):
+        t_name = (t.get("name") or "").strip()
+        if not t_name:
+            continue
+        t_arts = t.get("artists") or []
+        t_artist = t_arts[0].get("name") if t_arts else artist_name
+        dur_ms = t.get("duration_ms") or 0
+        ext_urls = t.get("external_urls") or {}
+
+        results.append({
+            "position": t.get("track_number") or idx,
+            "track_number": t.get("track_number") or idx,
+            "song": t_name,
+            "artist": t_artist or "",
+            "spotify_id": t.get("id") or "",
+            "spotify_url": ext_urls.get("spotify", ""),
+            "preview_url": t.get("preview_url") or "",
+            "duration_ms": dur_ms,
+            "duration_formatted": format_duration(dur_ms),
+            "album_name": album_name,
+            "album_image": album_image,
+            "release_year": release_year,
+            "source": "album",
+            "popularity": 55,
+        })
+
+    return results
+
+
+def get_or_fetch_artist_albums(
+    artist_name: str,
+    user_email: Optional[str] = None,
+    db_path: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    """
+    Get an artist's discography albums from Spotify API with local library & database fallbacks.
+    """
+    clean_artist = (artist_name or "").strip()
+    if not clean_artist:
+        return []
+
+    # 1. Try Spotify Web API
+    try:
+        token = get_artist_api_token(user_email=user_email)
+        if token:
+            profile = search_artist_profile(token, clean_artist)
+            artist_id = profile.get("id") if profile else ""
+            albums = fetch_artist_albums(token, artist_id, artist_name=clean_artist)
+            if albums:
+                return albums
+    except Exception as e:
+        print(f"Error fetching artist albums from Spotify for {clean_artist}: {e}")
+
+    # 2. Fallback to local Calling Hours streaming history and library
+    try:
+        import database
+        db_albums_data, _ = database.get_filtered_top_albums(
+            user_email=user_email,
+            artist=clean_artist,
+            limit=25,
+            db_path=db_path
+        )
+        if db_albums_data:
+            local_albums = []
+            for alb in db_albums_data:
+                a_name = alb.get("album") or alb.get("album_name") or ""
+                if a_name:
+                    local_albums.append({
+                        "id": f"local_{abs(hash(a_name))}",
+                        "name": a_name,
+                        "album_group": "album",
+                        "album_type": "album",
+                        "release_date": "",
+                        "release_year": "",
+                        "total_tracks": alb.get("play_count") or 10,
+                        "image_url": alb.get("image_url") or "",
+                        "spotify_url": "",
+                        "source": "local_database",
+                    })
+            if local_albums:
+                return local_albums
+    except Exception as de:
+        print(f"Error fetching local albums for {clean_artist}: {de}")
+
+    return []
+
+

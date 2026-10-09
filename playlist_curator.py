@@ -357,6 +357,177 @@ def fetch_artist_latest_setlist_pool(
     return enriched
 
 
+def fetch_artist_album_tracks_pool(
+    artist: str,
+    album_id: Optional[str] = None,
+    album_name: Optional[str] = None,
+    user_email: Optional[str] = None,
+    db_path: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    """
+    Fetch an artist's full tracklist for a specific album from Spotify API,
+    with database/library fallbacks. Enriches each track with Calling Hours
+    analyses, TheAudioDB features, Last.fm tags, and album badges.
+    """
+    clean_artist = normalize_artist_name(artist)
+    if not clean_artist:
+        return []
+
+    raw_tracks: List[Dict[str, Any]] = []
+    target_album_name = (album_name or "").strip()
+    target_album_image = ""
+    target_release_year = ""
+
+    # 1. Try Spotify Web API
+    try:
+        token = spotify.get_artist_api_token(user_email=user_email)
+        if token:
+            # If album_id is given and not a local placeholder
+            if album_id and not str(album_id).startswith("local_"):
+                raw_tracks = spotify.fetch_album_tracks(token, album_id)
+            elif target_album_name:
+                # Search or locate album by name
+                albums = spotify.get_or_fetch_artist_albums(clean_artist, user_email=user_email, db_path=db_path)
+                matched_id = None
+                for alb in albums:
+                    if alb.get("name", "").strip().lower() == target_album_name.lower():
+                        matched_id = alb.get("id")
+                        target_album_image = alb.get("image_url") or ""
+                        target_release_year = alb.get("release_year") or ""
+                        break
+                if matched_id and not str(matched_id).startswith("local_"):
+                    raw_tracks = spotify.fetch_album_tracks(token, matched_id)
+    except Exception as e:
+        print(f"Error fetching album tracks via Spotify for {clean_artist} - {album_name}: {e}")
+
+    # 2. Fallback to Calling Hours local database / streaming history if Spotify didn't yield tracks
+    if not raw_tracks and target_album_name:
+        try:
+            target_db = database.get_db_target(db_path)
+            with database.get_connection(target_db) as conn:
+                cursor = conn.cursor()
+                ph = "%s" if database.is_postgres(target_db) else "?"
+                cursor.execute(f"""
+                    SELECT track_name, track_artist, album_name, track_number, duration_ms, track_id
+                    FROM tracks
+                    WHERE (LOWER(album_artist) = LOWER({ph}) OR LOWER(track_artist) = LOWER({ph}))
+                      AND LOWER(album_name) LIKE LOWER({ph})
+                    ORDER BY track_number ASC
+                """, (clean_artist, clean_artist, f"%{target_album_name}%"))
+                rows = cursor.fetchall()
+                if rows:
+                    for idx, r in enumerate(rows, 1):
+                        raw_tracks.append({
+                            "position": r[3] if r[3] else idx,
+                            "song": r[0] or "",
+                            "artist": r[1] or clean_artist,
+                            "album_name": r[2] or target_album_name,
+                            "album_image": "",
+                            "duration_ms": r[4] or 0,
+                            "spotify_id": r[5] or "",
+                            "source": "album",
+                        })
+                if not raw_tracks:
+                    cursor.execute(f"""
+                        SELECT DISTINCT track_name, album_name, album_image_url, spotify_url
+                        FROM spotify_history
+                        WHERE LOWER(artist_name) = LOWER({ph}) AND LOWER(album_name) LIKE LOWER({ph})
+                        ORDER BY track_name ASC
+                    """, (clean_artist, f"%{target_album_name}%"))
+                    sh_rows = cursor.fetchall()
+                    for idx, sr in enumerate(sh_rows, 1):
+                        raw_sp_id = sr[3] or ""
+                        sp_id = raw_sp_id.split("/")[-1].split("?")[0] if "open.spotify.com" in raw_sp_id else raw_sp_id.replace("spotify:track:", "")
+                        raw_tracks.append({
+                            "position": idx,
+                            "song": sr[0] or "",
+                            "artist": clean_artist,
+                            "album_name": sr[1] or target_album_name,
+                            "album_image": sr[2] or "",
+                            "spotify_id": sp_id,
+                            "source": "album",
+                        })
+        except Exception as de:
+            print(f"Error fetching database album tracks for {clean_artist} - {album_name}: {de}")
+
+    # 3. If still empty, fall back to top tracks pool
+    if not raw_tracks:
+        return fetch_artist_top_tracks_pool(clean_artist, limit=10, user_email=user_email, db_path=db_path)
+
+    # 4. Enrich tracks with Calling Hours analyses, tags, and audio features
+    enriched: List[Dict[str, Any]] = []
+    seen_titles = set()
+
+    for idx, t in enumerate(raw_tracks, 1):
+        s_title = (t.get("song") or "").strip()
+        if not s_title:
+            continue
+        norm_key = s_title.lower()
+        if norm_key in seen_titles:
+            continue
+        seen_titles.add(norm_key)
+
+        alb_disp = t.get("album_name") or target_album_name or "Studio Album"
+        item: Dict[str, Any] = {
+            "artist": t.get("artist") or clean_artist,
+            "song": s_title,
+            "position": t.get("position", idx),
+            "stage_position": t.get("position", idx),
+            "track_number": t.get("position", idx),
+            "album_name": alb_disp,
+            "album_image": t.get("album_image") or target_album_image,
+            "release_year": t.get("release_year") or target_release_year,
+            "duration_ms": t.get("duration_ms", 0),
+            "duration_formatted": t.get("duration_formatted") or "",
+            "spotify_id": t.get("spotify_id") or "",
+            "spotify_url": t.get("spotify_url") or "",
+            "preview_url": t.get("preview_url") or "",
+            "popularity": t.get("popularity", 55),
+            "album_badge": f"💿 {alb_disp}",
+            "source": "album",
+        }
+
+        # Enrich with existing database search & lyric analysis
+        try:
+            db_search = database.get_search(clean_artist, s_title, db_path=db_path)
+            if db_search:
+                if not item.get("id"):
+                    item["id"] = db_search.get("id")
+                    item["search_id"] = db_search.get("id")
+                if not item.get("spotify_id") and db_search.get("spotify_id"):
+                    item["spotify_id"] = db_search["spotify_id"]
+                item["is_analyzed"] = bool(db_search.get("analysis"))
+                item["model_name"] = db_search.get("model_name") or item.get("model_name")
+                item["analysis"] = db_search.get("analysis") or ""
+                item["lyrics"] = db_search.get("lyrics") or ""
+                if not item.get("track_tags") and db_search.get("track_tags"):
+                    tags_raw = db_search["track_tags"]
+                    if isinstance(tags_raw, str):
+                        try:
+                            item["track_tags"] = json.loads(tags_raw)
+                        except Exception:
+                            item["track_tags"] = []
+                    else:
+                        item["track_tags"] = tags_raw
+                if not item.get("theaudiodb_data") and db_search.get("theaudiodb_data"):
+                    adb_raw = db_search["theaudiodb_data"]
+                    if isinstance(adb_raw, str):
+                        try:
+                            item["theaudiodb_data"] = json.loads(adb_raw)
+                        except Exception:
+                            item["theaudiodb_data"] = None
+                    else:
+                        item["theaudiodb_data"] = adb_raw
+            else:
+                item["is_analyzed"] = False
+        except Exception:
+            pass
+
+        enriched.append(item)
+
+    return enriched
+
+
 def fetch_multi_artist_catalog(
     artists: List[str],
     limit_per_artist: int = 10,
@@ -419,6 +590,82 @@ def fetch_multi_artist_catalog(
     return {art: catalog.get(art, []) for art in unique_artists}
 
 
+def fetch_show_prep_catalog(
+    band_configs: List[Dict[str, Any]],
+    user_email: Optional[str] = None,
+    db_path: Optional[str] = None
+) -> Dict[str, List[Dict[str, Any]]]:
+    """
+    Fetch catalog for a list of band configurations for Show Prep.
+    Each band config: {
+        "artist": str,
+        "source": "latest_setlist" | "top_tracks" | "album",
+        "album_id": Optional[str],
+        "album_name": Optional[str],
+        "limit": Optional[int]
+    }
+    Executes fetches concurrently and preserves input band lineup order.
+    """
+    if not band_configs:
+        return {}
+
+    catalog: Dict[str, List[Dict[str, Any]]] = {}
+    ordered_artists: List[str] = []
+
+    def _worker(cfg: Dict[str, Any]) -> Tuple[str, List[Dict[str, Any]]]:
+        art = normalize_artist_name(cfg.get("artist", ""))
+        src = cfg.get("source", "latest_setlist")
+        if src == "latest_setlist":
+            tracks = fetch_artist_latest_setlist_pool(
+                art,
+                min_tracks=10,
+                limit=cfg.get("limit"),
+                user_email=user_email,
+                db_path=db_path
+            )
+        elif src == "album":
+            tracks = fetch_artist_album_tracks_pool(
+                art,
+                album_id=cfg.get("album_id"),
+                album_name=cfg.get("album_name"),
+                user_email=user_email,
+                db_path=db_path
+            )
+        else:  # top_tracks
+            tracks = fetch_artist_top_tracks_pool(
+                art,
+                limit=cfg.get("limit") or 10,
+                user_email=user_email,
+                db_path=db_path
+            )
+        return art, tracks
+
+    valid_configs = []
+    seen = set()
+    for cfg in band_configs:
+        art = normalize_artist_name(cfg.get("artist", ""))
+        if art and art.lower() not in seen:
+            seen.add(art.lower())
+            valid_configs.append(cfg)
+            ordered_artists.append(art)
+
+    if not valid_configs:
+        return {}
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(valid_configs), 6)) as executor:
+        future_to_art = {executor.submit(_worker, cfg): normalize_artist_name(cfg.get("artist", "")) for cfg in valid_configs}
+        for future in concurrent.futures.as_completed(future_to_art):
+            try:
+                art, tracks = future.result()
+                catalog[art] = tracks
+            except Exception as e:
+                art_name = future_to_art[future]
+                print(f"Error fetching show prep catalog for {art_name}: {e}")
+                catalog[art_name] = []
+
+    return {art: catalog.get(art, []) for art in ordered_artists}
+
+
 def mix_alternating(
     tracks_by_artist: Dict[str, List[Dict[str, Any]]],
     limit: Optional[int] = None
@@ -447,6 +694,32 @@ def mix_alternating(
                 playlist.append(track)
                 if limit and len(playlist) >= limit:
                     return playlist
+
+    return playlist
+
+
+def mix_artist_order(
+    tracks_by_artist: Dict[str, List[Dict[str, Any]]],
+    limit: Optional[int] = None
+) -> List[Dict[str, Any]]:
+    """
+    Sequence playlist in artist lineup order:
+    All tracks for Artist 1, followed by all tracks for Artist 2, followed by all tracks for Artist 3...
+    """
+    playlist: List[Dict[str, Any]] = []
+    artists = list(tracks_by_artist.keys())
+
+    for art_idx, art in enumerate(artists, 1):
+        art_tracks = tracks_by_artist.get(art, [])
+        for trk_idx, t in enumerate(art_tracks, 1):
+            item = dict(t)
+            item["mix_mode"] = "artist_order"
+            item["lineup_order"] = art_idx
+            item["artist_position"] = trk_idx
+            item["artist_order_badge"] = f"Set {art_idx} • {art}"
+            playlist.append(item)
+            if limit and len(playlist) >= limit:
+                return playlist
 
     return playlist
 

@@ -8668,6 +8668,19 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
                                     <div class="playlist-mode-desc">Describe any vibe, mood, or setting (e.g. &quot;late night rainy drive&quot;) and Gemini will pick and sequence matching library tracks.</div>
                                 </div>
                             </a>
+
+                            <!-- Option 9: Show Prep Generator -->
+                            <a href="/playlists?mode=show_prep" class="playlist-mode-card{mode_show_prep_active}" id="option-card-show-prep" data-mode-cat="catalog" data-loading-title="Building Show Prep Playlist..." data-loading-subtitle="Concert &amp; Tour Lineup" data-loading-icon="🎫">
+                                <div class="playlist-mode-icon">🎫</div>
+                                <div class="playlist-mode-content">
+                                    <div class="playlist-mode-header">
+                                        <span class="playlist-mode-title">Show Prep Generator</span>
+                                        <span class="playlist-mode-badge" style="background: rgba(255, 159, 67, 0.2); color: #FF9F43; border: 1px solid rgba(255, 159, 67, 0.4);">Option 9 • Gig &amp; Tour Prep</span>
+                                    </div>
+                                    <span class="playlist-mode-count">Multi-Band Concert Lineup</span>
+                                    <div class="playlist-mode-desc">Prep for upcoming gigs: pick latest 10+ track setlist, top 10 hits, or a specific album per band in alternating or show lineup order.</div>
+                                </div>
+                            </a>
                         </div>
 
                         <div class="playlist-active-banner">
@@ -8956,6 +8969,19 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
                         newName = mixMode === 'thematic' ? 'Thematic Multi-Artist Blend' : 'Multi-Artist Top Tracks Rotation';
                     }
                 }
+            } else if (mode === 'show_prep') {
+                const bandsInput = document.getElementById('input-show-prep-bands');
+                const rawArt = bandsInput ? bandsInput.value.trim() : '';
+                const mixModeSelect = document.getElementById('select-show-prep-mix-mode');
+                const mixMode = mixModeSelect ? mixModeSelect.value : 'artist_order';
+                const artList = rawArt ? rawArt.split(',').map(s => s.trim()).filter(Boolean) : [];
+                if (artList.length) {
+                    const artSummary = artList.slice(0, 3).join(', ') + (artList.length > 3 ? `, +${artList.length - 3} more` : '');
+                    const modeSuffix = mixMode === 'artist_order' ? 'Lineup Order' : 'Alternating Mix';
+                    newName = `Show Prep: ${artSummary} (${modeSuffix})`;
+                } else {
+                    newName = 'Show Prep Generator';
+                }
             } else if (mode === 'setlist_fm') {
                 const artistSelect = document.getElementById('select-setlist-artist');
                 let artist = '';
@@ -8989,6 +9015,240 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
                     disp.textContent = newName;
                 }
             }
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        const SHOW_PREP_ALBUMS_CACHE = {};
+
+        function getShowPrepConfig() {
+            const hidden = document.getElementById('input-prep-config');
+            if (hidden && hidden.value) {
+                try {
+                    const parsed = JSON.parse(hidden.value);
+                    if (Array.isArray(parsed) && parsed.length) return parsed;
+                } catch (e) {}
+            }
+            const input = document.getElementById('input-show-prep-bands');
+            const val = input ? input.value.trim() : '';
+            const parts = val ? val.split(',').map(s => s.trim()).filter(Boolean) : [];
+            return parts.map(a => ({
+                artist: a,
+                source: 'latest_setlist',
+                album_id: '',
+                album_name: ''
+            }));
+        }
+
+        function setShowPrepConfig(cfg) {
+            const hidden = document.getElementById('input-prep-config');
+            if (hidden) hidden.value = JSON.stringify(cfg);
+            const input = document.getElementById('input-show-prep-bands');
+            if (input) {
+                input.value = cfg.map(c => c.artist).join(', ');
+            }
+            updatePlaylistName('show_prep');
+        }
+
+        function onShowPrepBandsInput() {
+            const input = document.getElementById('input-show-prep-bands');
+            if (!input) return;
+            const parts = input.value.split(',').map(s => s.trim()).filter(Boolean);
+            const currentCfg = getShowPrepConfig();
+            const newCfg = [];
+            const seen = new Set();
+            for (const p of parts) {
+                const low = p.toLowerCase();
+                if (seen.has(low)) continue;
+                seen.add(low);
+                const existing = currentCfg.find(c => c.artist.toLowerCase() === low);
+                if (existing) {
+                    newCfg.push(existing);
+                } else {
+                    newCfg.push({
+                        artist: p,
+                        source: 'latest_setlist',
+                        album_id: '',
+                        album_name: ''
+                    });
+                }
+            }
+            setShowPrepConfig(newCfg);
+            renderShowPrepCards(newCfg);
+        }
+
+        function addShowPrepBandChip(bandName) {
+            const currentCfg = getShowPrepConfig();
+            if (currentCfg.some(c => c.artist.toLowerCase() === bandName.toLowerCase())) {
+                showToast(`${bandName} is already in the lineup.`);
+                return;
+            }
+            currentCfg.push({
+                artist: bandName,
+                source: 'latest_setlist',
+                album_id: '',
+                album_name: ''
+            });
+            setShowPrepConfig(currentCfg);
+            renderShowPrepCards(currentCfg);
+            showToast(`Added ${bandName} to concert lineup.`);
+        }
+
+        function moveShowPrepBand(idx, dir) {
+            const cfg = getShowPrepConfig();
+            const targetIdx = idx + dir;
+            if (targetIdx < 0 || targetIdx >= cfg.length) return;
+            const temp = cfg[idx];
+            cfg[idx] = cfg[targetIdx];
+            cfg[targetIdx] = temp;
+            setShowPrepConfig(cfg);
+            renderShowPrepCards(cfg);
+        }
+
+        function removeShowPrepBand(idx) {
+            const cfg = getShowPrepConfig();
+            if (idx >= 0 && idx < cfg.length) {
+                const removed = cfg.splice(idx, 1);
+                setShowPrepConfig(cfg);
+                renderShowPrepCards(cfg);
+                if (removed.length) {
+                    showToast(`Removed ${removed[0].artist} from lineup.`);
+                }
+            }
+        }
+
+        function onShowPrepMixModeChange() {
+            updatePlaylistName('show_prep');
+        }
+
+        function onShowPrepSourceChange(idx, newSource) {
+            const cfg = getShowPrepConfig();
+            if (cfg[idx]) {
+                cfg[idx].source = newSource;
+                setShowPrepConfig(cfg);
+                const albumBox = document.getElementById(`show-prep-album-box-${idx}`);
+                if (albumBox) {
+                    albumBox.style.display = newSource === 'album' ? 'block' : 'none';
+                }
+                if (newSource === 'album') {
+                    loadAlbumsForBand(idx, cfg[idx].artist, cfg[idx].album_id);
+                }
+            }
+        }
+
+        async function loadAlbumsForBand(idx, artistName, selectedAlbumId) {
+            const selectEl = document.getElementById(`show-prep-album-select-${idx}`);
+            if (!selectEl) return;
+
+            if (SHOW_PREP_ALBUMS_CACHE[artistName.toLowerCase()]) {
+                populateAlbumSelect(selectEl, SHOW_PREP_ALBUMS_CACHE[artistName.toLowerCase()], selectedAlbumId);
+                return;
+            }
+
+            selectEl.innerHTML = '<option value="">⏳ Loading discography albums...</option>';
+            try {
+                const resp = await fetch(`/api/artist/albums?artist=${encodeURIComponent(artistName)}`);
+                const data = await resp.json();
+                const albums = data.albums || [];
+                SHOW_PREP_ALBUMS_CACHE[artistName.toLowerCase()] = albums;
+                populateAlbumSelect(selectEl, albums, selectedAlbumId);
+            } catch (e) {
+                selectEl.innerHTML = '<option value="">⚠️ Error loading albums</option>';
+            }
+        }
+
+        function populateAlbumSelect(selectEl, albums, selectedAlbumId) {
+            if (!albums || albums.length === 0) {
+                selectEl.innerHTML = '<option value="">(No studio albums found)</option>';
+                return;
+            }
+            selectEl.innerHTML = '<option value="">-- Choose Album --</option>' + albums.map(a => {
+                const isSel = (selectedAlbumId && (a.id === selectedAlbumId || a.name === selectedAlbumId)) ? ' selected' : '';
+                const yrStr = a.release_year ? ` (${a.release_year})` : '';
+                const trkStr = a.total_tracks ? ` - ${a.total_tracks} tracks` : '';
+                return `<option value="${escapeHtml(a.id || a.name)}" data-name="${escapeHtml(a.name)}"${isSel}>${escapeHtml(a.name)}${yrStr}${trkStr}</option>`;
+            }).join('');
+        }
+
+        function onShowPrepAlbumChange(idx, selectEl) {
+            const cfg = getShowPrepConfig();
+            if (cfg[idx] && selectEl) {
+                const opt = selectEl.options[selectEl.selectedIndex];
+                cfg[idx].album_id = selectEl.value;
+                cfg[idx].album_name = opt ? (opt.getAttribute('data-name') || opt.textContent) : selectEl.value;
+                setShowPrepConfig(cfg);
+            }
+        }
+
+        function renderShowPrepCards(cfg) {
+            const container = document.getElementById('show-prep-bands-container');
+            if (!container) return;
+            if (!cfg || cfg.length === 0) {
+                container.innerHTML = '<div id="show-prep-empty-cards" style="text-align: center; color: rgba(225, 232, 240, 0.5); padding: 20px; font-style: italic; border: 1px dashed rgba(255, 255, 255, 0.15); border-radius: 8px;">Enter bands above to configure sources for each band.</div>';
+                return;
+            }
+
+            container.innerHTML = cfg.map((b, idx) => {
+                let role = `Band #${idx + 1}`;
+                if (cfg.length > 1) {
+                    if (idx === 0) role = 'Stage Opener';
+                    else if (idx === cfg.length - 1) role = 'Headliner';
+                    else role = `Direct Support #${idx}`;
+                }
+                const isSetlist = b.source === 'latest_setlist';
+                const isTop = b.source === 'top_tracks';
+                const isAlbum = b.source === 'album';
+
+                return `
+                <div class="show-prep-band-card" data-idx="${idx}" style="background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 159, 67, 0.3); border-radius: 8px; padding: 12px 14px; margin-bottom: 8px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 8px;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span style="background: rgba(255, 159, 67, 0.2); color: #FFB067; border: 1px solid rgba(255, 159, 67, 0.4); border-radius: 6px; padding: 2px 8px; font-size: 0.75rem; font-weight: 700;">${role}</span>
+                            <strong style="color: #FFFFFF; font-size: 0.95rem;">${escapeHtml(b.artist)}</strong>
+                        </div>
+                        <div style="display: flex; gap: 4px; align-items: center;">
+                            <button type="button" onclick="moveShowPrepBand(${idx}, -1)" class="btn-playlist-action btn-playlist-outline" style="padding: 2px 6px; font-size: 0.7rem;" title="Move up in show order">▲</button>
+                            <button type="button" onclick="moveShowPrepBand(${idx}, 1)" class="btn-playlist-action btn-playlist-outline" style="padding: 2px 6px; font-size: 0.7rem;" title="Move down in show order">▼</button>
+                            <button type="button" onclick="removeShowPrepBand(${idx})" class="btn-playlist-action btn-playlist-outline" style="padding: 2px 6px; font-size: 0.7rem; color: #FF6B6B; border-color: rgba(255, 107, 107, 0.4);" title="Remove band">✕</button>
+                        </div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; align-items: center;">
+                        <div>
+                            <label style="font-size: 0.74rem; color: rgba(225, 232, 240, 0.7); display: block; margin-bottom: 4px;">Track Source:</label>
+                            <select class="show-prep-source-select" data-idx="${idx}" onchange="onShowPrepSourceChange(${idx}, this.value)" style="width: 100%; font-size: 0.82rem; padding: 6px 8px;">
+                                <option value="latest_setlist"${isSetlist ? ' selected' : ''}>🏟️ Last Setlist (10+ songs)</option>
+                                <option value="top_tracks"${isTop ? ' selected' : ''}>⭐ Top 10 Tracks</option>
+                                <option value="album"${isAlbum ? ' selected' : ''}>💿 Specific Album</option>
+                            </select>
+                        </div>
+                        <div id="show-prep-album-box-${idx}" style="display: ${isAlbum ? 'block' : 'none'};">
+                            <label style="font-size: 0.74rem; color: rgba(225, 232, 240, 0.7); display: block; margin-bottom: 4px;">Select Album:</label>
+                            <select id="show-prep-album-select-${idx}" data-idx="${idx}" onchange="onShowPrepAlbumChange(${idx}, this)" style="width: 100%; font-size: 0.82rem; padding: 6px 8px;">
+                                <option value="${escapeHtml(b.album_id || '')}" selected>${escapeHtml(b.album_name || '-- Choose Album --')}</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                `;
+            }).join('');
+
+            cfg.forEach((b, idx) => {
+                if (b.source === 'album') {
+                    loadAlbumsForBand(idx, b.artist, b.album_id);
+                }
+            });
+        }
+
+        function submitShowPrepForm() {
+            submitGeneratorForm();
         }
 
         function resetPlaylistName() {
@@ -9100,6 +9360,17 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
                 }
             }
 
+            if (mode === 'show_prep') {
+                const bandsInput = document.getElementById('input-show-prep-bands');
+                const rawVal = bandsInput ? bandsInput.value.trim() : '';
+                const parts = rawVal.split(',').map(s => s.trim()).filter(Boolean);
+                if (parts.length < 1) {
+                    showToast("Please enter at least 1 band for show prep.");
+                    if (bandsInput) bandsInput.focus();
+                    return;
+                }
+            }
+
             if (mode === 'setlist_fm') {
                 const artistSelect = document.getElementById('select-setlist-artist');
                 if (artistSelect && artistSelect.value === '__custom__') {
@@ -9124,7 +9395,14 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             const plTitle = nameInput ? nameInput.value.trim() : '';
 
             let sub = plTitle || 'Curating Tracklist';
-            if (mode === 'multi_artist') {
+            if (mode === 'show_prep') {
+                const bandsInput = document.getElementById('input-show-prep-bands');
+                const rawVal = bandsInput ? bandsInput.value.trim() : '';
+                const parts = rawVal.split(',').map(s => s.trim()).filter(Boolean);
+                const mixModeSelect = document.getElementById('select-show-prep-mix-mode');
+                const isAlt = mixModeSelect && mixModeSelect.value === 'alternating';
+                sub = `${parts.slice(0, 3).join(' & ')} — ${isAlt ? 'Alternating Mix' : 'Lineup Order'}`;
+            } else if (mode === 'multi_artist') {
                 const artistsInput = document.getElementById('input-multi-artists');
                 const rawVal = artistsInput ? artistsInput.value.trim() : '';
                 const parts = rawVal.split(',').map(s => s.trim()).filter(Boolean);
@@ -9150,7 +9428,14 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
                 'Ranking and ordering tracks...',
                 'Compiling playlist overview...'
             ];
-            if (mode === 'multi_artist') {
+            if (mode === 'show_prep') {
+                overlaySteps = [
+                    'Scanning concert setlists, top hits & album tracks for lineup...',
+                    'Fetching latest 10+ track concert setlists from Setlist.fm...',
+                    'Loading discography albums and tracks from Spotify...',
+                    'Sequencing show prep playlist in selected order...'
+                ];
+            } else if (mode === 'multi_artist') {
                 const mixModeSelect = document.getElementById('select-mix-mode');
                 const isThematic = mixModeSelect && mixModeSelect.value === 'thematic';
                 const trackSourceSelect = document.getElementById('select-track-source');
@@ -11663,6 +11948,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             mode = params.get('mode', ['all_analyzed'])[0].strip()
             artist = params.get('artist', [''])[0].strip()
             artists_param = params.get('artists', [''])[0].strip()
+            prep_config = params.get('prep_config', [''])[0].strip()
             mix_mode = params.get('mix_mode', ['alternating'])[0].strip()
             per_artist_str = params.get('per_artist', ['10' if mode == 'multi_artist' else '10'])[0].strip()
             per_artist = int(per_artist_str) if per_artist_str.isdigit() else 10
@@ -11685,6 +11971,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 mode=mode,
                 selected_artist=artist,
                 selected_artists=artists_param,
+                prep_config=prep_config,
                 selected_mix_mode=mix_mode,
                 selected_per_artist=per_artist,
                 selected_track_source=track_source,
@@ -11723,6 +12010,10 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             self.send_response(302)
             self.send_header('Location', '/playlists?tab=saved&msg=' + urllib.parse.quote('Playlist deleted successfully.'))
             self.end_headers()
+            return
+
+        if parsed.path == '/api/artist/albums':
+            self.handle_api_artist_albums(parsed.query)
             return
 
         if parsed.path == '/api/playlists/analyzed-songs':
@@ -16024,6 +16315,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         mode: str = 'all_analyzed',
         selected_artist: str = '',
         selected_artists: str = '',
+        prep_config: str = '',
         selected_mix_mode: str = 'alternating',
         selected_per_artist: int = 10,
         selected_track_source: str = 'top_tracks',
@@ -16090,7 +16382,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         else:
             spotify_status_badge = '<span style="background: rgba(225, 232, 240, 0.1); color: rgba(225, 232, 240, 0.5); padding: 2px 8px; border-radius: 12px; font-size: 0.74rem;">M3U/CSV Available</span>'
 
-        active_mode = mode if mode in ('all_analyzed', 'artist', 'multi_artist', 'tag', 'mood', 'spotify', 'setlist_fm', 'ai_prompt') else 'all_analyzed'
+        active_mode = mode if mode in ('all_analyzed', 'artist', 'multi_artist', 'tag', 'mood', 'spotify', 'setlist_fm', 'ai_prompt', 'show_prep') else 'all_analyzed'
         songs: List[Dict[str, Any]] = []
         active_playlist_title = custom_name.strip()
         active_playlist_desc = ""
@@ -16113,6 +16405,10 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                     crit = {}
                 if crit.get('artists'):
                     selected_artists = crit['artists']
+                if crit.get('prep_config'):
+                    prep_config = crit['prep_config']
+                elif crit.get('band_configs'):
+                    prep_config = json.dumps(crit['band_configs'])
                 if crit.get('mix_mode'):
                     selected_mix_mode = crit['mix_mode']
                 if crit.get('prompt'):
@@ -16432,6 +16728,96 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                         default_title = "Thematic Multi-Artist Blend" if selected_mix_mode == 'thematic' else "Multi-Artist Top Tracks Rotation"
                         active_playlist_desc = "Select or enter 2 or more artists to blend their top tracks into a seamless playlist."
                     if not active_playlist_title or active_playlist_title.startswith("Calling Hours:") or active_playlist_title.endswith("Average Setlist") or "Thematic" in active_playlist_title or "Alternating" in active_playlist_title or "Rotation" in active_playlist_title or "Latest Setlist" in active_playlist_title:
+                        active_playlist_title = default_title
+            elif active_mode == 'show_prep':
+                raw_arts = selected_artists or selected_artist
+                artists_list = [a.strip() for a in raw_arts.split(',') if a.strip()] if raw_arts else []
+
+                band_configs_parsed = []
+                if prep_config:
+                    try:
+                        band_configs_parsed = json.loads(prep_config)
+                    except Exception:
+                        band_configs_parsed = []
+
+                if not band_configs_parsed and artists_list:
+                    band_configs_parsed = [
+                        {"artist": a, "source": "latest_setlist", "album_id": "", "album_name": ""}
+                        for a in artists_list
+                    ]
+                elif band_configs_parsed and not artists_list:
+                    artists_list = [c.get("artist") for c in band_configs_parsed if c.get("artist")]
+
+                if artists_list:
+                    selected_artists = ", ".join(artists_list)
+
+                    catalog = playlist_curator.fetch_show_prep_catalog(
+                        band_configs=band_configs_parsed,
+                        user_email=current_user['email'],
+                        db_path=DATABASE_PATH
+                    )
+
+                    mix_mode_choice = selected_mix_mode or 'artist_order'
+                    if mix_mode_choice == 'alternating':
+                        songs = playlist_curator.mix_alternating(catalog, limit=limit)
+                        seq_label = "in alternating round-robin sequence"
+                    else:
+                        songs = playlist_curator.mix_artist_order(catalog, limit=limit)
+                        seq_label = "in concert lineup order"
+
+                    art_parenthetical = ", ".join(artists_list)
+                    auto_title = f"Show Prep: {art_parenthetical}"
+                    auto_desc = f"Concert show prep for {art_parenthetical} sequenced {seq_label}."
+
+                    if not active_playlist_title or active_playlist_title.startswith("Calling Hours:") or active_playlist_title.endswith("Average Setlist") or "Show Prep" in active_playlist_title or "Rotation" in active_playlist_title or "Alternating" in active_playlist_title:
+                        active_playlist_title = auto_title
+                    active_playlist_desc = auto_desc
+
+                    lineup_badges = []
+                    for cfg in band_configs_parsed:
+                        b_art = html_escape(cfg.get("artist", ""))
+                        b_src = cfg.get("source", "latest_setlist")
+                        if b_src == "latest_setlist":
+                            b_icon = "🏟️ Latest Setlist (10+)"
+                        elif b_src == "album":
+                            b_alb = html_escape(cfg.get("album_name") or "Album")
+                            b_icon = f"💿 {b_alb}"
+                        else:
+                            b_icon = "⭐ Top 10 Hits"
+                        lineup_badges.append(f'<span class="playlist-tag-chip" style="background: rgba(255, 159, 67, 0.18); border-color: rgba(255, 159, 67, 0.45); color: #FFB067; font-size: 0.78rem; font-weight: 700;">{b_art} <span style="opacity: 0.85; font-weight: 500;">({b_icon})</span></span>')
+
+                    thematic_synergy_card_html = f'''
+                    <div style="background: linear-gradient(135deg, rgba(50, 30, 20, 0.4) 0%, rgba(20, 15, 30, 0.6) 100%); border: 1px solid rgba(255, 159, 67, 0.35); border-radius: 12px; padding: 16px 20px; margin-bottom: 20px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 8px;">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span style="font-size: 1.1rem;">🎫</span>
+                                <h4 style="margin: 0; font-size: 0.98rem; font-weight: 800; font-family: 'Montserrat', sans-serif; color: #FFFFFF;">
+                                    Show Prep Concert Lineup
+                                </h4>
+                            </div>
+                            <span style="font-size: 0.74rem; background: rgba(255, 159, 67, 0.15); border: 1px solid rgba(255, 159, 67, 0.3); color: #FFB067; padding: 2px 8px; border-radius: 10px; font-weight: 600;">
+                                {("📋 Lineup Order" if mix_mode_choice == "artist_order" else "🔀 Alternating Mix")} • {len(songs)} Tracks
+                            </span>
+                        </div>
+                        <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 10px;">
+                            <span style="font-size: 0.75rem; color: #FFB067; font-weight: 700;">Lineup:</span>
+                            {"".join(lineup_badges)}
+                        </div>
+                    </div>
+                    '''
+
+                    if order_by == 'artist ASC':
+                        songs.sort(key=lambda x: x.get('artist', '').lower())
+                    elif order_by == 'song ASC':
+                        songs.sort(key=lambda x: x.get('song', '').lower())
+                    elif order_by == 'popularity DESC':
+                        songs.sort(key=lambda x: int(x.get('popularity', 0) or x.get('playcount', 0)), reverse=True)
+                else:
+                    songs = []
+                    thematic_synergy_card_html = ""
+                    default_title = "Show Prep Generator"
+                    active_playlist_desc = "Enter your concert lineup of bands, pick setlists, top hits, or specific albums per band, and sequence your mix."
+                    if not active_playlist_title or active_playlist_title.startswith("Calling Hours:") or active_playlist_title.endswith("Average Setlist") or "Show Prep" in active_playlist_title:
                         active_playlist_title = default_title
             elif active_mode == 'ai_prompt':
                 all_catalog = database.get_analyzed_songs()
@@ -16798,6 +17184,119 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                     </select>
                 </div>
             '''
+        elif active_mode == 'show_prep':
+            raw_arts_disp = selected_artists or ""
+            band_configs_for_ui = []
+            if prep_config:
+                try:
+                    band_configs_for_ui = json.loads(prep_config)
+                except Exception:
+                    band_configs_for_ui = []
+
+            if not band_configs_for_ui and raw_arts_disp:
+                raw_parts = [a.strip() for a in raw_arts_disp.split(',') if a.strip()]
+                band_configs_for_ui = [
+                    {"artist": a, "source": "latest_setlist", "album_id": "", "album_name": ""}
+                    for a in raw_parts
+                ]
+
+            quick_chips = []
+            sample_bands = sorted_library_bands[:8]
+            for b in sample_bands:
+                b_esc = html_escape(b)
+                b_js = json.dumps(b)
+                quick_chips.append(f'<button type="button" class="playlist-tag-chip" style="cursor: pointer; background: rgba(255, 159, 67, 0.1); border: 1px dashed rgba(255, 159, 67, 0.4); color: #FFB067; font-size: 0.72rem; padding: 2px 8px;" onclick="addShowPrepBandChip({html_escape(b_js)})">+ {b_esc}</button>')
+
+            band_cards_list = []
+            for idx, b_cfg in enumerate(band_configs_for_ui):
+                b_name = b_cfg.get('artist', '')
+                b_src = b_cfg.get('source', 'latest_setlist')
+                b_alb_name = b_cfg.get('album_name', '')
+                b_alb_id = b_cfg.get('album_id', '')
+
+                role_label = f"Band #{idx + 1}"
+                if len(band_configs_for_ui) > 1:
+                    if idx == 0:
+                        role_label = "Stage Opener"
+                    elif idx == len(band_configs_for_ui) - 1:
+                        role_label = "Headliner"
+                    else:
+                        role_label = f"Direct Support #{idx}"
+
+                card_html = f'''
+                <div class="show-prep-band-card" data-idx="{idx}" style="background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 159, 67, 0.3); border-radius: 8px; padding: 12px 14px; margin-bottom: 8px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 8px;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span style="background: rgba(255, 159, 67, 0.2); color: #FFB067; border: 1px solid rgba(255, 159, 67, 0.4); border-radius: 6px; padding: 2px 8px; font-size: 0.75rem; font-weight: 700;">{role_label}</span>
+                            <strong style="color: #FFFFFF; font-size: 0.95rem;">{html_escape(b_name)}</strong>
+                        </div>
+                        <div style="display: flex; gap: 4px; align-items: center;">
+                            <button type="button" onclick="moveShowPrepBand({idx}, -1)" class="btn-playlist-action btn-playlist-outline" style="padding: 2px 6px; font-size: 0.7rem;" title="Move up in show order">▲</button>
+                            <button type="button" onclick="moveShowPrepBand({idx}, 1)" class="btn-playlist-action btn-playlist-outline" style="padding: 2px 6px; font-size: 0.7rem;" title="Move down in show order">▼</button>
+                            <button type="button" onclick="removeShowPrepBand({idx})" class="btn-playlist-action btn-playlist-outline" style="padding: 2px 6px; font-size: 0.7rem; color: #FF6B6B; border-color: rgba(255, 107, 107, 0.4);" title="Remove band">✕</button>
+                        </div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; align-items: center;">
+                        <div>
+                            <label style="font-size: 0.74rem; color: rgba(225, 232, 240, 0.7); display: block; margin-bottom: 4px;">Track Source:</label>
+                            <select class="show-prep-source-select" data-idx="{idx}" onchange="onShowPrepSourceChange({idx}, this.value)" style="width: 100%; font-size: 0.82rem; padding: 6px 8px;">
+                                <option value="latest_setlist"{" selected" if b_src == "latest_setlist" else ""}>🏟️ Last Setlist (10+ songs)</option>
+                                <option value="top_tracks"{" selected" if b_src == "top_tracks" else ""}>⭐ Top 10 Tracks</option>
+                                <option value="album"{" selected" if b_src == "album" else ""}>💿 Specific Album</option>
+                            </select>
+                        </div>
+                        <div id="show-prep-album-box-{idx}" style="display: {"block" if b_src == "album" else "none"};">
+                            <label style="font-size: 0.74rem; color: rgba(225, 232, 240, 0.7); display: block; margin-bottom: 4px;">Select Album:</label>
+                            <select id="show-prep-album-select-{idx}" data-idx="{idx}" onchange="onShowPrepAlbumChange({idx}, this)" style="width: 100%; font-size: 0.82rem; padding: 6px 8px;">
+                                <option value="{html_escape(b_alb_id)}" selected>{html_escape(b_alb_name or "-- Choose Album --")}</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                '''
+                band_cards_list.append(card_html)
+
+            band_cards_html = "".join(band_cards_list) if band_cards_list else '<div id="show-prep-empty-cards" style="text-align: center; color: rgba(225, 232, 240, 0.5); padding: 20px; font-style: italic; border: 1px dashed rgba(255, 255, 255, 0.15); border-radius: 8px;">Enter bands above to configure sources for each band.</div>'
+            prep_config_json_str = json.dumps(band_configs_for_ui)
+
+            mode_specific_inputs = f'''
+                <div class="playlist-input-group" style="grid-column: span 2;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+                        <label for="input-show-prep-bands">Concert Lineup (Comma-separated)</label>
+                        <span style="font-size: 0.72rem; color: #FFB067;">Enter bands in concert lineup order</span>
+                    </div>
+                    <input type="text" name="artists" id="input-show-prep-bands" value="{html_escape(raw_arts_disp)}" placeholder="e.g. Jimmy Eat World, Taking Back Sunday, The Starting Line" oninput="onShowPrepBandsInput()" style="width: 100%;">
+                    <input type="hidden" name="prep_config" id="input-prep-config" value="{html_escape(prep_config_json_str)}">
+                    <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; align-items: center;">
+                        <span style="font-size: 0.72rem; color: rgba(225, 232, 240, 0.6); font-weight: 600;">Quick Add:</span>
+                        {"".join(quick_chips)}
+                    </div>
+                </div>
+                <div class="playlist-form-row">
+                    <div class="playlist-input-group">
+                        <label for="select-show-prep-mix-mode">Lineup Mix Strategy</label>
+                        <select name="mix_mode" id="select-show-prep-mix-mode" onchange="onShowPrepMixModeChange()">
+                            <option value="artist_order"{" selected" if selected_mix_mode == "artist_order" else ""}>📋 In Artist Order (Lineup Order: Band 1, then Band 2, then Band 3...)</option>
+                            <option value="alternating"{" selected" if selected_mix_mode == "alternating" else ""}>🔀 Alternating Artists (Round-Robin Sequence)</option>
+                        </select>
+                    </div>
+                    <div class="playlist-input-group">
+                        <label>Generate Lineup Mix</label>
+                        <button type="button" onclick="submitShowPrepForm()" class="btn-playlist-action" style="width: 100%; height: 38px; background: linear-gradient(135deg, #FF9F43 0%, #D97706 100%); color: #fff; font-weight: 700; border: none; border-radius: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px;">
+                            <span>🎫 Generate Show Prep Mix</span>
+                        </button>
+                    </div>
+                </div>
+                <div class="playlist-input-group" style="grid-column: span 2;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <span style="font-size: 0.86rem; font-weight: 700; color: #E1E8F0;">Configure Track Source Per Band</span>
+                        <span style="font-size: 0.72rem; color: #A5C8FF;">Latest Setlist (10+ songs), Top 10, or Specific Album</span>
+                    </div>
+                    <div id="show-prep-bands-container" style="display: flex; flex-direction: column; gap: 8px;">
+                        {band_cards_html}
+                    </div>
+                </div>
+            '''
         elif active_mode == 'ai_prompt':
             prompt_chips = [
                 "Midnight highway with rain & heavy nostalgia",
@@ -16843,6 +17342,8 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 empty_msg = "Please select or enter an artist/band above to generate this playlist."
             elif active_mode == 'multi_artist' and not (selected_artists or selected_artist):
                 empty_msg = "Please enter or pick 2 or more artists above to generate a blend."
+            elif active_mode == 'show_prep' and not (selected_artists or selected_artist or prep_config):
+                empty_msg = "Please enter bands above to generate a show prep playlist."
             else:
                 empty_msg = "No analyzed songs match your current criteria. Analyze songs from the Song tab to add them to your collection!"
             tracklist_html = f'''
@@ -16903,6 +17404,21 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 if s.get('alternating_badge'):
                     alt_pill = f'<span style="font-size:0.7rem; color:#5af0a5; background:rgba(90,240,165,0.12); border:1px solid rgba(90,240,165,0.25); padding:1px 6px; border-radius:4px;">🔀 {html_escape(s["alternating_badge"])}</span>'
 
+                # Artist order lineup badge
+                artist_order_pill = ""
+                if s.get('artist_order_badge'):
+                    artist_order_pill = f'<span style="font-size:0.7rem; color:#38BDF8; background:rgba(56,189,248,0.12); border:1px solid rgba(56,189,248,0.25); padding:1px 6px; border-radius:4px;">📋 {html_escape(s["artist_order_badge"])}</span>'
+
+                # Album badge
+                album_pill = ""
+                if s.get('album_badge'):
+                    album_pill = f'<span style="font-size:0.7rem; color:#A78BFA; background:rgba(167,139,250,0.14); border:1px solid rgba(167,139,250,0.3); padding:1px 7px; border-radius:4px; font-weight:600;" title="{html_escape(s.get("album_name") or "")}">💿 {html_escape(s.get("album_name") or s["album_badge"])}</span>'
+
+                # Top tracks badge
+                top_tracks_pill = ""
+                if s.get('top_track_badge'):
+                    top_tracks_pill = f'<span style="font-size:0.7rem; color:#F472B6; background:rgba(244,114,182,0.14); border:1px solid rgba(244,114,182,0.3); padding:1px 6px; border-radius:4px;">⭐ {html_escape(s["top_track_badge"])}</span>'
+
                 # Connection note subtitle under title
                 connection_note_html = ""
                 if s.get('connection_note'):
@@ -16934,8 +17450,14 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                     analysis_link_html = f'<a href="/?artist={urllib.parse.quote(artist_val)}&song={urllib.parse.quote(song_val)}" style="color: #FCD34D; font-size: 0.74rem; text-decoration: none; border: 1px solid rgba(245, 158, 11, 0.35); border-radius: 4px; padding: 1px 6px;" title="Analyze lyrics with Gemini">✦ Analyze</a>'
                     if s.get('theme'):
                         model_label = 'Gemini Thematic'
+                    elif s.get('album_badge') or s.get('source') == 'album':
+                        model_label = 'Album Track'
+                    elif s.get('source') == 'top_tracks' or s.get('top_track_badge'):
+                        model_label = 'Top Tracks'
                     elif s.get('source') == 'latest_setlist':
                         model_label = 'Setlist (10+)'
+                    elif active_mode == 'show_prep':
+                        model_label = 'Show Prep'
                     elif active_mode == 'multi_artist':
                         model_label = 'Multi-Artist'
                     else:
@@ -16963,6 +17485,9 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                             <div style="display: flex; gap: 4px; align-items: center; flex-wrap: wrap;">
                                 {theme_pill}
                                 {alt_pill}
+                                {artist_order_pill}
+                                {album_pill}
+                                {top_tracks_pill}
                                 {setlist_pill}
                                 {tags_chips_html}
                                 {audiodb_pills_html}
@@ -16982,11 +17507,15 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                     'id': s_id or None,
                     'artist': artist_val,
                     'song': song_val,
-                    'model_name': model_name if s_id else ('Gemini Thematic' if s.get('theme') else 'Multi-Artist'),
+                    'model_name': model_name if s_id else ('Gemini Thematic' if s.get('theme') else ('Show Prep' if active_mode == 'show_prep' else 'Multi-Artist')),
                     'spotify_id': spotify_id or '',
                     'theme': s.get('theme') or '',
                     'connection_note': s.get('connection_note') or '',
                     'alternating_badge': s.get('alternating_badge') or '',
+                    'artist_order_badge': s.get('artist_order_badge') or '',
+                    'album_badge': s.get('album_badge') or '',
+                    'top_track_badge': s.get('top_track_badge') or '',
+                    'source': s.get('source') or '',
                     'duration_ms': s.get('duration_ms') or 0,
                     'theaudiodb_data': audiodb_data if isinstance(audiodb_data, dict) else None,
                 })
@@ -17059,6 +17588,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 'mode': active_mode,
                 'artist': selected_artist,
                 'artists': selected_artists,
+                'prep_config': prep_config if active_mode == 'show_prep' else '',
                 'mix_mode': selected_mix_mode,
                 'per_artist': str(selected_per_artist) if selected_per_artist else '',
                 'source': selected_track_source if active_mode == 'multi_artist' else '',
@@ -17083,6 +17613,8 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             'criteria': {
                 'artist': selected_artist,
                 'artists': selected_artists,
+                'prep_config': prep_config if active_mode == 'show_prep' else '',
+                'band_configs': band_configs_parsed if 'band_configs_parsed' in locals() else [],
                 'mix_mode': selected_mix_mode,
                 'per_artist': selected_per_artist,
                 'source': selected_track_source,
@@ -17115,6 +17647,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         mode_spotify_active = ' active' if active_mode == 'spotify' else ''
         mode_setlist_fm_active = ' active' if active_mode == 'setlist_fm' else ''
         mode_ai_prompt_active = ' active' if active_mode == 'ai_prompt' else ''
+        mode_show_prep_active = ' active' if active_mode == 'show_prep' else ''
         deep_cuts_checked = ' checked' if deep_cuts else ''
 
         message_banner_html = f'<div class="message" style="margin-bottom: 20px;">{html_escape(message)}</div>' if message else ''
@@ -17133,6 +17666,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                                      .replace('{mode_spotify_active}', mode_spotify_active)\
                                      .replace('{mode_setlist_fm_active}', mode_setlist_fm_active)\
                                      .replace('{mode_ai_prompt_active}', mode_ai_prompt_active)\
+                                     .replace('{mode_show_prep_active}', mode_show_prep_active)\
                                      .replace('{deep_cuts_checked}', deep_cuts_checked)\
                                      .replace('{current_mode}', html_escape(active_mode))\
                                      .replace('{mode_specific_inputs}', mode_specific_inputs)\
@@ -17241,6 +17775,33 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 )
                 tracks = curated_res.get('tracks', [])
                 title = params.get('name', [''])[0].strip() or curated_res.get('playlist_title') or f"AI Mood: {prompt_q[:25]}"
+            elif mode == 'show_prep':
+                prep_config_str = params.get('prep_config', [''])[0].strip()
+                band_configs_parsed = []
+                if prep_config_str:
+                    try:
+                        band_configs_parsed = json.loads(prep_config_str)
+                    except Exception:
+                        band_configs_parsed = []
+                raw_artists_str = params.get('artists', [''])[0].strip()
+                artists_list = [a.strip() for a in raw_artists_str.split(',') if a.strip()]
+                if not band_configs_parsed and artists_list:
+                    band_configs_parsed = [{"artist": a, "source": "latest_setlist"} for a in artists_list]
+
+                catalog = playlist_curator.fetch_show_prep_catalog(
+                    band_configs_parsed,
+                    user_email=current_user.get('email') if current_user else None,
+                    db_path=DATABASE_PATH
+                )
+                mix_mode = params.get('mix_mode', ['artist_order'])[0].strip()
+                if mix_mode == 'alternating':
+                    tracks = playlist_curator.mix_alternating(catalog, limit=limit)
+                else:
+                    tracks = playlist_curator.mix_artist_order(catalog, limit=limit)
+                art_parenthetical = ", ".join(artists_list or [c.get('artist', '') for c in band_configs_parsed])
+                title = params.get('name', [''])[0].strip() or f"Show Prep: {art_parenthetical}"
+                if limit and limit > 0:
+                    tracks = tracks[:limit]
             else:
                 tracks = database.get_analyzed_songs(artist=artist, tag=tag, order_by=order, limit=limit)
 
@@ -17340,6 +17901,33 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 )
                 tracks = curated_res.get('tracks', [])
                 title = params.get('name', [''])[0].strip() or curated_res.get('playlist_title') or f"AI Mood: {prompt_q[:25]}"
+            elif mode == 'show_prep':
+                prep_config_str = params.get('prep_config', [''])[0].strip()
+                band_configs_parsed = []
+                if prep_config_str:
+                    try:
+                        band_configs_parsed = json.loads(prep_config_str)
+                    except Exception:
+                        band_configs_parsed = []
+                raw_artists_str = params.get('artists', [''])[0].strip()
+                artists_list = [a.strip() for a in raw_artists_str.split(',') if a.strip()]
+                if not band_configs_parsed and artists_list:
+                    band_configs_parsed = [{"artist": a, "source": "latest_setlist"} for a in artists_list]
+
+                catalog = playlist_curator.fetch_show_prep_catalog(
+                    band_configs_parsed,
+                    user_email=current_user.get('email') if current_user else None,
+                    db_path=DATABASE_PATH
+                )
+                mix_mode = params.get('mix_mode', ['artist_order'])[0].strip()
+                if mix_mode == 'alternating':
+                    tracks = playlist_curator.mix_alternating(catalog, limit=limit)
+                else:
+                    tracks = playlist_curator.mix_artist_order(catalog, limit=limit)
+                art_parenthetical = ", ".join(artists_list or [c.get('artist', '') for c in band_configs_parsed])
+                title = params.get('name', [''])[0].strip() or f"Show Prep: {art_parenthetical}"
+                if limit and limit > 0:
+                    tracks = tracks[:limit]
             else:
                 tracks = database.get_analyzed_songs(artist=artist, tag=tag, order_by=order, limit=limit)
 
@@ -17437,6 +18025,33 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 )
                 tracks = curated_res.get('tracks', [])
                 title = params.get('name', [''])[0].strip() or curated_res.get('playlist_title') or f"AI Mood: {prompt_q[:25]}"
+            elif mode == 'show_prep':
+                prep_config_str = params.get('prep_config', [''])[0].strip()
+                band_configs_parsed = []
+                if prep_config_str:
+                    try:
+                        band_configs_parsed = json.loads(prep_config_str)
+                    except Exception:
+                        band_configs_parsed = []
+                raw_artists_str = params.get('artists', [''])[0].strip()
+                artists_list = [a.strip() for a in raw_artists_str.split(',') if a.strip()]
+                if not band_configs_parsed and artists_list:
+                    band_configs_parsed = [{"artist": a, "source": "latest_setlist"} for a in artists_list]
+
+                catalog = playlist_curator.fetch_show_prep_catalog(
+                    band_configs_parsed,
+                    user_email=current_user.get('email') if current_user else None,
+                    db_path=DATABASE_PATH
+                )
+                mix_mode = params.get('mix_mode', ['artist_order'])[0].strip()
+                if mix_mode == 'alternating':
+                    tracks = playlist_curator.mix_alternating(catalog, limit=limit)
+                else:
+                    tracks = playlist_curator.mix_artist_order(catalog, limit=limit)
+                art_parenthetical = ", ".join(artists_list or [c.get('artist', '') for c in band_configs_parsed])
+                title = params.get('name', [''])[0].strip() or f"Show Prep: {art_parenthetical}"
+                if limit and limit > 0:
+                    tracks = tracks[:limit]
             else:
                 tracks = database.get_analyzed_songs(artist=artist, tag=tag, order_by=order, limit=limit)
 
@@ -17475,6 +18090,19 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         self.send_header('Content-Length', str(len(content.encode('utf-8'))))
         self.end_headers()
         self.wfile.write(content.encode('utf-8'))
+
+    def handle_api_artist_albums(self, query_string: str):
+        params = urllib.parse.parse_qs(query_string)
+        artist_name = params.get('artist', [''])[0].strip()
+        current_user = self.get_current_user()
+        user_email = current_user.get('email') if current_user else None
+        albums = []
+        if artist_name:
+            albums = spotify.get_or_fetch_artist_albums(artist_name, user_email=user_email, db_path=DATABASE_PATH)
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/json; charset=utf-8')
+        self.end_headers()
+        self.wfile.write(json.dumps({'success': True, 'artist': artist_name, 'albums': albums, 'count': len(albums)}).encode('utf-8'))
 
     def handle_api_playlists_save(self, data: Dict[str, Any]):
         current_user = self.get_current_user()
