@@ -331,6 +331,113 @@ class TestMultiArtistPlaylistCurator(unittest.TestCase):
         fail = spotify.upload_playlist_cover_image("token123", "pl_id", "/9j/4AAQSkZJRg==")
         self.assertFalse(fail)
 
+    def test_mix_alternating_eight_artists_eighty_tracks(self):
+        artists = [
+            "Winds of plague", "bleeding through", "poison the well", "no cure",
+            "bring me the horizon", "a day to remember", "underoath", "Haywire 617"
+        ]
+        catalog = {
+            a: [{"artist": a, "song": f"{a} Track {i+1}", "spotify_id": f"id_{a}_{i+1}"} for i in range(10)]
+            for a in artists
+        }
+        mixed = playlist_curator.mix_alternating(catalog)
+        self.assertEqual(len(mixed), 80)
+        self.assertEqual(mixed[0]["artist"], "Winds of plague")
+        self.assertEqual(mixed[0]["rotation_round"], 1)
+        self.assertEqual(mixed[7]["artist"], "Haywire 617")
+        self.assertEqual(mixed[7]["rotation_round"], 1)
+        self.assertEqual(mixed[8]["artist"], "Winds of plague")
+        self.assertEqual(mixed[8]["rotation_round"], 2)
+        self.assertEqual(mixed[79]["rotation_round"], 10)
+
+    @patch("playlist_curator.fetch_artist_top_tracks_pool")
+    def test_fetch_multi_artist_catalog_full_ten_tracks_per_artist(self, mock_pool):
+        mock_pool.side_effect = lambda art, limit=10, user_email=None, db_path=None: [
+            {"artist": art, "song": f"{art} Song {i+1}", "spotify_id": f"sp_{i+1}"}
+            for i in range(limit)
+        ]
+        artists = [
+            "Winds of plague", "bleeding through", "poison the well", "no cure",
+            "bring me the horizon", "a day to remember", "underoath", "Haywire 617"
+        ]
+        catalog = playlist_curator.fetch_multi_artist_catalog(artists, limit_per_artist=10)
+        self.assertEqual(len(catalog), 8)
+        for a in artists:
+            self.assertEqual(len(catalog[a]), 10)
+        total_tracks = sum(len(tracks) for tracks in catalog.values())
+        self.assertEqual(total_tracks, 80)
+
+    @patch("spotify.get_or_fetch_artist_spotify_data")
+    @patch("database.get_search")
+    @patch("setlistfm.fetch_latest_setlist_with_min_tracks")
+    def test_fetch_artist_latest_setlist_pool_enriched(self, mock_setlist, mock_get_search, mock_spot):
+        mock_setlist.return_value = {
+            "artist": "Bring Me The Horizon",
+            "venue_name": "AO Arena",
+            "date_formatted": "October 8, 2026",
+            "location": "Manchester, England",
+            "url": "https://setlist.fm/bmth",
+            "tracks": [{"position": i, "song": f"Live Song {i}", "title": f"Live Song {i}"} for i in range(1, 13)]
+        }
+        mock_spot.return_value = {
+            "top_tracks": [
+                {"name": "Live Song 1", "id": "sp_live_1", "duration_ms": 210000, "popularity": 88}
+            ]
+        }
+        mock_get_search.return_value = None
+
+        tracks = playlist_curator.fetch_artist_latest_setlist_pool("Bring Me The Horizon", min_tracks=10, limit=10)
+        self.assertEqual(len(tracks), 10)
+        self.assertEqual(tracks[0]["song"], "Live Song 1")
+        self.assertEqual(tracks[0]["source"], "latest_setlist")
+        self.assertEqual(tracks[0]["stage_position"], 1)
+        self.assertEqual(tracks[0]["spotify_id"], "sp_live_1")
+        self.assertIn("AO Arena", tracks[0]["setlist_badge"])
+        self.assertIn("October 8, 2026", tracks[0]["setlist_badge"])
+
+    @patch("playlist_curator.fetch_artist_top_tracks_pool")
+    @patch("setlistfm.fetch_latest_setlist_with_min_tracks")
+    def test_fetch_artist_latest_setlist_pool_fallback_to_top_tracks(self, mock_setlist, mock_top_pool):
+        mock_setlist.return_value = None
+        mock_top_pool.return_value = [
+            {"artist": "Underground Band", "song": f"Hit {i}", "source": "spotify"}
+            for i in range(1, 11)
+        ]
+
+        tracks = playlist_curator.fetch_artist_latest_setlist_pool("Underground Band", min_tracks=10, limit=10)
+        self.assertEqual(len(tracks), 10)
+        self.assertEqual(tracks[0]["song"], "Hit 1")
+        mock_top_pool.assert_called_with("Underground Band", limit=10, user_email=None, db_path=None)
+
+    @patch("playlist_curator.fetch_artist_latest_setlist_pool")
+    def test_fetch_multi_artist_catalog_latest_setlist_mode(self, mock_setlist_pool):
+        mock_setlist_pool.side_effect = lambda art, min_tracks=10, limit=10, user_email=None, db_path=None: [
+            {
+                "artist": art,
+                "song": f"{art} Live {i+1}",
+                "stage_position": i + 1,
+                "source": "latest_setlist",
+                "setlist_badge": "🏟️ October 2026 • Main Stage"
+            }
+            for i in range(limit)
+        ]
+
+        artists = [
+            "Winds of plague", "bleeding through", "poison the well", "no cure",
+            "bring me the horizon", "a day to remember", "underoath", "Haywire 617"
+        ]
+        catalog = playlist_curator.fetch_multi_artist_catalog(artists, limit_per_artist=10, track_source="latest_setlist")
+        self.assertEqual(len(catalog), 8)
+        for a in artists:
+            self.assertEqual(len(catalog[a]), 10)
+            self.assertEqual(catalog[a][0]["source"], "latest_setlist")
+
+        mixed = playlist_curator.mix_alternating(catalog)
+        self.assertEqual(len(mixed), 80)
+        self.assertEqual(mixed[0]["artist"], "Winds of plague")
+        self.assertEqual(mixed[0]["song"], "Winds of plague Live 1")
+        self.assertEqual(mixed[1]["artist"], "bleeding through")
+
 
 if __name__ == "__main__":
     unittest.main()

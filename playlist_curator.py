@@ -25,6 +25,7 @@ except ImportError:
 
 import database
 import lastfm
+import setlistfm
 import spotify
 import theaudiodb
 
@@ -56,6 +57,7 @@ def fetch_artist_top_tracks_pool(
         return []
 
     tracks: List[Dict[str, Any]] = []
+    seen_titles = set()
 
     # 1. Try Spotify intelligence (cached or live API)
     try:
@@ -66,10 +68,14 @@ def fetch_artist_top_tracks_pool(
             db_path=db_path
         )
         if spot_data and spot_data.get("top_tracks"):
-            for t in spot_data["top_tracks"][:limit]:
+            for t in spot_data["top_tracks"]:
+                s_name = t.get("name", "").strip()
+                if not s_name or s_name.lower() in seen_titles:
+                    continue
+                seen_titles.add(s_name.lower())
                 tracks.append({
                     "artist": clean_artist,
-                    "song": t.get("name", "").strip(),
+                    "song": s_name,
                     "spotify_id": t.get("id") or "",
                     "spotify_url": t.get("spotify_url") or "",
                     "preview_url": t.get("preview_url") or "",
@@ -81,6 +87,8 @@ def fetch_artist_top_tracks_pool(
                     "popularity": t.get("popularity", 0),
                     "source": "spotify",
                 })
+                if len(tracks) >= limit:
+                    break
     except Exception as e:
         print(f"Error fetching Spotify top tracks for {clean_artist}: {e}")
 
@@ -92,7 +100,8 @@ def fetch_artist_top_tracks_pool(
             if lfm_tracks:
                 for t in lfm_tracks[:limit]:
                     s_name = t.get("name", "").strip()
-                    if s_name:
+                    if s_name and s_name.lower() not in seen_titles:
+                        seen_titles.add(s_name.lower())
                         tracks.append({
                             "artist": clean_artist,
                             "song": s_name,
@@ -107,27 +116,37 @@ def fetch_artist_top_tracks_pool(
     # 3. If still empty, check local Calling Hours analyzed library & search history
     if not tracks:
         try:
-            analyzed = database.get_analyzed_songs(artist=clean_artist, limit=limit, db_path=db_path)
+            analyzed = database.get_analyzed_songs(artist=clean_artist, limit=limit * 2, db_path=db_path)
             if analyzed:
                 for a in analyzed:
-                    tracks.append({
-                        "artist": a.get("artist") or clean_artist,
-                        "song": a.get("song", "").strip(),
-                        "id": a.get("id"),
-                        "search_id": a.get("id"),
-                        "model_name": a.get("model_name"),
-                        "source": "database_analyzed",
-                    })
-            else:
+                    if len(tracks) >= limit:
+                        break
+                    s_name = a.get("song", "").strip()
+                    if s_name and s_name.lower() not in seen_titles:
+                        seen_titles.add(s_name.lower())
+                        tracks.append({
+                            "artist": a.get("artist") or clean_artist,
+                            "song": s_name,
+                            "id": a.get("id"),
+                            "search_id": a.get("id"),
+                            "model_name": a.get("model_name"),
+                            "source": "database_analyzed",
+                        })
+            if len(tracks) < limit:
                 band_songs = database.get_songs_by_band(clean_artist, db_path=db_path)
-                for b in band_songs[:limit]:
-                    tracks.append({
-                        "artist": b.get("artist") or clean_artist,
-                        "song": b.get("song", "").strip(),
-                        "id": b.get("id"),
-                        "search_id": b.get("id"),
-                        "source": "database_history",
-                    })
+                for b in band_songs:
+                    if len(tracks) >= limit:
+                        break
+                    s_name = b.get("song", "").strip()
+                    if s_name and s_name.lower() not in seen_titles:
+                        seen_titles.add(s_name.lower())
+                        tracks.append({
+                            "artist": b.get("artist") or clean_artist,
+                            "song": s_name,
+                            "id": b.get("id"),
+                            "search_id": b.get("id"),
+                            "source": "database_history",
+                        })
         except Exception as de:
             print(f"Error fetching database songs for {clean_artist}: {de}")
 
@@ -152,6 +171,8 @@ def fetch_artist_top_tracks_pool(
                 if not item.get("id"):
                     item["id"] = db_search.get("id")
                     item["search_id"] = db_search.get("id")
+                if not item.get("spotify_id") and db_search.get("spotify_id"):
+                    item["spotify_id"] = db_search["spotify_id"]
                 item["is_analyzed"] = bool(db_search.get("analysis"))
                 item["model_name"] = db_search.get("model_name") or item.get("model_name")
                 item["analysis"] = db_search.get("analysis") or ""
@@ -184,14 +205,169 @@ def fetch_artist_top_tracks_pool(
     return enriched[:limit]
 
 
+def fetch_artist_latest_setlist_pool(
+    artist: str,
+    min_tracks: int = 10,
+    limit: Optional[int] = None,
+    user_email: Optional[str] = None,
+    db_path: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    """
+    Fetch an artist's latest concert setlist with at least min_tracks from Setlist.fm.
+    Enriches each track with stage order, concert venue/date badges, Calling Hours analyses,
+    TheAudioDB features, Last.fm tags, and Spotify track IDs.
+    Falls back gracefully to top tracks if no 10+ song concert setlist is found.
+    """
+    clean_artist = normalize_artist_name(artist)
+    if not clean_artist:
+        return []
+
+    # 1. Query Setlist.fm for latest setlist with min_tracks
+    setlist_res = None
+    try:
+        setlist_res = setlistfm.fetch_latest_setlist_with_min_tracks(
+            clean_artist,
+            min_tracks=min_tracks,
+            db_path=db_path
+        )
+    except Exception as se:
+        print(f"Error fetching latest setlist for {clean_artist}: {se}")
+
+    # Fallback to top tracks if no 10+ track concert setlist is found
+    if not setlist_res or not setlist_res.get("tracks"):
+        effective_limit = limit if (limit and limit > 0 and limit < 900) else min_tracks
+        return fetch_artist_top_tracks_pool(
+            clean_artist,
+            limit=effective_limit,
+            user_email=user_email,
+            db_path=db_path
+        )
+
+    raw_tracks = setlist_res.get("tracks", [])
+    if limit and limit > 0 and limit < 900 and limit < len(raw_tracks):
+        raw_tracks = raw_tracks[:limit]
+
+    # Preload Spotify top tracks mapping if available to match track IDs and audio details
+    spot_track_map: Dict[str, Dict[str, Any]] = {}
+    try:
+        spot_data = spotify.get_or_fetch_artist_spotify_data(
+            clean_artist,
+            user_email=user_email,
+            force_refresh=False,
+            db_path=db_path
+        )
+        if spot_data and spot_data.get("top_tracks"):
+            for st in spot_data["top_tracks"]:
+                s_name = st.get("name", "").strip().lower()
+                if s_name and s_name not in spot_track_map:
+                    spot_track_map[s_name] = st
+    except Exception:
+        pass
+
+    event_date_fmt = setlist_res.get("date_formatted") or setlist_res.get("event_date") or ""
+    venue_name = setlist_res.get("venue_name") or ""
+    location = setlist_res.get("location") or ""
+    tour_name = setlist_res.get("tour_name") or ""
+    setlist_url = setlist_res.get("url") or ""
+
+    badge_parts = []
+    if event_date_fmt:
+        badge_parts.append(event_date_fmt)
+    if venue_name:
+        badge_parts.append(venue_name)
+    setlist_badge_str = " • ".join(badge_parts) if badge_parts else "Concert Setlist"
+
+    enriched: List[Dict[str, Any]] = []
+    seen_titles = set()
+
+    for idx, t in enumerate(raw_tracks, 1):
+        s_title = (t.get("song") or t.get("title") or "").strip()
+        if not s_title:
+            continue
+        norm_key = s_title.lower()
+        if norm_key in seen_titles:
+            continue
+        seen_titles.add(norm_key)
+
+        item: Dict[str, Any] = {
+            "artist": clean_artist,
+            "song": s_title,
+            "position": t.get("position", idx),
+            "stage_position": t.get("position", idx),
+            "setlist_date": event_date_fmt,
+            "setlist_venue": venue_name,
+            "setlist_location": location,
+            "setlist_tour": tour_name,
+            "setlist_url": setlist_url,
+            "setlist_badge": f"🏟️ {setlist_badge_str}",
+            "source": "latest_setlist",
+        }
+
+        # Check Spotify match
+        sp_match = spot_track_map.get(norm_key)
+        if sp_match:
+            item["spotify_id"] = sp_match.get("id") or ""
+            item["spotify_url"] = sp_match.get("spotify_url") or ""
+            item["preview_url"] = sp_match.get("preview_url") or ""
+            item["album_name"] = sp_match.get("album_name") or ""
+            item["album_image"] = sp_match.get("album_image") or ""
+            item["release_year"] = sp_match.get("release_year") or ""
+            item["duration_ms"] = sp_match.get("duration_ms") or 0
+            item["duration_formatted"] = sp_match.get("duration_formatted") or ""
+            item["popularity"] = sp_match.get("popularity", 50)
+
+        # Search database for lyric analysis or existing metadata
+        try:
+            db_search = database.get_search(clean_artist, s_title, db_path=db_path)
+            if db_search:
+                if not item.get("id"):
+                    item["id"] = db_search.get("id")
+                    item["search_id"] = db_search.get("id")
+                if not item.get("spotify_id") and db_search.get("spotify_id"):
+                    item["spotify_id"] = db_search["spotify_id"]
+                item["is_analyzed"] = bool(db_search.get("analysis"))
+                item["model_name"] = db_search.get("model_name") or item.get("model_name")
+                item["analysis"] = db_search.get("analysis") or ""
+                item["lyrics"] = db_search.get("lyrics") or ""
+                if not item.get("track_tags") and db_search.get("track_tags"):
+                    tags_raw = db_search["track_tags"]
+                    if isinstance(tags_raw, str):
+                        try:
+                            item["track_tags"] = json.loads(tags_raw)
+                        except Exception:
+                            item["track_tags"] = []
+                    else:
+                        item["track_tags"] = tags_raw
+                if not item.get("theaudiodb_data") and db_search.get("theaudiodb_data"):
+                    adb_raw = db_search["theaudiodb_data"]
+                    if isinstance(adb_raw, str):
+                        try:
+                            item["theaudiodb_data"] = json.loads(adb_raw)
+                        except Exception:
+                            item["theaudiodb_data"] = None
+                    else:
+                        item["theaudiodb_data"] = adb_raw
+            else:
+                item["is_analyzed"] = False
+        except Exception:
+            pass
+
+        enriched.append(item)
+
+    return enriched
+
+
 def fetch_multi_artist_catalog(
     artists: List[str],
     limit_per_artist: int = 10,
     user_email: Optional[str] = None,
-    db_path: Optional[str] = None
+    db_path: Optional[str] = None,
+    track_source: str = "top_tracks"
 ) -> Dict[str, List[Dict[str, Any]]]:
     """
-    Concurrently fetch top tracks for multiple artists using ThreadPoolExecutor.
+    Concurrently fetch tracks for multiple artists using ThreadPoolExecutor.
+    Supports track_source='top_tracks' (hits from Spotify/Last.fm/library) or
+    track_source='latest_setlist' (most recent concert setlist with 10+ songs).
     Returns a dict mapping artist name -> list of track dicts.
     """
     unique_artists = []
@@ -207,15 +383,26 @@ def fetch_multi_artist_catalog(
 
     catalog: Dict[str, List[Dict[str, Any]]] = {}
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(unique_artists), 6)) as executor:
-        future_to_artist = {
-            executor.submit(
-                fetch_artist_top_tracks_pool,
+    def _worker(art: str) -> List[Dict[str, Any]]:
+        if track_source == "latest_setlist":
+            return fetch_artist_latest_setlist_pool(
+                art,
+                min_tracks=10,
+                limit=limit_per_artist,
+                user_email=user_email,
+                db_path=db_path
+            )
+        else:
+            return fetch_artist_top_tracks_pool(
                 art,
                 limit=limit_per_artist,
                 user_email=user_email,
                 db_path=db_path
-            ): art
+            )
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(unique_artists), 6)) as executor:
+        future_to_artist = {
+            executor.submit(_worker, art): art
             for art in unique_artists
         }
 

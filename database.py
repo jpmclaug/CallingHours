@@ -1680,6 +1680,50 @@ def save_cached_average_setlist(artist: str, year: Union[str, int], setlist_data
     return True
 
 
+def get_cached_latest_setlist(artist: str, min_tracks: int = 10, db_path: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """Retrieve cached Setlist.fm latest setlist with min_tracks for an artist."""
+    if not artist:
+        return None
+    clean_artist = artist.strip()
+    artist_meta = get_artist_metadata(clean_artist, db_path=db_path)
+    if not artist_meta or not artist_meta.get('setlistfm_data'):
+        base_artist = re.sub(r'[\s\-_]+(?:617|\d{3,4}|\([^\)]+\))$', '', clean_artist, flags=re.IGNORECASE).strip()
+        if base_artist and base_artist.lower() != clean_artist.lower():
+            artist_meta = get_artist_metadata(base_artist, db_path=db_path)
+    if not artist_meta or not artist_meta.get('setlistfm_data'):
+        return None
+    s_data = artist_meta['setlistfm_data']
+    if isinstance(s_data, str):
+        try:
+            s_data = json.loads(s_data)
+        except Exception:
+            s_data = None
+    if isinstance(s_data, dict):
+        latest_dict = s_data.get('latest_setlists_min_tracks', {})
+        if isinstance(latest_dict, dict):
+            cached = latest_dict.get(str(min_tracks))
+            if cached and isinstance(cached, dict) and cached.get('tracks') and len(cached['tracks']) >= min_tracks:
+                return cached
+    return None
+
+
+def save_cached_latest_setlist(artist: str, min_tracks: int, setlist_data: Dict[str, Any], db_path: Optional[str] = None) -> bool:
+    """Cache Setlist.fm latest setlist data with min_tracks for an artist."""
+    if not artist or not setlist_data:
+        return False
+    clean_artist = artist.strip()
+    key_str = str(min_tracks)
+    artist_meta = get_artist_metadata(clean_artist, db_path=db_path)
+    s_data = {}
+    if artist_meta and isinstance(artist_meta.get('setlistfm_data'), dict):
+        s_data = dict(artist_meta['setlistfm_data'])
+    if 'latest_setlists_min_tracks' not in s_data or not isinstance(s_data['latest_setlists_min_tracks'], dict):
+        s_data['latest_setlists_min_tracks'] = {}
+    s_data['latest_setlists_min_tracks'][key_str] = setlist_data
+    save_artist_metadata(clean_artist, setlistfm_data=s_data, db_path=db_path)
+    return True
+
+
 def touch_search(artist: str, song: str, db_path: Optional[str] = None) -> None:
     """Update updated_at timestamp for an existing search to bring it to the top of recent history."""
     artist_norm = normalize_text(artist)

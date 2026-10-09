@@ -8937,16 +8937,24 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
                 const rawArt = artistsInput ? artistsInput.value.trim() : '';
                 const mixModeSelect = document.getElementById('select-mix-mode');
                 const mixMode = mixModeSelect ? mixModeSelect.value : 'alternating';
+                const trackSourceSelect = document.getElementById('select-track-source');
+                const trackSource = trackSourceSelect ? trackSourceSelect.value : 'top_tracks';
                 const artList = rawArt ? rawArt.split(',').map(s => s.trim()).filter(Boolean) : [];
                 if (artList.length) {
                     const artSummary = artList.slice(0, 3).join(', ') + (artList.length > 3 ? `, +${artList.length - 3} more` : '');
-                    if (mixMode === 'thematic') {
+                    if (trackSource === 'latest_setlist') {
+                        newName = mixMode === 'thematic' ? `Latest Setlist Blend (${artSummary})` : `Latest Setlists Tour Mix (${artSummary})`;
+                    } else if (mixMode === 'thematic') {
                         newName = `Thematic Blend (${artSummary})`;
                     } else {
                         newName = `Top Tracks Rotation (${artSummary})`;
                     }
                 } else {
-                    newName = mixMode === 'thematic' ? 'Thematic Multi-Artist Blend' : 'Multi-Artist Top Tracks Rotation';
+                    if (trackSource === 'latest_setlist') {
+                        newName = mixMode === 'thematic' ? 'Latest Setlists Thematic Blend' : 'Multi-Artist Latest Setlists Mix';
+                    } else {
+                        newName = mixMode === 'thematic' ? 'Thematic Multi-Artist Blend' : 'Multi-Artist Top Tracks Rotation';
+                    }
                 }
             } else if (mode === 'setlist_fm') {
                 const artistSelect = document.getElementById('select-setlist-artist');
@@ -9010,6 +9018,15 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
 
         function onMixModeChange() {
             updatePlaylistName('mix_mode');
+        }
+
+        function onTrackSourceChange() {
+            updatePlaylistName('track_source');
+            submitGeneratorForm();
+        }
+
+        function onPerArtistChange() {
+            submitGeneratorForm();
         }
 
         function onSetlistArtistChange(selectEl) {
@@ -9113,7 +9130,13 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
                 const parts = rawVal.split(',').map(s => s.trim()).filter(Boolean);
                 const mixModeSelect = document.getElementById('select-mix-mode');
                 const isThematic = mixModeSelect && mixModeSelect.value === 'thematic';
-                sub = isThematic ? `${parts.slice(0, 2).join(' & ')} — Thematic Lyric & Audio Analysis` : `${parts.slice(0, 2).join(' & ')} — Alternating Mix`;
+                const trackSourceSelect = document.getElementById('select-track-source');
+                const isLatestSetlist = trackSourceSelect && trackSourceSelect.value === 'latest_setlist';
+                if (isLatestSetlist) {
+                    sub = isThematic ? `${parts.slice(0, 2).join(' & ')} — Latest Setlist (10+ Tracks) Thematic Blend` : `${parts.slice(0, 2).join(' & ')} — Latest Setlist (10+ Tracks) Alternating Mix`;
+                } else {
+                    sub = isThematic ? `${parts.slice(0, 2).join(' & ')} — Thematic Lyric & Audio Analysis` : `${parts.slice(0, 2).join(' & ')} — Alternating Mix`;
+                }
             } else if (mode === 'setlist_fm') {
                 const select = document.getElementById('select-setlist-artist');
                 const art = (select && select.value !== '__custom__') ? select.value : (document.getElementById('input-setlist-artist')?.value || '');
@@ -9130,17 +9153,33 @@ PLAYLISTS_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             if (mode === 'multi_artist') {
                 const mixModeSelect = document.getElementById('select-mix-mode');
                 const isThematic = mixModeSelect && mixModeSelect.value === 'thematic';
-                overlaySteps = isThematic ? [
-                    'Aggregating top tracks from selected artists...',
-                    'Extracting lyrics, audio features & Last.fm mood tags...',
-                    'Discovering cross-artist poetic and thematic connections with Gemini...',
-                    'Structuring narrative thematic playlist progression...'
-                ] : [
-                    'Aggregating top tracks from selected artists...',
-                    'Computing fair round-robin rotation sequence...',
-                    'Interleaving artist tracks and cross-referencing library analyses...',
-                    'Compiling alternating multi-artist playlist...'
-                ];
+                const trackSourceSelect = document.getElementById('select-track-source');
+                const isLatestSetlist = trackSourceSelect && trackSourceSelect.value === 'latest_setlist';
+                if (isLatestSetlist) {
+                    overlaySteps = isThematic ? [
+                        'Fetching latest concert setlists (10+ tracks) from Setlist.fm...',
+                        'Extracting setlist stage order, lyrics & mood tags...',
+                        'Discovering cross-artist poetic and thematic connections with Gemini...',
+                        'Structuring narrative thematic setlist playlist progression...'
+                    ] : [
+                        'Fetching latest concert setlists (10+ tracks) from Setlist.fm...',
+                        'Extracting authentic stage orders and concert venue details...',
+                        'Computing fair round-robin rotation sequence across artists...',
+                        'Compiling alternating concert setlist playlist...'
+                    ];
+                } else {
+                    overlaySteps = isThematic ? [
+                        'Aggregating top tracks from selected artists...',
+                        'Extracting lyrics, audio features & Last.fm mood tags...',
+                        'Discovering cross-artist poetic and thematic connections with Gemini...',
+                        'Structuring narrative thematic playlist progression...'
+                    ] : [
+                        'Aggregating top tracks from selected artists...',
+                        'Computing fair round-robin rotation sequence...',
+                        'Interleaving artist tracks and cross-referencing library analyses...',
+                        'Compiling alternating multi-artist playlist...'
+                    ];
+                }
             }
 
             if (typeof showActionLoadingOverlay === 'function') {
@@ -11625,8 +11664,9 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             artist = params.get('artist', [''])[0].strip()
             artists_param = params.get('artists', [''])[0].strip()
             mix_mode = params.get('mix_mode', ['alternating'])[0].strip()
-            per_artist_str = params.get('per_artist', ['5'])[0].strip()
-            per_artist = int(per_artist_str) if per_artist_str.isdigit() else 5
+            per_artist_str = params.get('per_artist', ['10' if mode == 'multi_artist' else '10'])[0].strip()
+            per_artist = int(per_artist_str) if per_artist_str.isdigit() else 10
+            track_source = params.get('source', params.get('track_source', ['top_tracks']))[0].strip()
             tag = params.get('tag', [''])[0].strip()
             order = params.get('order', ['updated_at DESC'])[0].strip()
             mood = params.get('mood', [''])[0].strip()
@@ -11647,6 +11687,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 selected_artists=artists_param,
                 selected_mix_mode=mix_mode,
                 selected_per_artist=per_artist,
+                selected_track_source=track_source,
                 selected_tag=tag,
                 selected_mood=mood,
                 selected_year=year,
@@ -15984,7 +16025,8 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         selected_artist: str = '',
         selected_artists: str = '',
         selected_mix_mode: str = 'alternating',
-        selected_per_artist: int = 5,
+        selected_per_artist: int = 10,
+        selected_track_source: str = 'top_tracks',
         selected_tag: str = '',
         selected_mood: str = '',
         selected_year: str = '',
@@ -16082,6 +16124,8 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                         selected_per_artist = int(crit['per_artist'])
                     except (ValueError, TypeError):
                         pass
+                if crit.get('source') or crit.get('track_source'):
+                    selected_track_source = str(crit.get('source') or crit.get('track_source')).strip()
                 if crit.get('themes'):
                     saved_themes = crit['themes']
                     theme_pills = []
@@ -16288,7 +16332,8 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                         artists=artists_list,
                         limit_per_artist=selected_per_artist,
                         user_email=current_user['email'],
-                        db_path=DATABASE_PATH
+                        db_path=DATABASE_PATH,
+                        track_source=selected_track_source
                     )
 
                     detected_themes_for_save = []
@@ -16305,9 +16350,13 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                         detected_themes_for_save = themes
                         curator_notes = thematic_res.get('curator_notes', '')
                         art_parenthetical = ", ".join(artists_list)
-                        auto_title = thematic_res.get('playlist_title') or f"Thematic Blend ({art_parenthetical})"
-                        auto_desc = thematic_res.get('playlist_description') or f"Thematic mix of top tracks from {art_parenthetical}."
-                        if not active_playlist_title or active_playlist_title.startswith("Calling Hours:") or active_playlist_title.endswith("Average Setlist") or "Alternating" in active_playlist_title or "Rotation" in active_playlist_title or "Thematic" in active_playlist_title:
+                        if selected_track_source == 'latest_setlist':
+                            auto_title = thematic_res.get('playlist_title') or f"Latest Setlist Blend ({art_parenthetical})"
+                            auto_desc = thematic_res.get('playlist_description') or f"Thematic mix of latest concert setlists (10+ tracks) from {art_parenthetical}."
+                        else:
+                            auto_title = thematic_res.get('playlist_title') or f"Thematic Blend ({art_parenthetical})"
+                            auto_desc = thematic_res.get('playlist_description') or f"Thematic mix of top tracks from {art_parenthetical}."
+                        if not active_playlist_title or active_playlist_title.startswith("Calling Hours:") or active_playlist_title.endswith("Average Setlist") or "Alternating" in active_playlist_title or "Rotation" in active_playlist_title or "Thematic" in active_playlist_title or "Latest Setlist" in active_playlist_title:
                             active_playlist_title = auto_title
                         active_playlist_desc = auto_desc
 
@@ -16322,7 +16371,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                         engine_label = "Google Gemini AI" if thematic_res.get('engine') == 'gemini' else "Sonic & Tag Intelligence Engine"
                         is_cached = bool(thematic_res.get('_cached'))
                         cached_badge = ''
-                        refresh_url = f"/playlists?mode=multi_artist&artists={urllib.parse.quote(selected_artists)}&mix_mode=thematic&per_artist={selected_per_artist}&limit={limit or ''}&refresh=1"
+                        refresh_url = f"/playlists?mode=multi_artist&artists={urllib.parse.quote(selected_artists)}&mix_mode=thematic&per_artist={selected_per_artist}&source={urllib.parse.quote(selected_track_source)}&limit={limit or ''}&refresh=1"
                         if is_cached:
                             cached_badge = '<span style="font-size: 0.74rem; background: rgba(46, 213, 115, 0.18); border: 1px solid rgba(46, 213, 115, 0.4); color: #2ED573; padding: 2px 8px; border-radius: 10px; font-weight: 700;" title="Loaded instantly from database cache. No duplicate Gemini API call.">⚡ Cached Curation</span>'
                         refresh_btn = f'<a href="{refresh_url}" style="font-size: 0.74rem; color: #A5C8FF; text-decoration: none; border: 1px solid rgba(165, 200, 255, 0.35); padding: 2px 8px; border-radius: 10px; background: rgba(255, 255, 255, 0.05); transition: all 0.2s ease; display: inline-flex; align-items: center; gap: 4px;" title="Re-run Gemini thematic lyric &amp; audio analysis">↻ Re-analyze with Gemini</a>'
@@ -16356,9 +16405,13 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                         alternating_tracks = playlist_curator.mix_alternating(catalog, limit=limit)
                         songs = alternating_tracks
                         art_parenthetical = ", ".join(artists_list)
-                        auto_title = f"Top Tracks Rotation ({art_parenthetical})"
-                        auto_desc = f"Alternating round-robin sequence of top tracks from {art_parenthetical}."
-                        if not active_playlist_title or active_playlist_title.startswith("Calling Hours:") or active_playlist_title.endswith("Average Setlist") or "Thematic" in active_playlist_title or "Alternating" in active_playlist_title or "Rotation" in active_playlist_title:
+                        if selected_track_source == 'latest_setlist':
+                            auto_title = f"Latest Setlists Tour Mix ({art_parenthetical})"
+                            auto_desc = f"Alternating round-robin sequence of latest concert setlists (10+ tracks) from {art_parenthetical}."
+                        else:
+                            auto_title = f"Top Tracks Rotation ({art_parenthetical})"
+                            auto_desc = f"Alternating round-robin sequence of top tracks from {art_parenthetical}."
+                        if not active_playlist_title or active_playlist_title.startswith("Calling Hours:") or active_playlist_title.endswith("Average Setlist") or "Thematic" in active_playlist_title or "Alternating" in active_playlist_title or "Rotation" in active_playlist_title or "Latest Setlist" in active_playlist_title:
                             active_playlist_title = auto_title
                         active_playlist_desc = auto_desc
                         thematic_synergy_card_html = ""
@@ -16372,10 +16425,14 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 else:
                     songs = []
                     thematic_synergy_card_html = ""
-                    default_title = "Thematic Multi-Artist Blend" if selected_mix_mode == 'thematic' else "Multi-Artist Top Tracks Rotation"
-                    if not active_playlist_title or active_playlist_title.startswith("Calling Hours:") or active_playlist_title.endswith("Average Setlist") or "Thematic" in active_playlist_title or "Alternating" in active_playlist_title or "Rotation" in active_playlist_title:
+                    if selected_track_source == 'latest_setlist':
+                        default_title = "Latest Setlists Thematic Blend" if selected_mix_mode == 'thematic' else "Multi-Artist Latest Setlists Mix"
+                        active_playlist_desc = "Select or enter 2 or more artists to blend their latest concert setlists (10+ tracks) into a playlist."
+                    else:
+                        default_title = "Thematic Multi-Artist Blend" if selected_mix_mode == 'thematic' else "Multi-Artist Top Tracks Rotation"
+                        active_playlist_desc = "Select or enter 2 or more artists to blend their top tracks into a seamless playlist."
+                    if not active_playlist_title or active_playlist_title.startswith("Calling Hours:") or active_playlist_title.endswith("Average Setlist") or "Thematic" in active_playlist_title or "Alternating" in active_playlist_title or "Rotation" in active_playlist_title or "Latest Setlist" in active_playlist_title:
                         active_playlist_title = default_title
-                    active_playlist_desc = "Select or enter 2 or more artists to blend their top tracks into a seamless playlist."
             elif active_mode == 'ai_prompt':
                 all_catalog = database.get_analyzed_songs()
                 ai_prompt_query = selected_prompt or 'melancholy midnight drive with heavy emotional chorus'
@@ -16556,6 +16613,8 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             ('20', 'Top 20 Songs'),
             ('25', 'Top 25 Songs'),
             ('50', 'Top 50 Songs'),
+            ('75', 'Top 75 Songs'),
+            ('100', 'Top 100 Songs'),
         ]
         cur_limit_str = str(limit) if limit else ''
         limit_options_html = "".join(f'<option value="{k}"{" selected" if k == cur_limit_str else ""}>{html_escape(v)}</option>' for k, v in limit_choices)
@@ -16694,8 +16753,15 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             '''
 
             per_artist_opts = "".join(
-                f'<option value="{n}"{" selected" if selected_per_artist == n else ""}>{n} Tracks each</option>'
-                for n in [3, 5, 10]
+                f'<option value="{n}"{" selected" if selected_per_artist == n else ""}>{lbl}</option>'
+                for n, lbl in [
+                    (3, '3 Tracks each'),
+                    (5, '5 Tracks each'),
+                    (10, '10 Tracks each (Default)'),
+                    (15, '15 Tracks each'),
+                    (20, '20 Tracks each'),
+                    (999, 'All Setlist Tracks' if selected_track_source == 'latest_setlist' else 'All Available Tracks')
+                ]
             )
 
             mode_specific_inputs = f'''
@@ -16710,15 +16776,24 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                         {"".join(quick_chips)}
                     </div>
                 </div>
-                <div class="playlist-input-group">
-                    <label for="select-mix-mode">Mixing Strategy</label>
-                    <select name="mix_mode" id="select-mix-mode" onchange="onMixModeChange()">
-                        {mix_mode_opts}
-                    </select>
+                <div class="playlist-form-row">
+                    <div class="playlist-input-group">
+                        <label for="select-track-source">Track Source</label>
+                        <select name="source" id="select-track-source" onchange="onTrackSourceChange()">
+                            <option value="top_tracks"{" selected" if selected_track_source == "top_tracks" else ""}>⭐ Top Tracks (Catalog Hits)</option>
+                            <option value="latest_setlist"{" selected" if selected_track_source == "latest_setlist" else ""}>🏟️ Latest Setlist (10+ Tracks)</option>
+                        </select>
+                    </div>
+                    <div class="playlist-input-group">
+                        <label for="select-mix-mode">Mixing Strategy</label>
+                        <select name="mix_mode" id="select-mix-mode" onchange="onMixModeChange()">
+                            {mix_mode_opts}
+                        </select>
+                    </div>
                 </div>
                 <div class="playlist-input-group">
                     <label for="select-per-artist">Tracks Per Artist</label>
-                    <select name="per_artist" id="select-per-artist">
+                    <select name="per_artist" id="select-per-artist" onchange="onPerArtistChange()">
                         {per_artist_opts}
                     </select>
                 </div>
@@ -16833,9 +16908,14 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 if s.get('connection_note'):
                     connection_note_html = f'<div style="font-size:0.74rem; color:rgba(197,200,255,0.85); font-style:italic; margin-top:3px; line-height:1.35;">💡 {html_escape(s["connection_note"])}</div>'
 
-                # Setlist.fm concert frequency pill
+                # Setlist.fm concert frequency pill or latest setlist badge
                 setlist_pill = ""
-                if active_mode == 'setlist_fm' and s.get('play_count'):
+                if s.get('setlist_badge'):
+                    setlist_badge_esc = html_escape(s['setlist_badge'])
+                    venue_title = html_escape(s.get("setlist_venue") or s.get("setlist_location") or "")
+                    stage_pos_str = f" • #{s['stage_position']}" if s.get('stage_position') else ""
+                    setlist_pill = f'<span style="font-size:0.7rem; color:#FCD34D; background:rgba(245,158,11,0.15); border:1px solid rgba(245,158,11,0.3); padding:1px 7px; border-radius:4px; font-weight:700;" title="{venue_title}">{setlist_badge_esc}{stage_pos_str}</span>'
+                elif active_mode == 'setlist_fm' and s.get('play_count'):
                     p_cnt = s.get('play_count', 0)
                     t_cnt = s.get('total_concerts', p_cnt)
                     p_pct = int(s.get('play_ratio', 1.0) * 100)
@@ -16852,7 +16932,14 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                     action_btn_html = f'<a href="/?id={s_id}" class="btn-playlist-action btn-playlist-outline" style="font-size: 0.74rem; padding: 3px 8px; text-decoration: none;">Lyrics ↗</a>'
                 else:
                     analysis_link_html = f'<a href="/?artist={urllib.parse.quote(artist_val)}&song={urllib.parse.quote(song_val)}" style="color: #FCD34D; font-size: 0.74rem; text-decoration: none; border: 1px solid rgba(245, 158, 11, 0.35); border-radius: 4px; padding: 1px 6px;" title="Analyze lyrics with Gemini">✦ Analyze</a>'
-                    model_label = 'Gemini Thematic' if s.get('theme') else ('Multi-Artist' if active_mode == 'multi_artist' else 'Setlist.fm')
+                    if s.get('theme'):
+                        model_label = 'Gemini Thematic'
+                    elif s.get('source') == 'latest_setlist':
+                        model_label = 'Setlist (10+)'
+                    elif active_mode == 'multi_artist':
+                        model_label = 'Multi-Artist'
+                    else:
+                        model_label = 'Setlist.fm'
                     model_badge_html = f'<span class="playlist-badge-model" style="background: rgba(197, 184, 255, 0.15); color: #C5B8FF; border: 1px solid rgba(197, 184, 255, 0.3);">{model_label}</span>'
                     action_btn_html = f'<a href="/?artist={urllib.parse.quote(artist_val)}&song={urllib.parse.quote(song_val)}" class="btn-playlist-action btn-playlist-outline" style="font-size: 0.74rem; padding: 3px 8px; text-decoration: none;">Search ↗</a>'
 
@@ -16974,6 +17061,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 'artists': selected_artists,
                 'mix_mode': selected_mix_mode,
                 'per_artist': str(selected_per_artist) if selected_per_artist else '',
+                'source': selected_track_source if active_mode == 'multi_artist' else '',
                 'tag': selected_tag,
                 'mood': selected_mood,
                 'year': selected_year,
@@ -16997,6 +17085,8 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 'artists': selected_artists,
                 'mix_mode': selected_mix_mode,
                 'per_artist': selected_per_artist,
+                'source': selected_track_source,
+                'track_source': selected_track_source,
                 'tag': selected_tag,
                 'mood': selected_mood,
                 'year': selected_year,
@@ -17111,15 +17201,18 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 raw_artists_str = params.get('artists', [''])[0].strip()
                 artists_list = [a.strip() for a in raw_artists_str.split(',') if a.strip()]
                 mix_mode = params.get('mix_mode', ['alternating'])[0].strip()
-                per_artist_str = params.get('per_artist', ['5'])[0].strip()
-                per_artist = int(per_artist_str) if per_artist_str.isdigit() else 5
+                per_artist_str = params.get('per_artist', ['10'])[0].strip()
+                per_artist = int(per_artist_str) if per_artist_str.isdigit() else 10
+                track_source = params.get('source', params.get('track_source', ['top_tracks']))[0].strip()
 
                 catalog = playlist_curator.fetch_multi_artist_catalog(
                     artists_list,
                     limit_per_artist=per_artist,
                     user_email=current_user.get('email') if current_user else None,
-                    db_path=DATABASE_PATH
+                    db_path=DATABASE_PATH,
+                    track_source=track_source
                 )
+                art_parenthetical = ", ".join(artists_list)
                 if mix_mode == 'thematic':
                     mix_res = playlist_curator.mix_thematic(
                         catalog,
@@ -17128,12 +17221,12 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                         limit=limit
                     )
                     tracks = mix_res.get('tracks', [])
-                    art_parenthetical = ", ".join(artists_list)
-                    title = params.get('name', [''])[0].strip() or mix_res.get('playlist_title') or f"Thematic Blend ({art_parenthetical})"
+                    def_t = f"Latest Setlist Blend ({art_parenthetical})" if track_source == 'latest_setlist' else f"Thematic Blend ({art_parenthetical})"
+                    title = params.get('name', [''])[0].strip() or mix_res.get('playlist_title') or def_t
                 else:
                     tracks = playlist_curator.mix_alternating(catalog, limit=limit)
-                    art_parenthetical = ", ".join(artists_list)
-                    title = params.get('name', [''])[0].strip() or f"Top Tracks Rotation ({art_parenthetical})"
+                    def_t = f"Latest Setlists Tour Mix ({art_parenthetical})" if track_source == 'latest_setlist' else f"Top Tracks Rotation ({art_parenthetical})"
+                    title = params.get('name', [''])[0].strip() or def_t
                 if limit and limit > 0:
                     tracks = tracks[:limit]
             elif mode == 'ai_prompt':
@@ -17207,15 +17300,18 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 raw_artists_str = params.get('artists', [''])[0].strip()
                 artists_list = [a.strip() for a in raw_artists_str.split(',') if a.strip()]
                 mix_mode = params.get('mix_mode', ['alternating'])[0].strip()
-                per_artist_str = params.get('per_artist', ['5'])[0].strip()
-                per_artist = int(per_artist_str) if per_artist_str.isdigit() else 5
+                per_artist_str = params.get('per_artist', ['10'])[0].strip()
+                per_artist = int(per_artist_str) if per_artist_str.isdigit() else 10
+                track_source = params.get('source', params.get('track_source', ['top_tracks']))[0].strip()
 
                 catalog = playlist_curator.fetch_multi_artist_catalog(
                     artists_list,
                     limit_per_artist=per_artist,
                     user_email=current_user.get('email') if current_user else None,
-                    db_path=DATABASE_PATH
+                    db_path=DATABASE_PATH,
+                    track_source=track_source
                 )
+                art_parenthetical = ", ".join(artists_list)
                 if mix_mode == 'thematic':
                     mix_res = playlist_curator.mix_thematic(
                         catalog,
@@ -17224,12 +17320,12 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                         limit=limit
                     )
                     tracks = mix_res.get('tracks', [])
-                    art_parenthetical = ", ".join(artists_list)
-                    title = params.get('name', [''])[0].strip() or mix_res.get('playlist_title') or f"Thematic Blend ({art_parenthetical})"
+                    def_t = f"Latest Setlist Blend ({art_parenthetical})" if track_source == 'latest_setlist' else f"Thematic Blend ({art_parenthetical})"
+                    title = params.get('name', [''])[0].strip() or mix_res.get('playlist_title') or def_t
                 else:
                     tracks = playlist_curator.mix_alternating(catalog, limit=limit)
-                    art_parenthetical = ", ".join(artists_list)
-                    title = params.get('name', [''])[0].strip() or f"Top Tracks Rotation ({art_parenthetical})"
+                    def_t = f"Latest Setlists Tour Mix ({art_parenthetical})" if track_source == 'latest_setlist' else f"Top Tracks Rotation ({art_parenthetical})"
+                    title = params.get('name', [''])[0].strip() or def_t
                 if limit and limit > 0:
                     tracks = tracks[:limit]
             elif mode == 'ai_prompt':
@@ -17301,15 +17397,18 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 raw_artists_str = params.get('artists', [''])[0].strip()
                 artists_list = [a.strip() for a in raw_artists_str.split(',') if a.strip()]
                 mix_mode = params.get('mix_mode', ['alternating'])[0].strip()
-                per_artist_str = params.get('per_artist', ['5'])[0].strip()
-                per_artist = int(per_artist_str) if per_artist_str.isdigit() else 5
+                per_artist_str = params.get('per_artist', ['10'])[0].strip()
+                per_artist = int(per_artist_str) if per_artist_str.isdigit() else 10
+                track_source = params.get('source', params.get('track_source', ['top_tracks']))[0].strip()
 
                 catalog = playlist_curator.fetch_multi_artist_catalog(
                     artists_list,
                     limit_per_artist=per_artist,
                     user_email=current_user.get('email') if current_user else None,
-                    db_path=DATABASE_PATH
+                    db_path=DATABASE_PATH,
+                    track_source=track_source
                 )
+                art_parenthetical = ", ".join(artists_list)
                 if mix_mode == 'thematic':
                     mix_res = playlist_curator.mix_thematic(
                         catalog,
@@ -17318,12 +17417,12 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                         limit=limit
                     )
                     tracks = mix_res.get('tracks', [])
-                    art_parenthetical = ", ".join(artists_list)
-                    title = params.get('name', [''])[0].strip() or mix_res.get('playlist_title') or f"Thematic Blend ({art_parenthetical})"
+                    def_t = f"Latest Setlist Blend ({art_parenthetical})" if track_source == 'latest_setlist' else f"Thematic Blend ({art_parenthetical})"
+                    title = params.get('name', [''])[0].strip() or mix_res.get('playlist_title') or def_t
                 else:
                     tracks = playlist_curator.mix_alternating(catalog, limit=limit)
-                    art_parenthetical = ", ".join(artists_list)
-                    title = params.get('name', [''])[0].strip() or f"Top Tracks Rotation ({art_parenthetical})"
+                    def_t = f"Latest Setlists Tour Mix ({art_parenthetical})" if track_source == 'latest_setlist' else f"Top Tracks Rotation ({art_parenthetical})"
+                    title = params.get('name', [''])[0].strip() or def_t
                 if limit and limit > 0:
                     tracks = tracks[:limit]
             elif mode == 'ai_prompt':

@@ -539,6 +539,151 @@ def fetch_recent_setlists(
         return []
 
 
+def fetch_latest_setlist_with_min_tracks(
+    artist_name: str,
+    min_tracks: int = 10,
+    mbid: Optional[str] = None,
+    api_key: Optional[str] = None,
+    force_refresh: bool = False,
+    db_path: Optional[str] = None,
+    timeout: int = 8,
+    max_pages: int = 4
+) -> Optional[Dict[str, Any]]:
+    """
+    Fetch the most recent concert setlist for an artist that contains at least min_tracks songs.
+    Scans chronologically starting from the most recent concert across multiple pages if needed.
+    Caches results in database to respect API rate limits.
+    """
+    if not artist_name:
+        return None
+
+    import database
+
+    clean_artist = artist_name.strip()
+    base_artist = re.sub(r'[\s\-_]+(?:617|\d{3,4}|\([^\)]+\))$', '', clean_artist, flags=re.IGNORECASE).strip()
+    key = api_key or get_setlistfm_api_key()
+
+    # 1. Check database cache unless refresh forced
+    if not force_refresh:
+        cached = database.get_cached_latest_setlist(clean_artist, min_tracks=min_tracks, db_path=db_path)
+        if (not cached or not cached.get("tracks")) and base_artist and base_artist.lower() != clean_artist.lower():
+            cached = database.get_cached_latest_setlist(base_artist, min_tracks=min_tracks, db_path=db_path)
+        if cached and isinstance(cached, dict) and cached.get("tracks") and len(cached["tracks"]) >= min_tracks:
+            cached["cached"] = True
+            return cached
+
+    # 2. Check if no API key is available
+    if not key:
+        return None
+
+    # 3. Resolve artist MBID
+    official_name = clean_artist
+    target_mbid = mbid
+
+    # Check cached artist metadata first
+    cached_meta = database.get_artist_metadata(clean_artist, db_path=db_path)
+    if not cached_meta and base_artist and base_artist.lower() != clean_artist.lower():
+        cached_meta = database.get_artist_metadata(base_artist, db_path=db_path)
+
+    if cached_meta and cached_meta.get("setlistfm_data"):
+        s_meta = cached_meta["setlistfm_data"]
+        if isinstance(s_meta, dict) and s_meta.get("mbid"):
+            target_mbid = s_meta.get("mbid")
+            official_name = s_meta.get("artist") or clean_artist
+
+    if not target_mbid:
+        art_info = search_artist(clean_artist, api_key=key, timeout=timeout)
+        if (not art_info or not art_info.get("mbid")) and base_artist and base_artist.lower() != clean_artist.lower():
+            art_info = search_artist(base_artist, api_key=key, timeout=timeout)
+        if art_info:
+            target_mbid = art_info.get("mbid")
+            official_name = art_info.get("name") or clean_artist
+
+    if not target_mbid:
+        return None
+
+    # 4. Search recent setlists page by page
+    headers = _get_headers(key)
+    import time
+
+    for page in range(1, max_pages + 1):
+        if page > 1:
+            time.sleep(0.25)
+        url = f"{SETLIST_FM_API_BASE_URL}/artist/{target_mbid}/setlists?p={page}"
+        try:
+            resp = requests.get(url, headers=headers, timeout=timeout)
+            if resp.status_code != 200:
+                if resp.status_code == 404:
+                    break
+                continue
+            data = resp.json()
+            setlists = data.get("setlist", [])
+            if not setlists:
+                break
+
+            for s in setlists:
+                sets_data = s.get("sets", {}).get("set", [])
+                if isinstance(sets_data, dict):
+                    sets_data = [sets_data]
+                cur_songs = []
+                for st in sets_data:
+                    song_items = st.get("song", [])
+                    if isinstance(song_items, dict):
+                        song_items = [song_items]
+                    for sng in song_items:
+                        name = sng.get("name")
+                        if name and name.strip():
+                            cur_songs.append(name.strip())
+
+                if len(cur_songs) >= min_tracks:
+                    raw_date = s.get("eventDate")
+                    venue = s.get("venue", {}) or {}
+                    city = venue.get("city", {}) or {}
+                    city_name = city.get("name", "")
+                    state_or_country = city.get("stateCode") or city.get("country", {}).get("name", "")
+                    tour = s.get("tour", {}) or {}
+                    tour_name = tour.get("name") if tour else None
+
+                    track_items = []
+                    for idx, s_title in enumerate(cur_songs, 1):
+                        track_items.append({
+                            "position": idx,
+                            "song": s_title,
+                            "title": s_title,
+                        })
+
+                    result = {
+                        "artist": official_name,
+                        "mbid": target_mbid,
+                        "event_date": raw_date,
+                        "date_formatted": _format_event_date(raw_date),
+                        "venue_name": venue.get("name") or "",
+                        "city": city_name,
+                        "state_or_country": state_or_country,
+                        "location": f"{city_name}, {state_or_country}".strip(", "),
+                        "tour_name": tour_name,
+                        "url": s.get("url") or "",
+                        "song_count": len(track_items),
+                        "tracks": track_items,
+                        "cached": False,
+                    }
+
+                    # Persist to database cache
+                    try:
+                        database.save_cached_latest_setlist(clean_artist, min_tracks, result, db_path=db_path)
+                        if base_artist and base_artist.lower() != clean_artist.lower():
+                            database.save_cached_latest_setlist(base_artist, min_tracks, result, db_path=db_path)
+                    except Exception as ce:
+                        print(f"Warning: could not cache latest setlist for {clean_artist}: {ce}")
+
+                    return result
+        except Exception as pe:
+            print(f"Setlist.fm fetch_latest_setlist_with_min_tracks error for {clean_artist} on page {page}: {pe}")
+            break
+
+    return None
+
+
 def fetch_top_coperformers(
     mbid: str,
     artist_name: str,

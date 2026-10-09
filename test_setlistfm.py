@@ -494,6 +494,101 @@ class TestSetlistFm(unittest.TestCase):
         self.assertEqual(len(res["tracks"]), 1)
         self.assertEqual(res["tracks"][0]["song"], "Pain")
 
+    @patch("database.save_cached_latest_setlist")
+    @patch("database.get_cached_latest_setlist")
+    @patch("database.get_artist_metadata")
+    @patch("setlistfm.requests.get")
+    def test_fetch_latest_setlist_with_min_tracks_multipage(
+        self, mock_get, mock_get_meta, mock_get_cached, mock_save_cached
+    ):
+        mock_get_cached.return_value = None
+        mock_get_meta.return_value = {"setlistfm_data": {"mbid": "bmth-mbid-123", "artist": "Bring Me The Horizon"}}
+
+        # Page 1: setlist with only 5 songs (< 10)
+        # Page 2: setlist with 12 songs (>= 10)
+        page1_resp = MagicMock()
+        page1_resp.status_code = 200
+        page1_resp.json.return_value = {
+            "setlist": [
+                {
+                    "eventDate": "01-08-2026",
+                    "venue": {"name": "Festival Stage", "city": {"name": "Reading", "country": {"name": "UK"}}},
+                    "sets": {"set": [{"song": [{"name": f"Song {i}"} for i in range(1, 6)]}]},
+                }
+            ]
+        }
+
+        page2_resp = MagicMock()
+        page2_resp.status_code = 200
+        page2_resp.json.return_value = {
+            "setlist": [
+                {
+                    "eventDate": "15-07-2026",
+                    "venue": {"name": "Headline Arena", "city": {"name": "London", "country": {"name": "UK"}}},
+                    "tour": {"name": "NeX GEn Tour"},
+                    "url": "https://setlist.fm/bmth-headline",
+                    "sets": {"set": [{"song": [{"name": f"Headline Song {i}"} for i in range(1, 13)]}]},
+                }
+            ]
+        }
+
+        mock_get.side_effect = [page1_resp, page2_resp]
+
+        res = setlistfm.fetch_latest_setlist_with_min_tracks(
+            "Bring Me The Horizon",
+            min_tracks=10,
+            api_key="mock_key",
+            force_refresh=True
+        )
+
+        self.assertIsNotNone(res)
+        self.assertEqual(res["artist"], "Bring Me The Horizon")
+        self.assertEqual(res["venue_name"], "Headline Arena")
+        self.assertEqual(res["tour_name"], "NeX GEn Tour")
+        self.assertEqual(len(res["tracks"]), 12)
+        self.assertEqual(res["tracks"][0]["song"], "Headline Song 1")
+        self.assertEqual(res["tracks"][0]["position"], 1)
+        self.assertEqual(res["tracks"][11]["song"], "Headline Song 12")
+        self.assertEqual(res["tracks"][11]["position"], 12)
+        mock_save_cached.assert_called()
+
+    @patch("database.get_cached_latest_setlist")
+    def test_fetch_latest_setlist_cached(self, mock_get_cached):
+        mock_get_cached.return_value = {
+            "artist": "Underoath",
+            "mbid": "underoath-mbid",
+            "venue_name": "Fillmore",
+            "tracks": [{"position": i, "song": f"Track {i}", "title": f"Track {i}"} for i in range(1, 12)],
+            "song_count": 11,
+        }
+
+        res = setlistfm.fetch_latest_setlist_with_min_tracks("Underoath", min_tracks=10, force_refresh=False)
+        self.assertIsNotNone(res)
+        self.assertTrue(res.get("cached"))
+        self.assertEqual(res["venue_name"], "Fillmore")
+        self.assertEqual(len(res["tracks"]), 11)
+
+    @patch("database.get_cached_latest_setlist")
+    @patch("database.get_artist_metadata")
+    @patch("setlistfm.requests.get")
+    def test_fetch_latest_setlist_none_found(self, mock_get, mock_get_meta, mock_get_cached):
+        mock_get_cached.return_value = None
+        mock_get_meta.return_value = {"setlistfm_data": {"mbid": "short-mbid", "artist": "Short Band"}}
+
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.json.return_value = {
+            "setlist": [
+                {
+                    "eventDate": "01-01-2026",
+                    "sets": {"set": [{"song": [{"name": "Only One"}, {"name": "Only Two"}]}]}
+                }
+            ]
+        }
+        mock_get.return_value = resp
+
+        res = setlistfm.fetch_latest_setlist_with_min_tracks("Short Band", min_tracks=10, api_key="mock_key", max_pages=1)
+        self.assertIsNone(res)
 
 
 if __name__ == "__main__":

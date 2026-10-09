@@ -1430,12 +1430,41 @@ def search_artist_profile(access_token: str, artist_name: str) -> Optional[Dict[
 
 
 def fetch_artist_top_tracks(access_token: str, artist_id: str, market: str = "US", artist_name: Optional[str] = None) -> List[Dict[str, Any]]:
-    """Fetch top tracks for a Spotify artist (up to 10), with search fallback if /top-tracks is restricted."""
+    """Fetch top tracks for a Spotify artist (up to 10), with search pagination and Last.fm fallback if /top-tracks is restricted."""
     if not artist_id and not artist_name:
         return []
 
     headers = {"Authorization": f"Bearer {access_token}"}
-    top_tracks = []
+    top_tracks: List[Dict[str, Any]] = []
+    seen_titles = set()
+
+    def _add_track_item(it: Dict[str, Any], default_pop: int = 50) -> bool:
+        t_name = it.get("name", "").strip()
+        if not t_name:
+            return False
+        norm = t_name.lower()
+        if norm in seen_titles:
+            return False
+        seen_titles.add(norm)
+        album = it.get("album") or {}
+        images = album.get("images") or []
+        img_url = images[0].get("url") if images else ""
+        dur_ms = it.get("duration_ms", 0)
+        pop = it.get("popularity") or default_pop
+        top_tracks.append({
+            "id": it.get("id"),
+            "name": t_name,
+            "duration_ms": dur_ms,
+            "duration_formatted": format_duration(dur_ms),
+            "popularity": pop,
+            "preview_url": it.get("preview_url") or "",
+            "spotify_url": (it.get("external_urls") or {}).get("spotify", ""),
+            "album_name": album.get("name", ""),
+            "album_image": img_url,
+            "release_date": album.get("release_date", ""),
+            "release_year": album.get("release_date", "")[:4] if album.get("release_date") else "",
+        })
+        return True
 
     # 1. Attempt official top-tracks endpoint (may return 403 on development mode apps)
     if artist_id:
@@ -1445,80 +1474,99 @@ def fetch_artist_top_tracks(access_token: str, artist_id: str, market: str = "US
             resp = requests.get(url, headers=headers, params=params, timeout=DEFAULT_TIMEOUT)
             if resp.status_code == 200:
                 items = resp.json().get("tracks", [])
-                for it in items[:10]:
-                    album = it.get("album") or {}
-                    images = album.get("images") or []
-                    img_url = images[0].get("url") if images else ""
-                    dur_ms = it.get("duration_ms", 0)
-                    top_tracks.append({
-                        "id": it.get("id"),
-                        "name": it.get("name"),
-                        "duration_ms": dur_ms,
-                        "duration_formatted": format_duration(dur_ms),
-                        "popularity": it.get("popularity", 0),
-                        "preview_url": it.get("preview_url") or "",
-                        "spotify_url": (it.get("external_urls") or {}).get("spotify", ""),
-                        "album_name": album.get("name", ""),
-                        "album_image": img_url,
-                        "release_date": album.get("release_date", ""),
-                        "release_year": album.get("release_date", "")[:4] if album.get("release_date") else "",
-                    })
-                if top_tracks:
-                    return top_tracks
+                for it in items:
+                    _add_track_item(it, default_pop=it.get("popularity", 50))
+                    if len(top_tracks) >= 10:
+                        return top_tracks
         except Exception as e:
             print(f"Spotify fetch_artist_top_tracks error for {artist_id}: {e}")
 
-    # 2. Search tracks fallback if /top-tracks returned 403 or empty
+    # 2. Search tracks fallback if /top-tracks returned 403 or fewer than 10 tracks
     target_name = (artist_name or "").strip()
-    if target_name:
+    if target_name and len(top_tracks) < 10:
         try:
             search_url = f"{SPOTIFY_API_BASE_URL}/search"
             search_queries = [f'artist:"{target_name}"', f'artist:{target_name}', target_name]
+            target_low = target_name.lower()
             for q_str in search_queries:
-                search_params = {"q": q_str, "type": "track", "limit": 10, "market": market}
-                resp = requests.get(search_url, headers=headers, params=search_params, timeout=DEFAULT_TIMEOUT)
-                if resp.status_code == 200:
-                    items = resp.json().get("tracks", {}).get("items", [])
-                    matched_items = []
-                    target_low = target_name.lower()
-                    for it in items:
-                        t_artists = [a.get("name", "").lower().strip() for a in it.get("artists", [])]
-                        if any(target_low in a_name or a_name in target_low for a_name in t_artists):
-                            matched_items.append(it)
-                    if not matched_items and items:
-                        matched_items = items
-
-                    if matched_items:
-                        for idx, it in enumerate(matched_items[:10]):
-                            album = it.get("album") or {}
-                            images = album.get("images") or []
-                            img_url = images[0].get("url") if images else ""
-                            dur_ms = it.get("duration_ms", 0)
-                            pop = it.get("popularity") or max(78 - (idx * 4), 40)
-                            top_tracks.append({
-                                "id": it.get("id"),
-                                "name": it.get("name"),
-                                "duration_ms": dur_ms,
-                                "duration_formatted": format_duration(dur_ms),
-                                "popularity": pop,
-                                "preview_url": it.get("preview_url") or "",
-                                "spotify_url": (it.get("external_urls") or {}).get("spotify", ""),
-                                "album_name": album.get("name", ""),
-                                "album_image": img_url,
-                                "release_date": album.get("release_date", ""),
-                                "release_year": album.get("release_date", "")[:4] if album.get("release_date") else "",
-                            })
-                        if top_tracks:
-                            return top_tracks
+                if len(top_tracks) >= 10:
+                    break
+                for offset in [0, 5, 10]:
+                    if len(top_tracks) >= 10:
+                        break
+                    search_params = {"q": q_str, "type": "track", "limit": 10, "offset": offset, "market": market}
+                    resp = requests.get(search_url, headers=headers, params=search_params, timeout=DEFAULT_TIMEOUT)
+                    if resp.status_code == 200:
+                        items = resp.json().get("tracks", {}).get("items", [])
+                        matched_items = []
+                        for it in items:
+                            t_artists = [a.get("name", "").lower().strip() for a in it.get("artists", [])]
+                            if any(target_low in a_name or a_name in target_low for a_name in t_artists):
+                                matched_items.append(it)
+                        for idx, it in enumerate(matched_items):
+                            pop = it.get("popularity") or max(78 - (len(top_tracks) * 4), 40)
+                            _add_track_item(it, default_pop=pop)
+                            if len(top_tracks) >= 10:
+                                break
         except Exception as se:
             print(f"Spotify search fallback top tracks error for {target_name}: {se}")
 
-    # 3. Fallback to demo tracks if still empty
+    # 3. Supplement from Last.fm if still under 10 tracks
+    if len(top_tracks) < 10 and target_name:
+        try:
+            import lastfm
+            lf_key = lastfm.get_lastfm_api_key()
+            if lf_key:
+                lfm_tracks = lastfm.fetch_artist_top_tracks(target_name, api_key=lf_key, limit=20)
+                for lt in lfm_tracks:
+                    if len(top_tracks) >= 10:
+                        break
+                    s_name = lt.get("name", "").strip()
+                    if not s_name or s_name.lower() in seen_titles:
+                        continue
+                    # Try resolving Spotify ID for this Last.fm track via search
+                    resolved_track = None
+                    try:
+                        s_resp = requests.get(
+                            f"{SPOTIFY_API_BASE_URL}/search",
+                            headers=headers,
+                            params={"q": f'track:"{s_name}" artist:"{target_name}"', "type": "track", "limit": 1, "market": market},
+                            timeout=4
+                        )
+                        if s_resp.status_code == 200:
+                            s_items = s_resp.json().get("tracks", {}).get("items", [])
+                            if s_items:
+                                resolved_track = s_items[0]
+                    except Exception:
+                        pass
+
+                    if resolved_track:
+                        _add_track_item(resolved_track, default_pop=60)
+                    else:
+                        seen_titles.add(s_name.lower())
+                        top_tracks.append({
+                            "id": "",
+                            "name": s_name,
+                            "duration_ms": 0,
+                            "duration_formatted": "",
+                            "popularity": 55,
+                            "preview_url": "",
+                            "spotify_url": "",
+                            "album_name": "",
+                            "album_image": "",
+                            "release_date": "",
+                            "release_year": "",
+                            "source": "lastfm",
+                        })
+        except Exception as le:
+            print(f"Last.fm supplement error for {target_name}: {le}")
+
+    # 4. Fallback to demo tracks if still empty
     if not top_tracks and target_name:
         demo = get_demo_artist_spotify_data(target_name)
         top_tracks = demo.get("top_tracks", [])
 
-    return top_tracks
+    return top_tracks[:10]
 
 
 def fetch_artist_discography_stats(access_token: str, artist_id: str, market: str = "US", artist_name: Optional[str] = None) -> Dict[str, Any]:
@@ -1796,21 +1844,23 @@ def get_demo_artist_spotify_data(artist: str) -> Dict[str, Any]:
             db_songs = database.get_songs_by_band(base_artist) or []
         for s in db_songs:
             s_name = s.get("song")
-            if s_name and s_name not in track_names:
-                track_names.append(s_name)
+            if s_name and s_name.strip() and s_name.strip().lower() not in [tn.lower() for tn in track_names]:
+                track_names.append(s_name.strip())
     except Exception:
         pass
 
     try:
         import lastfm
-        if len(track_names) < 5:
-            lfm_tracks = lastfm.fetch_artist_top_tracks(clean_artist, limit=10) or []
+        if len(track_names) < 10:
+            lfm_tracks = lastfm.fetch_artist_top_tracks(clean_artist, limit=20) or []
             if not lfm_tracks and base_artist and base_artist.lower() != clean_artist.lower():
-                lfm_tracks = lastfm.fetch_artist_top_tracks(base_artist, limit=10) or []
+                lfm_tracks = lastfm.fetch_artist_top_tracks(base_artist, limit=20) or []
             for lt in lfm_tracks:
+                if len(track_names) >= 10:
+                    break
                 lt_name = lt.get("name")
-                if lt_name and lt_name not in track_names:
-                    track_names.append(lt_name)
+                if lt_name and lt_name.strip() and lt_name.strip().lower() not in [tn.lower() for tn in track_names]:
+                    track_names.append(lt_name.strip())
         lfm_tags = lastfm.fetch_artist_top_tags(clean_artist) or []
         if not lfm_tags and base_artist and base_artist.lower() != clean_artist.lower():
             lfm_tags = lastfm.fetch_artist_top_tags(base_artist) or []
