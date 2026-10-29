@@ -720,7 +720,7 @@ def build_more_sheet_html(user: Optional[Dict[str, Any]] = None, active_page: st
                 <span class="nav-icon">🎶</span>
                 <span class="nav-text">Playlists</span>
             </a>
-            <a href="/spotify" class="app-bottom-nav-link{spotify_active}" id="mobile-nav-link-spotify">
+            <a href="/spotify" class="app-bottom-nav-link{spotify_active}" id="mobile-nav-link-sheet-spotify">
                 <span class="nav-icon">🎧</span>
                 <span class="nav-text">Spotify Hub</span>
             </a>
@@ -796,7 +796,7 @@ def build_app_header(active_page: str = 'song', user: Optional[Dict[str, Any]] =
     admin_active = ' active' if active_page == 'admin' else ''
 
     # Unified Library active state for mobile 4-tab bar
-    library_active = ' active' if active_page in ('library', 'ratings', 'rating', 'recommendations', 'playlist', 'playlists', 'spotify') else ''
+    library_active = ' active' if active_page in ('library', 'ratings', 'rating', 'recommendations', 'playlist', 'playlists') else ''
     more_active = ' active' if active_page in ('history', 'prompts', 'admin') else ''
 
     admin_nav_link = ''
@@ -899,6 +899,10 @@ def build_app_header(active_page: str = 'song', user: Optional[Dict[str, Any]] =
         <a href="/artist" class="app-bottom-nav-link{artist_active}" id="mobile-nav-link-artist">
             <span class="nav-icon">👤</span>
             <span class="nav-text">Artists</span>
+        </a>
+        <a href="/spotify" class="app-bottom-nav-link{spotify_active}" id="mobile-nav-link-spotify">
+            <span class="nav-icon">🎧</span>
+            <span class="nav-text">Spotify</span>
         </a>
         <a href="/library" class="app-bottom-nav-link{library_active}" id="mobile-nav-link-library">
             <span class="nav-icon">🎶</span>
@@ -4590,7 +4594,7 @@ PAGE_HTML = r'''<!DOCTYPE html>
             text = text.replace(/\*([^*]+)\*/g, '<em>$1</em>');
             text = text.replace(/^> (.*$)/gim, '<blockquote>$1</blockquote>');
             
-            text = text.replace(/^\s*[-*]\s+(.*$)/gim, '<li>$1</li>');
+            text = text.replace(/^[ \t]*[-*][ \t]+(.*$)/gim, '<li>$1</li>');
             text = text.replace(/(<li>[\s\S]*?<\/li>)/g, '<ul>$1</ul>');
             text = text.replace(/<\/ul>\s*<ul>/g, '');
             
@@ -7186,6 +7190,181 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             border-radius: 4px;
             transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
         }
+
+        /* ── Driving Mode Styles ────────────────────────── */
+        .driving-mode-banner {
+            background: linear-gradient(135deg, rgba(16, 44, 94, 0.95) 0%, rgba(8, 24, 56, 0.98) 100%);
+            border: 1px solid rgba(56, 189, 248, 0.5);
+            border-radius: 16px;
+            padding: 16px 22px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 20px rgba(56, 189, 248, 0.2);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 16px;
+            flex-wrap: wrap;
+            margin-bottom: 4px;
+        }
+        .driving-status-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(16, 185, 129, 0.18);
+            border: 1px solid rgba(16, 185, 129, 0.45);
+            color: #6EE7B7;
+            font-size: 0.8rem;
+            font-weight: 700;
+            padding: 5px 12px;
+            border-radius: 20px;
+            letter-spacing: 0.03em;
+        }
+        .driving-status-pill.offline {
+            background: rgba(239, 68, 68, 0.18);
+            border-color: rgba(239, 68, 68, 0.45);
+            color: #FCA5A5;
+        }
+        .driving-timer-wrap {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .driving-timer-bar {
+            width: 100px;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.12);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+        .driving-timer-progress {
+            height: 100%;
+            width: 100%;
+            background: #38BDF8;
+            transition: width 1s linear;
+        }
+        .driving-timer-text {
+            font-size: 0.82rem;
+            color: #BAE6FD;
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
+            min-width: 105px;
+        }
+
+        /* Large-Font Driving Analysis Card */
+        .driving-analysis-container {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            margin-top: 4px;
+        }
+        .driving-analysis-card {
+            background: linear-gradient(135deg, rgba(13, 31, 66, 0.95) 0%, rgba(6, 17, 38, 0.98) 100%);
+            border: 1px solid rgba(165, 200, 255, 0.32);
+            border-radius: 18px;
+            padding: 26px 30px;
+            box-shadow: 0 12px 36px rgba(0, 0, 0, 0.55);
+        }
+        .driving-analysis-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(165, 200, 255, 0.18);
+            padding-bottom: 16px;
+            margin-bottom: 22px;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .driving-analysis-title {
+            font-family: 'Montserrat', sans-serif;
+            font-size: 1.55rem;
+            font-weight: 900;
+            color: #FFFFFF;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .driving-analysis-body {
+            font-size: 1.25rem;
+            line-height: 1.7;
+            color: #F1F5F9;
+            font-family: 'Roboto Condensed', sans-serif;
+        }
+        .driving-analysis-body h1,
+        .driving-analysis-body h2 {
+            font-family: 'Montserrat', sans-serif;
+            font-size: 1.65rem;
+            font-weight: 800;
+            color: #6EE7B7;
+            margin: 28px 0 14px 0;
+            padding-bottom: 8px;
+            border-bottom: 1px solid rgba(110, 231, 183, 0.25);
+        }
+        .driving-analysis-body h1:first-child,
+        .driving-analysis-body h2:first-child {
+            margin-top: 0;
+        }
+        .driving-analysis-body h3,
+        .driving-analysis-body h4 {
+            font-family: 'Montserrat', sans-serif;
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: #93C5FD;
+            margin: 22px 0 10px 0;
+        }
+        .driving-analysis-body p {
+            margin: 0 0 18px 0;
+            font-size: 1.25rem;
+            line-height: 1.75;
+        }
+        .driving-analysis-body ul,
+        .driving-analysis-body ol {
+            margin: 0 0 20px 24px;
+            padding: 0;
+        }
+        .driving-analysis-body li {
+            margin-bottom: 12px;
+            font-size: 1.22rem;
+            line-height: 1.65;
+        }
+        .driving-analysis-body strong {
+            color: #FFFFFF;
+            font-weight: 700;
+        }
+        .driving-analysis-body blockquote {
+            border-left: 4px solid #38BDF8;
+            background: rgba(56, 189, 248, 0.1);
+            margin: 18px 0;
+            padding: 14px 20px;
+            border-radius: 0 12px 12px 0;
+            font-style: italic;
+            color: #E0F2FE;
+            font-size: 1.25rem;
+        }
+        @media (max-width: 768px) {
+            .driving-analysis-card {
+                padding: 18px 16px;
+            }
+            .driving-analysis-title {
+                font-size: 1.35rem;
+            }
+            .driving-analysis-body {
+                font-size: 1.15rem;
+                line-height: 1.65;
+            }
+            .driving-analysis-body h1,
+            .driving-analysis-body h2 {
+                font-size: 1.45rem;
+            }
+            .driving-analysis-body h3,
+            .driving-analysis-body h4 {
+                font-size: 1.25rem;
+            }
+            .driving-analysis-body p,
+            .driving-analysis-body li {
+                font-size: 1.15rem;
+            }
+        }
     </style>
 
     <div class="spotify-page-container">
@@ -7491,8 +7670,208 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             }
         }
 
+
+        // ── Driving Mode: Screen Wake Lock & 30s Auto-Refresh ──────────
+        let drivingWakeLock = null;
+        let drivingCountdown = 30;
+        let drivingTimerInterval = null;
+        let isDrivingRefreshing = false;
+        let currentDrivingTrackKey = '';
+
+        async function requestDrivingWakeLock() {
+            if ('wakeLock' in navigator) {
+                try {
+                    drivingWakeLock = await navigator.wakeLock.request('screen');
+                    updateDrivingWakeLockBadge(true);
+                    drivingWakeLock.addEventListener('release', () => {
+                        updateDrivingWakeLockBadge(false);
+                    });
+                } catch (err) {
+                    console.log('Wake Lock request error:', err);
+                    updateDrivingWakeLockBadge(false);
+                }
+            } else {
+                updateDrivingWakeLockBadge(false, '☀️ Wake Lock Active (Fallback)');
+            }
+        }
+
+        function updateDrivingWakeLockBadge(active, customText) {
+            const badge = document.getElementById('driving-wakelock-status');
+            if (!badge) return;
+            if (active) {
+                badge.className = 'driving-status-pill';
+                badge.innerHTML = '☀️ Screen Awake Locked';
+            } else if (customText) {
+                badge.className = 'driving-status-pill';
+                badge.innerHTML = customText;
+            } else {
+                badge.className = 'driving-status-pill offline';
+                badge.innerHTML = '⚠️ Screen Awake Inactive';
+            }
+        }
+
+        function parseDrivingMarkdown(md) {
+            if (!md) return '';
+            if (window.marked && typeof window.marked.parse === 'function') {
+                try {
+                    return window.marked.parse(md);
+                } catch (e) {
+                    console.warn('Marked parse error in driving mode:', e);
+                }
+            }
+            let text = md.replace(/\r\n/g, '\n');
+            text = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            text = text.replace(/^#### (.*$)/gim, '<h4>$1</h4>');
+            text = text.replace(/^### (.*$)/gim, '<h3>$1</h3>');
+            text = text.replace(/^## (.*$)/gim, '<h2>$1</h2>');
+            text = text.replace(/^# (.*$)/gim, '<h1>$1</h1>');
+            text = text.replace(/\\*\\*([^*]+)\\*\\*/g, '<strong>$1</strong>');
+            text = text.replace(/\\*([^*]+)\\*/g, '<em>$1</em>');
+            text = text.replace(/^> (.*$)/gim, '<blockquote>$1</blockquote>');
+            text = text.replace(/^[ \t]*[-*][ \t]+(.*$)/gim, '<li>$1</li>');
+            const paras = text.split(/\n{2,}/);
+            return paras.map(p => {
+                p = p.trim();
+                if (/^<(h[1-6]|ul|ol|blockquote|pre|li)/.test(p)) return p;
+                return `<p>${p.replace(/\n/g, '<br>')}</p>`;
+            }).join('\n');
+        }
+
+        function renderDrivingAnalysis(rawMarkdown, trackInfo) {
+            const container = document.getElementById('driving-analysis-body');
+            const badge = document.getElementById('driving-analysis-track-badge');
+            if (!container) return;
+            if (badge && trackInfo) {
+                badge.textContent = `${trackInfo.artist || ''} — ${trackInfo.name || trackInfo.song || ''}`;
+            }
+            if (!rawMarkdown || !rawMarkdown.trim()) {
+                const sName = trackInfo ? (trackInfo.name || trackInfo.song || 'current track') : 'current track';
+                container.innerHTML = `<div style="text-align: center; padding: 36px 20px; color: #A5C8FF; font-size: 1.25rem;">⏳ Fetching lyrics and analyzing themes for <strong>${spotifyTimelineEscape(sName)}</strong>...</div>`;
+                return;
+            }
+            container.innerHTML = parseDrivingMarkdown(rawMarkdown);
+        }
+
+        function updateDrivingTrackUI(track, isPlaying) {
+            if (!track) return;
+            const titleEl = document.getElementById('driving-track-title');
+            const artistEl = document.getElementById('driving-track-artist');
+            const albumEl = document.getElementById('driving-track-album');
+            const imgEl = document.getElementById('driving-track-img');
+            const progressEl = document.getElementById('driving-track-progress');
+            const timeEl = document.getElementById('driving-track-time');
+            const statusEl = document.getElementById('driving-track-status-text');
+
+            if (titleEl) {
+                titleEl.textContent = track.name || 'Unknown Track';
+                if (track.spotify_url) titleEl.href = track.spotify_url;
+            }
+            if (artistEl) {
+                artistEl.textContent = track.artist || 'Unknown Artist';
+                artistEl.href = `/artist?artist=${encodeURIComponent(track.artist || '')}`;
+            }
+            if (albumEl) {
+                albumEl.textContent = track.album ? ` • ${track.album}` : '';
+            }
+            if (imgEl && track.album_image) {
+                imgEl.src = track.album_image;
+                imgEl.alt = track.name || 'Track';
+            }
+            if (progressEl && track.progress_percent !== undefined) {
+                progressEl.style.width = `${track.progress_percent}%`;
+            }
+            if (timeEl && track.progress_formatted) {
+                timeEl.textContent = `${track.progress_formatted} / ${track.duration_formatted || '0:00'}`;
+            }
+            if (statusEl) {
+                statusEl.textContent = isPlaying ? 'Currently Playing' : 'Latest Track';
+            }
+        }
+
+        async function refreshDrivingState() {
+            if (isDrivingRefreshing) return;
+            isDrivingRefreshing = true;
+            const btn = document.getElementById('btn-driving-refresh-now');
+            if (btn) btn.innerHTML = '⏳ Refreshing...';
+
+            try {
+                const isDemo = new URLSearchParams(window.location.search).get('demo') === '1';
+                const url = `/api/spotify/driving-state${isDemo ? '?demo=1' : ''}`;
+                const res = await fetch(url);
+                const data = await res.json();
+
+                if (data && data.track) {
+                    updateDrivingTrackUI(data.track, data.playing);
+                    const newKey = `${data.track.artist || ''}:::${data.track.name || ''}`;
+                    if (newKey !== currentDrivingTrackKey || !document.getElementById('driving-analysis-body')?.textContent?.trim()) {
+                        currentDrivingTrackKey = newKey;
+                        const rawAnalysis = (data.analysis && data.analysis.analysis) ? data.analysis.analysis : (data.analysis || '');
+                        renderDrivingAnalysis(rawAnalysis, data.track);
+                    }
+                }
+            } catch (err) {
+                console.error('Driving state refresh error:', err);
+            } finally {
+                isDrivingRefreshing = false;
+                if (btn) btn.innerHTML = '🔄 Refresh Now';
+            }
+        }
+
+        function refreshDrivingStateNow() {
+            drivingCountdown = 30;
+            updateDrivingTimerUI();
+            refreshDrivingState();
+        }
+
+        function updateDrivingTimerUI() {
+            const textEl = document.getElementById('driving-timer-text');
+            const barEl = document.getElementById('driving-timer-progress');
+            if (textEl) textEl.textContent = `Refreshes in ${drivingCountdown}s`;
+            if (barEl) {
+                const pct = Math.max(0, Math.min(100, (drivingCountdown / 30) * 100));
+                barEl.style.width = `${pct}%`;
+            }
+        }
+
+        function startDrivingRefreshLoop() {
+            drivingCountdown = 30;
+            updateDrivingTimerUI();
+            if (drivingTimerInterval) clearInterval(drivingTimerInterval);
+            drivingTimerInterval = setInterval(() => {
+                drivingCountdown--;
+                if (drivingCountdown <= 0) {
+                    drivingCountdown = 30;
+                    refreshDrivingState();
+                }
+                updateDrivingTimerUI();
+            }, 1000);
+        }
+
+        function initDrivingMode() {
+            const drivingCard = document.getElementById('driving-analysis-card');
+            if (!drivingCard) return;
+
+            requestDrivingWakeLock();
+
+            document.addEventListener('visibilitychange', async () => {
+                if (document.visibilityState === 'visible') {
+                    await requestDrivingWakeLock();
+                }
+            });
+            document.addEventListener('touchstart', async () => {
+                if (!drivingWakeLock) await requestDrivingWakeLock();
+            }, { once: true, passive: true });
+
+            const rawEl = document.getElementById('driving-analysis-raw');
+            const rawText = rawEl ? (rawEl.textContent || '') : '';
+            renderDrivingAnalysis(rawText, null);
+
+            startDrivingRefreshLoop();
+        }
+
         document.addEventListener('DOMContentLoaded', () => {
             updateEnrichmentBadge();
+            initDrivingMode();
         });
     </script>
 </body>
@@ -11887,6 +12266,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         if parsed.path == '/spotify':
             params = urllib.parse.parse_qs(parsed.query)
             demo_mode = params.get('demo', ['0'])[0] == '1'
+            driving_mode = params.get('driving', ['0'])[0] == '1'
             msg = params.get('msg', [''])[0]
             err = params.get('error', [''])[0]
             if params.get('connected', ['0'])[0] == '1':
@@ -11902,7 +12282,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 page_val = max(1, int(page_str))
             except (ValueError, TypeError):
                 page_val = 1
-            self.render_spotify_page(demo=demo_mode, message=msg, refresh=refresh, search_query=search_query, page=page_val)
+            self.render_spotify_page(demo=demo_mode, message=msg, refresh=refresh, search_query=search_query, page=page_val, driving=driving_mode)
             return
 
         if parsed.path == '/auth/spotify':
@@ -11919,6 +12299,10 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
 
         if parsed.path == '/api/spotify/history':
             self.handle_api_spotify_history(parsed.query)
+            return
+
+        if parsed.path == '/api/spotify/driving-state':
+            self.handle_api_spotify_driving_state(parsed.query)
             return
 
         if parsed.path == '/api/spotify/now-playing':
@@ -15049,6 +15433,71 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(json.dumps(payload).encode('utf-8'))
 
+    def handle_api_spotify_driving_state(self, query_string: str = ''):
+        current_user = self.get_current_user()
+        if not current_user:
+            self.send_response(401)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(json.dumps({'error': 'Unauthorized'}).encode('utf-8'))
+            return
+
+        params = urllib.parse.parse_qs(query_string)
+        is_demo = params.get('demo', ['0'])[0] == '1'
+
+        active_track = None
+        is_playing = False
+        is_connected = False
+
+        if is_demo:
+            _, sample_tracks, _ = spotify.get_demo_sample_data()
+            if sample_tracks:
+                active_track = sample_tracks[0]
+                is_playing = True
+                is_connected = True
+        else:
+            token_rec = database.get_spotify_token(current_user['email'])
+            if token_rec:
+                access_token = spotify.get_valid_access_token(current_user['email'])
+                if access_token:
+                    is_connected = True
+                    try:
+                        now_playing = spotify.fetch_currently_playing(access_token)
+                        if now_playing:
+                            active_track = now_playing
+                            is_playing = True
+                        else:
+                            recent = spotify.fetch_recently_played(access_token, limit=1)
+                            if recent:
+                                active_track = recent[0]
+                    except Exception as e:
+                        print(f"Driving state fetch error: {e}")
+
+            if not active_track:
+                saved = database.get_spotify_history(current_user['email'], limit=1)
+                if saved:
+                    active_track = saved[0]
+
+        analysis_payload = None
+        if active_track:
+            artist = active_track.get('artist', '')
+            name = active_track.get('name', '')
+            if artist and name:
+                analysis_payload = ensure_song_lyrics_and_analysis(artist, name)
+
+        payload = {
+            'success': True,
+            'connected': is_connected,
+            'playing': is_playing,
+            'demo': is_demo,
+            'track': active_track,
+            'analysis': analysis_payload
+        }
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/json; charset=utf-8')
+        self.end_headers()
+        self.wfile.write(json.dumps(payload).encode('utf-8'))
+
     def handle_api_spotify_now_playing(self):
         current_user = self.get_current_user()
         if not current_user:
@@ -15353,7 +15802,8 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         message: str = '',
         refresh: bool = False,
         search_query: str = '',
-        page: int = 1
+        page: int = 1,
+        driving: bool = False
     ):
         current_user = self.get_current_user()
         if not current_user:
@@ -15440,6 +15890,13 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
 
         # 1. Top Bar Actions
         top_actions = []
+        if driving:
+            exit_driving_href = f"/spotify{'?demo=1' if is_demo else ''}"
+            top_actions.append(f'<a href="{exit_driving_href}" class="pill-btn secondary" style="font-size: 0.84rem; padding: 6px 14px; text-decoration: none; border-color: rgba(239, 68, 68, 0.4); color: #FCA5A5;">🚪 Exit Driving Mode</a>')
+        else:
+            driving_href = f"/spotify?driving=1{'&demo=1' if is_demo else ''}"
+            top_actions.append(f'<a href="{driving_href}" class="spotify-green-btn" style="font-size: 0.84rem; padding: 6px 16px;" id="btn-enter-driving-mode">🚗 Driving Mode</a>')
+
         if is_demo:
             top_actions.append('<a href="/spotify" class="pill-btn secondary" style="font-size: 0.84rem; padding: 6px 14px; text-decoration: none;">Exit Demo</a>')
             if is_configured:
@@ -15597,6 +16054,9 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                     <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
                         <a href="{analyze_link}" class="pill-btn primary" style="font-size: 0.82rem; padding: 8px 16px; text-decoration: none;" title="Fetch lyrics and launch Gemini thematic analysis">
                             ✨ Analyze Lyrics
+                        </a>
+                        <a href="{f'/spotify?driving=1&demo=1' if is_demo else '/spotify?driving=1'}" class="pill-btn secondary" style="font-size: 0.82rem; padding: 8px 14px; text-decoration: none; border-color: rgba(56, 189, 248, 0.4); color: #7DD3FC;" title="Launch Driving Mode with Screen Keep-Awake and Auto-Analysis">
+                            🚗 Driving Mode
                         </a>
                         <a href="{artist_link}" class="pill-btn secondary" style="font-size: 0.82rem; padding: 8px 14px; text-decoration: none;">
                             👤 Artist Intel
@@ -16288,6 +16748,114 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
         </div>
         '''
 
+        # Build Driving Mode Components if active
+        driving_mode_html = ''
+        if driving:
+            d_track = now_playing
+            if not d_track and history_tracks:
+                d_track = history_tracks[0]
+            elif not d_track and tracks:
+                d_track = tracks[0]
+
+            d_title = html_escape(d_track.get('name') or 'Unknown Track') if d_track else 'No Track Active'
+            d_artist = html_escape(d_track.get('artist') or 'Unknown Artist') if d_track else 'Spotify'
+            d_album = html_escape(d_track.get('album') or '') if d_track else ''
+            d_img = html_escape(d_track.get('album_image') or '') if d_track else ''
+            d_url = html_escape(d_track.get('spotify_url') or '') if d_track else ''
+            d_prog_fmt = html_escape(d_track.get('progress_formatted') or '0:00') if d_track else '0:00'
+            d_dur_fmt = html_escape(d_track.get('duration_formatted') or '0:00') if d_track else '0:00'
+            d_pct = d_track.get('progress_percent') or 0 if d_track else 0
+            d_artist_link = f'/artist?artist={urllib.parse.quote(d_track.get("artist") or "")}' if d_track else '#'
+
+            d_img_el = f'<img id="driving-track-img" src="{d_img}" alt="{d_title}" style="width: 88px; height: 88px; border-radius: 12px; object-fit: cover; border: 2px solid rgba(56, 189, 248, 0.4); flex-shrink: 0;">' if d_img else '<div style="width: 88px; height: 88px; border-radius: 12px; background: rgba(14, 38, 80, 0.6); display: flex; align-items: center; justify-content: center; font-size: 2rem; flex-shrink: 0;">🎵</div>'
+
+            # Auto-analyze lyrics for current driving track
+            raw_analysis = ''
+            if d_track and d_track.get('artist') and d_track.get('name'):
+                analysis_info = ensure_song_lyrics_and_analysis(d_track.get('artist'), d_track.get('name'))
+                raw_analysis = analysis_info.get('analysis') or ''
+
+            exit_driving_url = f"/spotify{'?demo=1' if is_demo else ''}"
+            playing_badge_text = 'Currently Playing' if now_playing else 'Latest Track'
+
+            driving_mode_html = f'''
+            <div class="driving-mode-banner">
+                <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-size: 1.5rem;">🚗</span>
+                        <span style="font-family: \'Montserrat\', sans-serif; font-size: 1.15rem; font-weight: 900; color: #FFFFFF; letter-spacing: 0.02em;">Driving Mode Active</span>
+                    </div>
+                    <span id="driving-wakelock-status" class="driving-status-pill">☀️ Screen Awake Active</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                    <div class="driving-timer-wrap">
+                        <div class="driving-timer-bar">
+                            <div id="driving-timer-progress" class="driving-timer-progress"></div>
+                        </div>
+                        <span id="driving-timer-text" class="driving-timer-text">Refreshes in 30s</span>
+                    </div>
+                    <button type="button" id="btn-driving-refresh-now" class="pill-btn secondary" onclick="refreshDrivingStateNow()" style="font-size: 0.82rem; padding: 6px 14px; cursor: pointer;" title="Refresh track & lyrics analysis immediately">🔄 Refresh Now</button>
+                    <a href="{exit_driving_url}" class="pill-btn secondary" style="font-size: 0.82rem; padding: 6px 14px; text-decoration: none; border-color: rgba(239, 68, 68, 0.4); color: #FCA5A5;">✕ Exit</a>
+                </div>
+            </div>
+
+            <div class="spotify-now-playing-card" style="border-color: rgba(56, 189, 248, 0.5); background: linear-gradient(135deg, rgba(8, 28, 56, 0.94) 0%, rgba(4, 16, 36, 0.98) 100%); box-shadow: 0 0 25px rgba(56, 189, 248, 0.18), 0 12px 32px rgba(0, 0, 0, 0.55);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <div class="spotify-equalizer">
+                            <div class="eq-bar" style="background: #38BDF8;"></div>
+                            <div class="eq-bar" style="background: #38BDF8;"></div>
+                            <div class="eq-bar" style="background: #38BDF8;"></div>
+                            <div class="eq-bar" style="background: #38BDF8;"></div>
+                        </div>
+                        <span id="driving-track-status-text" style="font-family: \'Montserrat\', sans-serif; font-size: 0.82rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: #38BDF8;">{playing_badge_text}</span>
+                    </div>
+                    <div id="driving-track-time" style="font-size: 0.85rem; color: #BAE6FD; font-weight: 700;">{d_prog_fmt} / {d_dur_fmt}</div>
+                </div>
+
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 18px; flex-wrap: wrap;">
+                    <div style="display: flex; align-items: center; gap: 16px; min-width: 0; flex: 1;">
+                        {d_img_el}
+                        <div style="min-width: 0; flex: 1;">
+                            <div style="font-size: 1.55rem; font-weight: 900; color: #FFFFFF; font-family: \'Montserrat\', sans-serif; line-height: 1.25; word-break: break-word;">
+                                <a id="driving-track-title" href="{d_url or '#'}" target="_blank" rel="noopener noreferrer" style="color: #FFFFFF; text-decoration: none;" title="Open in Spotify">{d_title}</a>
+                            </div>
+                            <div style="font-size: 1.15rem; color: #A5C8FF; margin-top: 4px; font-weight: 600;">
+                                <a id="driving-track-artist" href="{d_artist_link}" style="color: #A5C8FF; text-decoration: none;" title="View Artist Profile">{d_artist}</a>
+                                <span id="driving-track-album" style="color: rgba(225, 232, 240, 0.6); font-size: 0.95rem;">{f' &bull; {d_album}' if d_album else ''}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                        <a href="{f'/?artist={urllib.parse.quote(d_track.get("artist") or "")}&song={urllib.parse.quote(d_track.get("name") or "")}&auto_analyze=1' if d_track else '#'}" class="pill-btn primary" style="font-size: 0.84rem; padding: 8px 16px; text-decoration: none;" title="Open in Calling Hours Song Reader">📖 Full Workspace</a>
+                        {f'<a href="{d_url}" target="_blank" rel="noopener noreferrer" class="pill-btn secondary" style="font-size: 0.84rem; padding: 8px 14px; text-decoration: none; border-color: rgba(29, 185, 84, 0.4); color: #6EE7B7;">🎧 Spotify</a>' if d_url else ''}
+                    </div>
+                </div>
+
+                <div style="width: 100%; height: 5px; background: rgba(255, 255, 255, 0.1); border-radius: 3px; margin-top: 16px; overflow: hidden;">
+                    <div id="driving-track-progress" style="width: {d_pct}%; height: 100%; background: linear-gradient(90deg, #38BDF8, #60A5FA); border-radius: 3px; transition: width 0.4s ease;"></div>
+                </div>
+            </div>
+
+            <!-- Driving Mode Large-Font Lyric Analysis Card -->
+            <div id="driving-analysis-card" class="driving-analysis-card">
+                <div class="driving-analysis-header">
+                    <div class="driving-analysis-title">
+                        <span>✨ Lyric Thematic Analysis</span>
+                        <span id="driving-analysis-track-badge" style="font-size: 1.05rem; font-weight: 700; color: #A5C8FF; margin-left: 6px;">{d_artist} — {d_title}</span>
+                    </div>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <span id="driving-analysis-status-pill" class="pill-btn secondary" style="font-size: 0.78rem; padding: 4px 12px; border-color: rgba(110, 231, 183, 0.35); color: #6EE7B7; font-weight: 700;">✦ Gemini Poetic Intelligence</span>
+                    </div>
+                </div>
+                <pre id="driving-analysis-raw" style="display: none;">{html_escape(raw_analysis)}</pre>
+                <div id="driving-analysis-body" class="driving-analysis-body">
+                    <!-- Populated dynamically by renderDrivingAnalysis() -->
+                </div>
+            </div>
+            '''
+
         # Full Page Assembly
         full_content = f'''
         <div class="spotify-top-bar">
@@ -16302,13 +16870,14 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             {top_actions_html}
         </div>
 
+        {driving_mode_html if driving else ''}
         {message_banner_html}
-        {state_card_html}
-        {now_playing_html}
-        {analytics_grid_html if (is_connected or is_demo or has_history) else ''}
-        {timeline_html if (has_history and not is_demo) else ''}
-        {slicer_html if (is_connected or is_demo or has_history) else ''}
-        {history_feed_html if (is_connected or is_demo or has_history) else ''}
+        {state_card_html if not driving else ''}
+        {now_playing_html if not driving else ''}
+        {analytics_grid_html if ((is_connected or is_demo or has_history) and not driving) else ''}
+        {timeline_html if (has_history and not is_demo and not driving) else ''}
+        {slicer_html if ((is_connected or is_demo or has_history) and not driving) else ''}
+        {history_feed_html if ((is_connected or is_demo or has_history) and not driving) else ''}
         '''
 
         content = SPOTIFY_PAGE_HTML.replace('{app_header}', build_app_header('spotify', user=current_user))\
@@ -19288,6 +19857,114 @@ def fetch_genius_lyrics(song_url: str) -> str | None:
         return text.strip()
 
     return None
+
+
+def ensure_song_lyrics_and_analysis(artist: str, song: str) -> Dict[str, Any]:
+    """Ensure lyrics and Gemini lyric analysis exist for the given track, fetching and analyzing if necessary."""
+    artist = (artist or '').strip()
+    song = (song or '').strip()
+    if not artist or not song:
+        return {'artist': artist, 'song': song, 'lyrics': '', 'analysis': '', 'source': 'None', 'cached': False}
+
+    # 1. Check existing search in database
+    rec = None
+    try:
+        rec = database.get_search(artist, song)
+    except Exception as e:
+        print(f"ensure_song_lyrics_and_analysis: get_search error: {e}")
+
+    lyrics = (rec.get('lyrics') or '') if rec else ''
+    analysis = (rec.get('analysis') or '') if rec else ''
+    source = (rec.get('source') or 'Database') if rec else 'Database'
+    model_name = (rec.get('model_name') or DEFAULT_GEMINI_MODEL) if rec else DEFAULT_GEMINI_MODEL
+    song_url = rec.get('song_url') if rec else None
+    track_tags = rec.get('track_tags') if rec else []
+    theaudiodb_data = rec.get('theaudiodb_data') if rec else None
+
+    # 2. If analysis not in search record, check saved analyses
+    if not analysis:
+        try:
+            cached_analysis_rec = database.get_analysis(artist, song, prompt_name="Default Analysis")
+            if cached_analysis_rec and cached_analysis_rec.get('analysis'):
+                analysis = cached_analysis_rec['analysis']
+                if not lyrics and cached_analysis_rec.get('lyrics'):
+                    lyrics = cached_analysis_rec['lyrics']
+        except Exception as e:
+            print(f"ensure_song_lyrics_and_analysis: get_analysis error: {e}")
+
+    # 3. If lyrics still missing, fetch online
+    if not lyrics or not lyrics.strip():
+        # Try Genius
+        if ACCESS_TOKEN or (GENIUS_CLIENT_ID and GENIUS_CLIENT_SECRET):
+            try:
+                g_info = search_genius_song_details(artist, song)
+                if g_info and g_info.get('url'):
+                    song_url = g_info.get('url')
+                    fetched_lyrics = fetch_genius_lyrics(song_url)
+                    if fetched_lyrics and fetched_lyrics.strip():
+                        lyrics = fetched_lyrics.strip()
+                        source = 'Genius'
+            except Exception as ge:
+                print(f"ensure_song_lyrics_and_analysis: Genius fetch error: {ge}")
+
+        # Fallback to LRCLIB
+        if not lyrics or not lyrics.strip():
+            try:
+                lrc_lyrics = fetch_lrclib_lyrics(artist=artist, song=song)
+                if lrc_lyrics and lrc_lyrics.strip():
+                    lyrics = lrc_lyrics.strip()
+                    source = 'LRCLIB'
+            except Exception as le:
+                print(f"ensure_song_lyrics_and_analysis: LRCLIB fetch error: {le}")
+
+        # Save fetched search to database if lyrics found
+        if lyrics and lyrics.strip():
+            try:
+                database.save_search(
+                    artist=artist,
+                    song=song,
+                    lyrics=lyrics,
+                    source=source or 'Online',
+                    song_url=song_url,
+                    track_tags=track_tags or [],
+                    theaudiodb_data=theaudiodb_data
+                )
+            except Exception as se:
+                print(f"ensure_song_lyrics_and_analysis: save_search error: {se}")
+
+    # 4. If lyrics available and no analysis yet, run Gemini
+    if lyrics and not analysis:
+        if GEMINI_API_KEY:
+            try:
+                prompts = load_prompts()
+                p_template = prompts[0]['text'] if prompts else "Analyze lyrics:\n{lyrics_text}"
+                p_text = p_template.replace('{song}', song).replace('{artist}', artist).replace('{lyrics_text}', html.unescape(lyrics))
+                client = get_gemini_client()
+                if client:
+                    inter = client.interactions.create(model=model_name or DEFAULT_GEMINI_MODEL, input=p_text)
+                    analysis = inter.output_text or ''
+                    database.save_analysis(
+                        artist=artist,
+                        song=song,
+                        analysis=analysis,
+                        model_name=model_name or DEFAULT_GEMINI_MODEL,
+                        prompt_name="Default Analysis",
+                        prompt_text=p_template,
+                        lyrics=lyrics,
+                        track_tags=track_tags or [],
+                        theaudiodb_data=theaudiodb_data
+                    )
+            except Exception as ae:
+                print(f"ensure_song_lyrics_and_analysis: Gemini analysis error: {ae}")
+
+    return {
+        'artist': artist,
+        'song': song,
+        'lyrics': lyrics,
+        'analysis': analysis,
+        'source': source,
+        'cached': bool(analysis)
+    }
 
 def run_server():
     global SERVER_PORT

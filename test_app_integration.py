@@ -1069,10 +1069,35 @@ class TestAppIntegration(unittest.TestCase):
             self.assertIn('Jimmy Eat World', html)
             self.assertIn('Slowdive', html)
             self.assertIn('When You Listen', html)
-            self.assertIn('Day of Week Rhythm', html)
-            self.assertIn('Year-Over-Year Listening Volume', html)
+            self.assertIn('Day of Week', html)
             self.assertIn('Listening History Archive', html)
             self.assertIn('Analyze Lyrics', html)
+            self.assertIn('🚗 Driving Mode', html)
+
+        # 3b. Verify Driving Mode in Spotify Hub (/spotify?demo=1&driving=1)
+        with self.authed_get("/spotify?demo=1&driving=1") as resp:
+            self.assertEqual(resp.status, 200)
+            html = resp.read().decode('utf-8')
+            self.assertIn('Driving Mode Active', html)
+            self.assertIn('id="driving-wakelock-status"', html)
+            self.assertIn('navigator.wakeLock', html)
+            self.assertIn('id="driving-timer-progress"', html)
+            self.assertIn('id="driving-timer-text"', html)
+            self.assertIn('Refreshes in 30s', html)
+            self.assertIn('id="driving-analysis-card"', html)
+            self.assertIn('class="driving-analysis-body"', html)
+            self.assertIn('Exit Driving Mode', html)
+
+        # 3c. Verify /api/spotify/driving-state in demo mode
+        with self.authed_get("/api/spotify/driving-state?demo=1") as resp:
+            self.assertEqual(resp.status, 200)
+            data = json.loads(resp.read().decode('utf-8'))
+            self.assertTrue(data.get('success'))
+            self.assertTrue(data.get('demo'))
+            self.assertIn('track', data)
+            self.assertEqual(data['track']['name'], 'Bleed American')
+            self.assertEqual(data['track']['artist'], 'Jimmy Eat World')
+            self.assertIn('analysis', data)
 
         # 4. Verify API status endpoint
         with self.authed_get("/api/spotify/status") as resp:
@@ -1888,9 +1913,10 @@ class TestAppIntegration(unittest.TestCase):
         with self.authed_get("/") as resp:
             self.assertEqual(resp.status, 200)
             html = resp.read().decode('utf-8')
-            # 4 primary mobile tabs
+            # Primary mobile tabs in bottom menu
             self.assertIn('id="mobile-nav-link-song"', html)
             self.assertIn('id="mobile-nav-link-artist"', html)
+            self.assertIn('id="mobile-nav-link-spotify"', html)
             self.assertIn('id="mobile-nav-link-library"', html)
             self.assertIn('id="mobile-nav-link-more"', html)
             # Active state on /
@@ -1904,7 +1930,7 @@ class TestAppIntegration(unittest.TestCase):
             # More sheet launcher items
             self.assertIn('id="mobile-nav-link-ratings"', html)
             self.assertIn('id="mobile-nav-link-playlists"', html)
-            self.assertIn('id="mobile-nav-link-spotify"', html)
+            self.assertIn('id="mobile-nav-link-sheet-spotify"', html)
             self.assertIn('id="mobile-nav-link-history"', html)
             self.assertIn('id="mobile-nav-link-prompts"', html)
             self.assertIn('id="mobile-nav-link-admin"', html)
@@ -1927,12 +1953,12 @@ class TestAppIntegration(unittest.TestCase):
             self.assertIn('class="library-subnav-bar"', html)
             self.assertIn('class="app-bottom-nav-link active" id="mobile-nav-link-library"', html)
 
-        # 4. Verify /spotify has library subnav and highlights Library tab
+        # 4. Verify /spotify has library subnav and highlights Spotify tab in bottom menu
         with self.authed_get("/spotify") as resp:
             self.assertEqual(resp.status, 200)
             html = resp.read().decode('utf-8')
             self.assertIn('class="library-subnav-bar"', html)
-            self.assertIn('class="app-bottom-nav-link active" id="mobile-nav-link-library"', html)
+            self.assertIn('class="app-bottom-nav-link active" id="mobile-nav-link-spotify"', html)
 
         # 5. Verify /history highlights More tab in bottom nav and History in More sheet
         with self.authed_get("/history") as resp:
