@@ -692,6 +692,62 @@ class TestSpotify(unittest.TestCase):
         self.assertEqual(mock_create.call_count, 2)
         mock_token.assert_called_with("user@example.com", force_refresh=True)
 
+    def test_clean_spotify_track_title(self):
+        from calling_hours import clean_spotify_track_title
+        self.assertEqual(clean_spotify_track_title("Bohemian Rhapsody - Remastered 2011"), "Bohemian Rhapsody")
+        self.assertEqual(clean_spotify_track_title("Hotel California - 2013 Remaster"), "Hotel California")
+        self.assertEqual(clean_spotify_track_title("In The End (feat. Chester Bennington)"), "In The End")
+        self.assertEqual(clean_spotify_track_title("Comfortably Numb - Live at Pompeii"), "Comfortably Numb")
+        self.assertEqual(clean_spotify_track_title("Smells Like Teen Spirit (Deluxe Edition)"), "Smells Like Teen Spirit")
+        self.assertEqual(clean_spotify_track_title("Midnight City (Radio Edit)"), "Midnight City")
+        self.assertEqual(clean_spotify_track_title("Sweetness"), "Sweetness")
+
+    @patch("calling_hours.get_gemini_client")
+    @patch("calling_hours.fetch_genius_lyrics")
+    @patch("calling_hours.search_genius_song_details")
+    @patch("calling_hours.fetch_lrclib_lyrics")
+    def test_ensure_song_lyrics_and_analysis_cached_and_fallback(
+        self, mock_lrclib, mock_genius_search, mock_genius_lyrics, mock_gemini
+    ):
+        from calling_hours import ensure_song_lyrics_and_analysis
+
+        # 1. When analysis is already saved in database for cleaned title
+        database.save_analysis(
+            artist="Queen",
+            song="Bohemian Rhapsody",
+            analysis="## 1. Core Meaning & Themes\nA masterpiece of rock and opera.",
+            model_name="gemini-3.8-flash",
+            prompt_name="Default Analysis",
+            prompt_text="Analyze lyrics...",
+            lyrics="Is this the real life?",
+            db_path=self.db_path
+        )
+
+        res = ensure_song_lyrics_and_analysis("Queen", "Bohemian Rhapsody - Remastered 2011", db_path=self.db_path)
+        self.assertEqual(res["artist"], "Queen")
+        self.assertIn("masterpiece of rock and opera", res["analysis"])
+        self.assertTrue(res["cached"])
+
+        # 2. When lyrics missing online, Gemini direct analysis fallback is triggered
+        mock_genius_search.return_value = None
+        mock_genius_lyrics.return_value = None
+        mock_lrclib.return_value = None
+
+        mock_client = MagicMock()
+        mock_inter = MagicMock()
+        mock_inter.output_text = "## 1. Core Meaning & Themes\nPoetic breakdown of an unknown rare song."
+        mock_client.interactions.create.return_value = mock_inter
+        mock_gemini.return_value = mock_client
+
+        res2 = ensure_song_lyrics_and_analysis("Indie Band", "Obscure B-Side (Live)", db_path=self.db_path)
+        self.assertEqual(res2["artist"], "Indie Band")
+        self.assertIn("Poetic breakdown of an unknown rare song", res2["analysis"])
+        self.assertTrue(mock_client.interactions.create.called)
+        # Verify it was saved to DB
+        saved = database.get_analysis("Indie Band", "Obscure B-Side (Live)", prompt_name=None, db_path=self.db_path)
+        self.assertIsNotNone(saved)
+        self.assertIn("Poetic breakdown", saved["analysis"])
+
 
 if __name__ == "__main__":
     unittest.main()

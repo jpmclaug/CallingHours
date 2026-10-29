@@ -1078,15 +1078,24 @@ class TestAppIntegration(unittest.TestCase):
         with self.authed_get("/spotify?demo=1&driving=1") as resp:
             self.assertEqual(resp.status, 200)
             html = resp.read().decode('utf-8')
-            self.assertIn('Driving Mode Active', html)
+            self.assertIn('Driving Mode', html)
+            self.assertIn('Screen Awake Active', html)
             self.assertIn('id="driving-wakelock-status"', html)
             self.assertIn('navigator.wakeLock', html)
             self.assertIn('id="driving-timer-progress"', html)
             self.assertIn('id="driving-timer-text"', html)
             self.assertIn('Refreshes in 30s', html)
-            self.assertIn('id="driving-analysis-card"', html)
-            self.assertIn('class="driving-analysis-body"', html)
-            self.assertIn('Exit Driving Mode', html)
+            self.assertIn('id="driving-viewport"', html)
+            self.assertIn('id="driving-slides-track"', html)
+            self.assertIn('id="driving-slide-track"', html)
+            self.assertIn('id="driving-slide-analysis"', html)
+            self.assertIn('id="driving-tab-track"', html)
+            self.assertIn('id="driving-tab-analysis"', html)
+            self.assertIn('switchDrivingSlide', html)
+            self.assertIn('id="driving-swipe-cta"', html)
+            self.assertIn('id="driving-analysis-body"', html)
+            self.assertIn('adjustDrivingFontSize', html)
+            self.assertIn('Exit', html)
 
         # 3c. Verify /api/spotify/driving-state in demo mode
         with self.authed_get("/api/spotify/driving-state?demo=1") as resp:
