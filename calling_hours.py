@@ -14,6 +14,7 @@ import json
 import secrets
 import difflib
 import gzip
+import unicodedata
 from datetime import datetime, timezone
 from typing import Any, Optional, Dict, List, Set
 from collections import Counter
@@ -7303,35 +7304,45 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
         }
 
         /* Slide Navigation Tabs (Equal 50/50 Full-Width Segmented Switch) */
+        @keyframes drivingPulse {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.14); opacity: 0.85; }
+        }
         .driving-slide-tabs {
             display: flex;
             width: 100%;
-            background: rgba(6, 16, 36, 0.85);
+            max-width: 100%;
+            background: rgba(6, 16, 36, 0.9);
             padding: 4px;
             border-radius: 14px;
-            border: 1px solid rgba(56, 189, 248, 0.28);
+            border: 1px solid rgba(56, 189, 248, 0.35);
             box-sizing: border-box;
-            gap: 4px;
+            gap: 6px;
+            overflow: hidden;
         }
         .driving-slide-tab {
-            flex: 1 1 50%;
+            flex: 1 1 0%;
+            min-width: 0;
+            width: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 8px;
-            padding: 10px 14px;
+            gap: 6px;
+            padding: 10px 6px;
             border-radius: 10px;
             border: none;
             background: transparent;
             color: #94A3B8;
-            font-family: 'Montserrat', sans-serif;
+            font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             font-weight: 700;
-            font-size: clamp(0.82rem, 3.2vw, 0.95rem);
+            font-size: clamp(0.78rem, 3.4vw, 0.95rem);
             cursor: pointer;
             transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
             white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
             text-align: center;
-            min-height: 42px;
+            min-height: 44px;
             box-sizing: border-box;
         }
         .driving-slide-tab:hover {
@@ -7342,6 +7353,29 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             color: #020617;
             font-weight: 900;
             box-shadow: 0 2px 12px rgba(56, 189, 248, 0.45);
+        }
+        .driving-tab-label-short {
+            display: none;
+        }
+        .driving-tab-label-full {
+            display: inline;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        @media (max-width: 440px) {
+            .driving-tab-label-full {
+                display: none;
+            }
+            .driving-tab-label-short {
+                display: inline;
+                font-weight: 800;
+                letter-spacing: 0.3px;
+            }
+            .driving-slide-tab {
+                padding: 10px 4px;
+                font-size: 0.88rem;
+            }
         }
 
         /* Auto-Refresh Timer Bar */
@@ -12506,6 +12540,7 @@ _last_spotify_sync: Dict[str, float] = {}
 _syncing_spotify_users: Set[str] = set()
 _user_top_artists_cache: Dict[str, Tuple[float, List[Dict[str, Any]]]] = {}
 _active_analysis_workers: Set[str] = set()
+_spotify_driving_track_cache: Dict[str, Dict[str, Any]] = {}
 _analysis_worker_lock = threading.Lock()
 _spotify_sync_lock = threading.Lock()
 
@@ -16235,6 +16270,26 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
 
         params = urllib.parse.parse_qs(query_string)
         is_demo = params.get('demo', ['0'])[0] == '1'
+        check_analysis = params.get('check_analysis', ['0'])[0] == '1'
+        req_artist = (params.get('artist', [''])[0] or '').strip()
+        req_song = (params.get('song', [''])[0] or '').strip()
+
+        # If client specifically requested analysis check for a known track, bypass Spotify API check
+        if check_analysis and req_artist and req_song:
+            analysis_payload = ensure_song_lyrics_and_analysis(req_artist, req_song, only_cached=True)
+            has_res = bool(analysis_payload and analysis_payload.get('analysis'))
+            payload = {
+                'success': True,
+                'analysis_ready': has_res,
+                'analysis': analysis_payload,
+                'artist': req_artist,
+                'song': req_song
+            }
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(json.dumps(payload).encode('utf-8'))
+            return
 
         active_track = None
         is_playing = False
@@ -16247,27 +16302,42 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 is_playing = True
                 is_connected = True
         else:
-            token_rec = database.get_spotify_token(current_user['email'])
-            if token_rec:
-                access_token = spotify.get_valid_access_token(current_user['email'])
-                if access_token:
-                    is_connected = True
-                    try:
-                        now_playing = spotify.fetch_currently_playing(access_token)
-                        if now_playing:
-                            active_track = now_playing
-                            is_playing = True
-                        else:
-                            recent = spotify.fetch_recently_played(access_token, limit=1)
-                            if recent:
-                                active_track = recent[0]
-                    except Exception as e:
-                        print(f"Driving state fetch error: {e}")
+            cache_key = current_user['email'].lower()
+            now_ts = time.time()
+            cached_player = _spotify_driving_track_cache.get(cache_key)
+            if cached_player and (now_ts - cached_player.get('time', 0)) < 4.0:
+                active_track = cached_player.get('track')
+                is_playing = cached_player.get('is_playing', False)
+                is_connected = cached_player.get('is_connected', False)
+            else:
+                token_rec = database.get_spotify_token(current_user['email'])
+                if token_rec:
+                    access_token = spotify.get_valid_access_token(current_user['email'])
+                    if access_token:
+                        is_connected = True
+                        try:
+                            now_playing = spotify.fetch_currently_playing(access_token)
+                            if now_playing:
+                                active_track = now_playing
+                                is_playing = True
+                            else:
+                                recent = spotify.fetch_recently_played(access_token, limit=1)
+                                if recent:
+                                    active_track = recent[0]
+                        except Exception as e:
+                            print(f"Driving state fetch error: {e}")
 
-            if not active_track:
-                saved = database.get_spotify_history(current_user['email'], limit=1)
-                if saved:
-                    active_track = saved[0]
+                if not active_track:
+                    saved = database.get_spotify_history(current_user['email'], limit=1)
+                    if saved:
+                        active_track = saved[0]
+
+                _spotify_driving_track_cache[cache_key] = {
+                    'time': now_ts,
+                    'track': active_track,
+                    'is_playing': is_playing,
+                    'is_connected': is_connected
+                }
 
         analysis_payload = None
         if active_track:
@@ -17598,8 +17668,16 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
 
                     <!-- Slide Navigation Tabs (Equal 50/50 Full-Width Segmented Switch) -->
                     <div class="driving-slide-tabs" role="tablist">
-                        <button type="button" id="driving-tab-track" class="driving-slide-tab active" onclick="switchDrivingSlide(0)" role="tab" aria-selected="true">🎵 Current Track</button>
-                        <button type="button" id="driving-tab-analysis" class="driving-slide-tab" onclick="switchDrivingSlide(1)" role="tab" aria-selected="false">✨ Lyric Analysis</button>
+                        <button type="button" id="driving-tab-track" class="driving-slide-tab active" onclick="switchDrivingSlide(0)" role="tab" aria-selected="true">
+                            <span class="driving-tab-icon">🎵</span>
+                            <span class="driving-tab-label-full">Current Track</span>
+                            <span class="driving-tab-label-short">Track</span>
+                        </button>
+                        <button type="button" id="driving-tab-analysis" class="driving-slide-tab" onclick="switchDrivingSlide(1)" role="tab" aria-selected="false">
+                            <span class="driving-tab-icon">✨</span>
+                            <span class="driving-tab-label-full">Lyric Analysis</span>
+                            <span class="driving-tab-label-short">Analysis</span>
+                        </button>
                     </div>
 
                     <!-- Auto-Refresh Countdown Progress -->
@@ -20723,10 +20801,24 @@ def ensure_song_lyrics_and_analysis(artist: str, song: str, db_path: Optional[st
     if not artist or not song:
         return {'artist': artist, 'song': song, 'lyrics': '', 'analysis': '', 'source': 'None', 'cached': False}
 
+    def _strip_accents(s: str) -> str:
+        return ''.join(c for c in unicodedata.normalize('NFD', s) if unicodedata.category(c) != 'Mn')
+
     cleaned_song = clean_spotify_track_title(song)
     title_candidates = [song]
     if cleaned_song and cleaned_song.lower() != song.lower():
         title_candidates.append(cleaned_song)
+    stripped_song = _strip_accents(song)
+    if stripped_song and stripped_song.lower() not in [t.lower() for t in title_candidates]:
+        title_candidates.append(stripped_song)
+    stripped_cleaned = _strip_accents(cleaned_song)
+    if stripped_cleaned and stripped_cleaned.lower() not in [t.lower() for t in title_candidates]:
+        title_candidates.append(stripped_cleaned)
+
+    artist_candidates = [artist]
+    stripped_artist = _strip_accents(artist)
+    if stripped_artist and stripped_artist.lower() != artist.lower():
+        artist_candidates.append(stripped_artist)
 
     lyrics = ''
     analysis = ''
@@ -20736,42 +20828,66 @@ def ensure_song_lyrics_and_analysis(artist: str, song: str, db_path: Optional[st
     track_tags = []
     theaudiodb_data = None
 
-    # 1. Check existing searches and analyses in database for all candidates
-    for cand in title_candidates:
-        try:
-            rec = database.get_search(artist, cand, db_path=db_path)
-            if rec:
-                if not lyrics and rec.get('lyrics'):
-                    lyrics = rec.get('lyrics') or ''
-                    source = rec.get('source') or 'Database'
-                if not analysis and rec.get('analysis'):
-                    analysis = rec.get('analysis') or ''
-                if rec.get('model_name'):
-                    model_name = rec.get('model_name')
-                if rec.get('song_url'):
-                    song_url = rec.get('song_url')
-                if rec.get('track_tags'):
-                    track_tags = rec.get('track_tags')
-                if rec.get('theaudiodb_data'):
-                    theaudiodb_data = rec.get('theaudiodb_data')
-        except Exception as e:
-            print(f"ensure_song_lyrics_and_analysis: get_search error ({cand}): {e}")
-
-        # Check saved analyses table (checking without restricting prompt_name)
-        if not analysis:
+    # 1. Check existing searches and analyses in database for all candidate pairs
+    for cand_artist in artist_candidates:
+        for cand in title_candidates:
             try:
-                cached_analysis_rec = database.get_analysis(artist, cand, prompt_name=None, db_path=db_path)
-                if cached_analysis_rec and cached_analysis_rec.get('analysis'):
-                    analysis = cached_analysis_rec['analysis']
-                    if not lyrics and cached_analysis_rec.get('lyrics'):
-                        lyrics = cached_analysis_rec['lyrics']
-                    if cached_analysis_rec.get('model_name'):
-                        model_name = cached_analysis_rec['model_name']
+                rec = database.get_search(cand_artist, cand, db_path=db_path)
+                if rec:
+                    if not lyrics and rec.get('lyrics'):
+                        lyrics = rec.get('lyrics') or ''
+                        source = rec.get('source') or 'Database'
+                    if not analysis and rec.get('analysis'):
+                        analysis = rec.get('analysis') or ''
+                    if rec.get('model_name'):
+                        model_name = rec.get('model_name')
+                    if rec.get('song_url'):
+                        song_url = rec.get('song_url')
+                    if rec.get('track_tags'):
+                        track_tags = rec.get('track_tags')
+                    if rec.get('theaudiodb_data'):
+                        theaudiodb_data = rec.get('theaudiodb_data')
             except Exception as e:
-                print(f"ensure_song_lyrics_and_analysis: get_analysis error ({cand}): {e}")
+                print(f"ensure_song_lyrics_and_analysis: get_search error ({cand_artist} - {cand}): {e}")
 
+            # Check saved analyses table (checking without restricting prompt_name)
+            if not analysis:
+                try:
+                    cached_analysis_rec = database.get_analysis(cand_artist, cand, prompt_name=None, db_path=db_path)
+                    if cached_analysis_rec and cached_analysis_rec.get('analysis'):
+                        analysis = cached_analysis_rec['analysis']
+                        if not lyrics and cached_analysis_rec.get('lyrics'):
+                            lyrics = cached_analysis_rec['lyrics']
+                        if cached_analysis_rec.get('model_name'):
+                            model_name = cached_analysis_rec['model_name']
+                except Exception as e:
+                    print(f"ensure_song_lyrics_and_analysis: get_analysis error ({cand_artist} - {cand}): {e}")
+
+            if analysis:
+                break
         if analysis:
             break
+
+    # If no exact match, check if accent-stripped artist matches any analyzed band in database
+    if not analysis:
+        try:
+            analyzed_bands = database.get_analyzed_artists(db_path=db_path)
+            s_artist = _strip_accents(artist).lower()
+            matching_db_artists = [b.get('artist') for b in analyzed_bands if b.get('artist') and _strip_accents(b['artist']).lower() == s_artist and b['artist'] != artist]
+            for alt_art in matching_db_artists:
+                for cand in title_candidates:
+                    cached_analysis_rec = database.get_analysis(alt_art, cand, prompt_name=None, db_path=db_path)
+                    if cached_analysis_rec and cached_analysis_rec.get('analysis'):
+                        analysis = cached_analysis_rec['analysis']
+                        if not lyrics and cached_analysis_rec.get('lyrics'):
+                            lyrics = cached_analysis_rec['lyrics']
+                        if cached_analysis_rec.get('model_name'):
+                            model_name = cached_analysis_rec['model_name']
+                        break
+                if analysis:
+                    break
+        except Exception:
+            pass
 
     if analysis:
         return {
