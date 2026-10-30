@@ -35,6 +35,7 @@ class TestAppIntegration(unittest.TestCase):
     def tearDownClass(cls):
         cls.server.shutdown()
         cls.server.server_close()
+        os.environ.pop('DATABASE_PATH', None)
         cls.temp_dir.cleanup()
 
     def authed_get(self, path: str):

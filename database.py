@@ -11,11 +11,14 @@ from contextlib import contextmanager
 from datetime import datetime, date, timedelta, timezone
 from typing import Optional, List, Dict, Any, Union, Tuple
 
+import threading
+
 PRIMARY_ADMIN_EMAIL = "jpmclaug@gmail.com"
 
 try:
     import psycopg2
     import psycopg2.extras
+    import psycopg2.pool
     PSYCOPG2_AVAILABLE = True
 except ImportError:
     PSYCOPG2_AVAILABLE = False
@@ -284,6 +287,66 @@ def _format_song_analysis_record(rec: Any) -> Optional[Dict[str, Any]]:
     return d
 
 
+_PG_POOLS: Dict[str, Any] = {}
+_PG_POOL_LOCK = threading.Lock()
+_PG_CONN_LAST_ACTIVE: Dict[int, float] = {}
+
+def _get_pg_pool(target_url: str):
+    clean_url = target_url
+    if clean_url.startswith('postgres://'):
+        clean_url = clean_url.replace('postgres://', 'postgresql://', 1)
+    with _PG_POOL_LOCK:
+        if clean_url not in _PG_POOLS:
+            _PG_POOLS[clean_url] = psycopg2.pool.ThreadedConnectionPool(
+                minconn=1,
+                maxconn=10,
+                dsn=clean_url,
+                connect_timeout=15,
+                keepalives=1,
+                keepalives_idle=30,
+                keepalives_interval=10,
+                keepalives_count=3
+            )
+        return _PG_POOLS[clean_url]
+
+def _checkout_pg_conn(target_url: str):
+    pool = _get_pg_pool(target_url)
+    for _ in range(3):
+        conn = pool.getconn()
+        now = time.time()
+        cid = id(conn)
+        last_active = _PG_CONN_LAST_ACTIVE.get(cid, 0.0)
+        
+        needs_ping = (conn.closed != 0) or (now - last_active > 45)
+        if needs_ping:
+            healthy = False
+            if conn.closed == 0:
+                try:
+                    with conn.cursor() as cur:
+                        cur.execute("SELECT 1;")
+                    healthy = True
+                except Exception:
+                    healthy = False
+            if not healthy:
+                try:
+                    pool.putconn(conn, close=True)
+                except Exception:
+                    pass
+                continue
+        return pool, conn
+    return None, psycopg2.connect(target_url, connect_timeout=15)
+
+def close_all_pg_pools() -> None:
+    """Close all open PostgreSQL connection pools."""
+    with _PG_POOL_LOCK:
+        for pool in _PG_POOLS.values():
+            try:
+                pool.closeall()
+            except Exception:
+                pass
+        _PG_POOLS.clear()
+        _PG_CONN_LAST_ACTIVE.clear()
+
 @contextmanager
 def get_connection(db_path: Optional[str] = None):
     """Context manager for database connections (Neon PostgreSQL or SQLite)."""
@@ -297,15 +360,31 @@ def get_connection(db_path: Optional[str] = None):
         clean_url = target
         if clean_url.startswith('postgres://'):
             clean_url = clean_url.replace('postgres://', 'postgresql://', 1)
-        conn = psycopg2.connect(clean_url, connect_timeout=15)
+        pool, conn = _checkout_pg_conn(clean_url)
+        should_close = False
         try:
             yield conn
             conn.commit()
+            _PG_CONN_LAST_ACTIVE[id(conn)] = time.time()
         except Exception:
-            conn.rollback()
+            try:
+                conn.rollback()
+            except Exception:
+                should_close = True
             raise
         finally:
-            conn.close()
+            if conn.closed != 0:
+                should_close = True
+            if pool is not None:
+                try:
+                    pool.putconn(conn, close=should_close)
+                except Exception:
+                    pass
+            else:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
     else:
         conn = sqlite3.connect(target, timeout=30.0)
         conn.row_factory = sqlite3.Row
@@ -493,6 +572,14 @@ def init_db(db_path: Optional[str] = None) -> None:
             cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_spotify_hist_email_played 
                 ON spotify_history(user_email, played_at DESC);
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_spotify_hist_lower_email_played 
+                ON spotify_history(LOWER(user_email), played_at DESC);
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_spotify_hist_lower_email_artist 
+                ON spotify_history(LOWER(user_email), LOWER(artist_name));
             """)
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS playlists (
@@ -807,6 +894,14 @@ def init_db(db_path: Optional[str] = None) -> None:
             cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_spotify_hist_email_played 
                 ON spotify_history(user_email, played_at DESC);
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_spotify_hist_lower_email_played 
+                ON spotify_history(LOWER(user_email), played_at DESC);
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_spotify_hist_lower_email_artist 
+                ON spotify_history(LOWER(user_email), LOWER(artist_name));
             """)
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS playlists (
@@ -2485,7 +2580,7 @@ def get_spotify_lifetime_stats(user_email: str, db_path: Optional[str] = None) -
     cache_entry = _spotify_stats_cache.get(f"{clean_email}:{target}")
     if cache_entry:
         cached_time, cached_ver, cached_data = cache_entry
-        if (now - cached_time < 300) and (cached_ver == mut_ver):
+        if (now - cached_time < 300):
             return cached_data
 
     with get_connection(target) as conn:
@@ -2686,7 +2781,7 @@ def get_spotify_advanced_analytics(user_email: str, db_path: Optional[str] = Non
     cache_entry = _spotify_advanced_cache.get(cache_key)
     if cache_entry:
         cached_time, cached_ver, cached_data = cache_entry
-        if (now_ts - cached_time < 300) and (cached_ver == mut_ver):
+        if (now_ts - cached_time < 300):
             return cached_data
 
     with get_connection(target) as conn:
@@ -2975,7 +3070,7 @@ def get_spotify_listening_timeline(
     cached = _spotify_timeline_cache.get(cache_key)
     if cached:
         cached_time, cached_version, cached_data = cached
-        if now_ts - cached_time < 300 and cached_version == mutation_version:
+        if now_ts - cached_time < 300:
             return cached_data
 
     month_expr = (
@@ -3681,9 +3776,16 @@ def get_filtered_top_albums(
     return results, total_streams
 
 
+_enrichment_status_cache: Dict[str, Tuple[float, Dict[str, Any]]] = {}
+
 def get_enrichment_status(db_path: Optional[str] = None) -> Dict[str, Any]:
     """Return counts of enrichment status: pending, fetched, not_found, error, total."""
     target = get_db_target(db_path)
+    now = time.time()
+    cached = _enrichment_status_cache.get(target)
+    if cached and (now - cached[0] < 60):
+        return cached[1]
+
     with get_connection(target) as conn:
         cursor = conn.cursor()
         cursor.execute("""
@@ -3703,7 +3805,7 @@ def get_enrichment_status(db_path: Optional[str] = None) -> Dict[str, Any]:
     error = counts.get('error', 0)
     coverage_pct = round((fetched / max(total_spotify_artists, 1)) * 100, 1)
 
-    return {
+    result = {
         'total_artists_in_history': total_spotify_artists,
         'total_in_enrichment': total_enriched,
         'fetched': fetched,
@@ -3712,6 +3814,8 @@ def get_enrichment_status(db_path: Optional[str] = None) -> Dict[str, Any]:
         'error': error,
         'coverage_pct': coverage_pct
     }
+    _enrichment_status_cache[target] = (now, result)
+    return result
 
 
 def get_artists_needing_enrichment(user_email: str = '', limit: int = 50, db_path: Optional[str] = None) -> List[Dict[str, Any]]:

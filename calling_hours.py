@@ -7748,9 +7748,26 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             }
         }
 
-        if (document.getElementById('spotify-timeline-panel')) {
-            loadSpotifyListeningTimeline();
+        let timelineLoaded = false;
+        function setupTimelineObserver() {
+            const panel = document.getElementById('spotify-timeline-panel');
+            if (!panel) return;
+            if ('IntersectionObserver' in window) {
+                const observer = new IntersectionObserver((entries) => {
+                    entries.forEach(entry => {
+                        if (entry.isIntersecting && !timelineLoaded) {
+                            timelineLoaded = true;
+                            observer.disconnect();
+                            loadSpotifyListeningTimeline();
+                        }
+                    });
+                }, { rootMargin: '300px' });
+                observer.observe(panel);
+            } else {
+                setTimeout(loadSpotifyListeningTimeline, 1000);
+            }
         }
+        setupTimelineObserver();
 
         function toggleAudioPreview(btn, url) {
             if (!url) return;
@@ -7802,6 +7819,14 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             }
         }
 
+        let sliceDebounceTimer = null;
+        let sliceAbortController = null;
+
+        function debouncedSpotifySlice(delay = 250) {
+            clearTimeout(sliceDebounceTimer);
+            sliceDebounceTimer = setTimeout(runSpotifySlice, delay);
+        }
+
         async function runSpotifySlice() {
             const period = document.getElementById('slice-period')?.value || 'all';
             const month = document.getElementById('slice-month')?.value || 'all';
@@ -7815,9 +7840,15 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             if (!container) return;
             container.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; color: #A5C8FF; padding: 24px;">⏳ Slicing your personal archive...</div>';
 
+            if (sliceAbortController) {
+                sliceAbortController.abort();
+            }
+            sliceAbortController = new AbortController();
+            const signal = sliceAbortController.signal;
+
             try {
                 const url = `/api/spotify/slice?period=${encodeURIComponent(period)}&month=${encodeURIComponent(month)}&tod=${encodeURIComponent(tod)}&dow=${encodeURIComponent(dow)}&genre=${encodeURIComponent(genre)}&view=${encodeURIComponent(view)}&limit=24`;
-                const res = await fetch(url);
+                const res = await fetch(url, { signal });
                 const data = await res.json();
 
                 if (summaryEl) {
@@ -7894,6 +7925,7 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
                     }).join('');
                 }
             } catch (err) {
+                if (err.name === 'AbortError') return;
                 container.innerHTML = `<div style="grid-column: 1 / -1; text-align: center; color: #F87171; padding: 20px;">Failed to load sliced data: ${err.message}</div>`;
             }
         }
@@ -8282,9 +8314,68 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             }
         }
 
+        async function checkSpotifyNowPlaying() {
+            const slot = document.getElementById('spotify-now-playing-slot');
+            if (!slot) return;
+            try {
+                const res = await fetch('/api/spotify/now-playing');
+                if (!res.ok) return;
+                const data = await res.json();
+                if (data.connected && data.playing && data.track) {
+                    const t = data.track;
+                    const artistEnc = encodeURIComponent(t.artist || '');
+                    const songEnc = encodeURIComponent(t.name || '');
+                    const analyzeLink = `/?artist=${artistEnc}&song=${songEnc}&auto_analyze=1`;
+                    const artistLink = `/artist?artist=${artistEnc}`;
+                    const imgEl = t.album_image ? `<img src="${t.album_image}" alt="${t.name}" style="width: 64px; height: 64px; border-radius: 10px; object-fit: cover; border: 1px solid rgba(29, 185, 84, 0.4); flex-shrink: 0;">` : '';
+                    const spotLink = t.spotify_url ? `<a href="${t.spotify_url}" target="_blank" rel="noopener noreferrer" class="pill-btn secondary" style="font-size: 0.82rem; padding: 8px 12px; text-decoration: none; border-color: rgba(29, 185, 84, 0.4); color: #6EE7B7;">🎧 Spotify</a>` : '';
+
+                    slot.innerHTML = `
+                    <div class="spotify-now-playing-card">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <div class="spotify-equalizer">
+                                    <div class="eq-bar"></div>
+                                    <div class="eq-bar"></div>
+                                    <div class="eq-bar"></div>
+                                    <div class="eq-bar"></div>
+                                </div>
+                                <span style="font-family: 'Montserrat', sans-serif; font-size: 0.8rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: #1DB954;">Currently Playing</span>
+                            </div>
+                            <div style="font-size: 0.78rem; color: #6EE7B7; font-weight: 600;">${t.progress_formatted || '0:00'} / ${t.duration_formatted || '0:00'}</div>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;">
+                            <div style="display: flex; align-items: center; gap: 14px;">
+                                ${imgEl}
+                                <div>
+                                    <div style="font-size: 1.2rem; font-weight: 800; color: #FFFFFF; font-family: 'Montserrat', sans-serif;">
+                                        <a href="${t.spotify_url || '#'}" target="_blank" rel="noopener noreferrer" style="color: #FFFFFF; text-decoration: none;" title="Open in Spotify">${t.name}</a>
+                                    </div>
+                                    <div style="font-size: 0.88rem; color: #A5C8FF; margin-top: 2px;">
+                                        <a href="${artistLink}" style="color: #A5C8FF; text-decoration: none;" title="View Artist Profile">${t.artist}</a>
+                                        ${t.album ? ` &bull; <span style="color: rgba(225, 232, 240, 0.6);">${t.album}</span>` : ''}
+                                    </div>
+                                </div>
+                            </div>
+                            <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                                <a href="${analyzeLink}" class="pill-btn primary" style="font-size: 0.82rem; padding: 8px 16px; text-decoration: none;" title="Fetch lyrics and launch Gemini thematic analysis">✨ Analyze Lyrics</a>
+                                <a href="/spotify?driving=1" class="pill-btn secondary" style="font-size: 0.82rem; padding: 8px 14px; text-decoration: none; border-color: rgba(56, 189, 248, 0.4); color: #7DD3FC;" title="Launch Driving Mode">🚗 Driving Mode</a>
+                                <a href="${artistLink}" class="pill-btn secondary" style="font-size: 0.82rem; padding: 8px 14px; text-decoration: none;">👤 Artist Intel</a>
+                                ${spotLink}
+                            </div>
+                        </div>
+                        <div style="width: 100%; height: 4px; background: rgba(255, 255, 255, 0.1); border-radius: 2px; margin-top: 14px; overflow: hidden;">
+                            <div style="width: ${t.progress_percent || 0}%; height: 100%; background: #1DB954; border-radius: 2px;"></div>
+                        </div>
+                    </div>`;
+                }
+            } catch (e) {}
+        }
+
         document.addEventListener('DOMContentLoaded', () => {
             updateEnrichmentBadge();
             initDrivingMode();
+            checkSpotifyNowPlaying();
         });
     </script>
 </body>
@@ -12132,6 +12223,9 @@ ADMIN_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
 # ============================================================================
 _last_spotify_sync: Dict[str, float] = {}
 _syncing_spotify_users: Set[str] = set()
+_user_top_artists_cache: Dict[str, Tuple[float, List[Dict[str, Any]]]] = {}
+_active_analysis_workers: Set[str] = set()
+_analysis_worker_lock = threading.Lock()
 _spotify_sync_lock = threading.Lock()
 
 def trigger_auto_spotify_sync(user_email: str, force: bool = False, min_interval_seconds: int = 60) -> bool:
@@ -12168,6 +12262,8 @@ def trigger_auto_spotify_sync(user_email: str, force: bool = False, min_interval
                 inserted = database.save_spotify_history_items(clean_email, tracks)
                 if inserted > 0:
                     print(f"[Spotify Auto-Sync] Added {inserted} new stream(s) for {clean_email}")
+
+
         except Exception as exc:
             print(f"[Spotify Auto-Sync] Sync notice for {clean_email}: {exc}")
         finally:
@@ -15896,7 +15992,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             artist = active_track.get('artist', '')
             name = active_track.get('name', '')
             if artist and name:
-                analysis_payload = ensure_song_lyrics_and_analysis(artist, name)
+                analysis_payload = ensure_song_lyrics_and_analysis(artist, name, only_cached=True)
 
         payload = {
             'success': True,
@@ -16079,6 +16175,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 }
             self.send_response(200)
             self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.send_header('Cache-Control', 'private, max-age=60')
             self.end_headers()
             self.wfile.write(json.dumps(payload).encode('utf-8'))
         except Exception as e:
@@ -16111,6 +16208,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             )
             self.send_response(200)
             self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.send_header('Cache-Control', 'private, max-age=60')
             self.end_headers()
             self.wfile.write(json.dumps(timeline).encode('utf-8'))
         except ValueError as e:
@@ -16139,6 +16237,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             stats = database.get_enrichment_status()
             self.send_response(200)
             self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.send_header('Cache-Control', 'private, max-age=60')
             self.end_headers()
             self.wfile.write(json.dumps(stats).encode('utf-8'))
         except Exception as e:
@@ -16269,27 +16368,16 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                         'spotify_url': token_rec.get('spotify_profile_url') or '',
                     }
                     if driving:
-                        # Fast path for driving mode: only get currently playing or recent track
-                        try:
-                            now_playing = spotify.fetch_currently_playing(access_token)
-                        except Exception as e:
-                            print(f"Driving mode fetch currently playing error: {e}")
-                        if not now_playing:
-                            saved = database.get_spotify_history(current_user['email'], limit=1)
-                            if saved:
-                                history_tracks = saved
-                                now_playing = saved[0]
+                        saved = database.get_spotify_history(current_user['email'], limit=1)
+                        if saved:
+                            history_tracks = saved
+                            now_playing = saved[0]
                     else:
-                        try:
-                            fresh_tracks = spotify.fetch_recently_played(access_token, limit=50)
-                            if fresh_tracks:
-                                database.save_spotify_history_items(current_user['email'], fresh_tracks)
-                            with _spotify_sync_lock:
-                                _last_spotify_sync[current_user['email'].lower().strip()] = time.time()
-                            top_artists = spotify.fetch_top_artists(access_token, limit=20)
-                            now_playing = spotify.fetch_currently_playing(access_token)
-                        except Exception as e:
-                            print(f"Spotify fetch error: {e}")
+                        # Instant page render: run background sync without holding the HTTP response
+                        trigger_auto_spotify_sync(current_user['email'], force=refresh)
+                        cached_ta = _user_top_artists_cache.get(current_user['email'].lower().strip())
+                        if cached_ta and (time.time() - cached_ta[0] < 3600):
+                            top_artists = cached_ta[1]
                 else:
                     is_connected = False
                     if not message:
@@ -17048,7 +17136,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
 
                 <div>
                     <label class="slicer-field-label">Genre Filter</label>
-                    <input type="text" id="slice-genre" class="slicer-input" placeholder="e.g. Hardcore, Emo, Metal..." oninput="runSpotifySlice()">
+                    <input type="text" id="slice-genre" class="slicer-input" placeholder="e.g. Hardcore, Emo, Metal..." oninput="debouncedSpotifySlice(300)">
                 </div>
 
                 <div>
@@ -17203,7 +17291,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             # Auto-analyze lyrics for current driving track
             raw_analysis = ''
             if d_track and d_track.get('artist') and d_track.get('name'):
-                analysis_info = ensure_song_lyrics_and_analysis(d_track.get('artist'), d_track.get('name'))
+                analysis_info = ensure_song_lyrics_and_analysis(d_track.get('artist'), d_track.get('name'), only_cached=True)
                 raw_analysis = analysis_info.get('analysis') or ''
 
             exit_driving_url = f"/spotify{'?demo=1' if is_demo else ''}"
@@ -17345,7 +17433,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
 
             {message_banner_html}
             {state_card_html}
-            {now_playing_html}
+            <div id="spotify-now-playing-slot">{now_playing_html}</div>
             {analytics_grid_html if ((is_connected or is_demo or has_history)) else ''}
             {timeline_html if (has_history and not is_demo) else ''}
             {slicer_html if ((is_connected or is_demo or has_history)) else ''}
@@ -20348,7 +20436,7 @@ def clean_spotify_track_title(song: str) -> str:
     return cleaned.strip() or song
 
 
-def ensure_song_lyrics_and_analysis(artist: str, song: str, db_path: Optional[str] = None) -> Dict[str, Any]:
+def ensure_song_lyrics_and_analysis(artist: str, song: str, db_path: Optional[str] = None, only_cached: bool = False) -> Dict[str, Any]:
     """Ensure lyrics and Gemini lyric analysis exist for the given track, fetching and analyzing if necessary."""
     artist = (artist or '').strip()
     song = (song or '').strip()
@@ -20404,6 +20492,46 @@ def ensure_song_lyrics_and_analysis(artist: str, song: str, db_path: Optional[st
 
         if analysis and lyrics:
             break
+
+    if analysis and lyrics:
+        return {
+            'artist': artist,
+            'song': song,
+            'lyrics': lyrics,
+            'analysis': analysis,
+            'source': source,
+            'model_name': model_name,
+            'song_url': song_url,
+            'track_tags': track_tags,
+            'theaudiodb_data': theaudiodb_data,
+            'cached': True
+        }
+
+    if only_cached:
+        _dedup_key = f"{artist.lower()}:::{song.lower()}"
+        with _analysis_worker_lock:
+            if _dedup_key not in _active_analysis_workers:
+                _active_analysis_workers.add(_dedup_key)
+                def _bg_analyze():
+                    try:
+                        ensure_song_lyrics_and_analysis(artist, song, db_path=db_path, only_cached=False)
+                    finally:
+                        with _analysis_worker_lock:
+                            _active_analysis_workers.discard(_dedup_key)
+                threading.Thread(target=_bg_analyze, daemon=True).start()
+        return {
+            'artist': artist,
+            'song': song,
+            'lyrics': lyrics,
+            'analysis': analysis,
+            'source': source,
+            'model_name': model_name,
+            'song_url': song_url,
+            'track_tags': track_tags,
+            'theaudiodb_data': theaudiodb_data,
+            'cached': False,
+            'pending': True
+        }
 
     # 2. If lyrics still missing, fetch online
     g_canonical_artist = None
