@@ -8287,6 +8287,10 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
                 }
             }
             window.scrollTo({ top: 0, behavior: 'smooth' });
+
+            if (idx === 1 && !hasDrivingAnalysis) {
+                refreshDrivingState();
+            }
         }
 
         function adjustDrivingFontSize(delta) {
@@ -8482,6 +8486,8 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             }
         }
 
+        let drivingFastPollTimer = null;
+
         async function refreshDrivingState() {
             if (isDrivingRefreshing) return;
             isDrivingRefreshing = true;
@@ -8497,10 +8503,24 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
                 if (data && data.track) {
                     updateDrivingTrackUI(data.track, data.playing);
                     const newKey = `${data.track.artist || ''}:::${data.track.name || ''}`;
-                    if (newKey !== currentDrivingTrackKey || !hasDrivingAnalysis) {
+                    const rawAnalysis = (data.analysis && data.analysis.analysis) ? data.analysis.analysis : (data.analysis || '');
+                    
+                    if (newKey !== currentDrivingTrackKey || !hasDrivingAnalysis || rawAnalysis) {
                         currentDrivingTrackKey = newKey;
-                        const rawAnalysis = (data.analysis && data.analysis.analysis) ? data.analysis.analysis : (data.analysis || '');
                         renderDrivingAnalysis(rawAnalysis, data.track);
+                    }
+
+                    // If analysis is still pending, poll every 2.5s instead of waiting 30s
+                    if (!hasDrivingAnalysis && (!data.analysis || data.analysis.pending || !rawAnalysis)) {
+                        if (!drivingFastPollTimer) {
+                            drivingFastPollTimer = setTimeout(() => {
+                                drivingFastPollTimer = null;
+                                refreshDrivingState();
+                            }, 2500);
+                        }
+                    } else if (drivingFastPollTimer) {
+                        clearTimeout(drivingFastPollTimer);
+                        drivingFastPollTimer = null;
                     }
                 }
             } catch (err) {
@@ -8627,11 +8647,17 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             } catch (e) {}
         }
 
-        document.addEventListener('DOMContentLoaded', () => {
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => {
+                updateEnrichmentBadge();
+                initDrivingMode();
+                checkSpotifyNowPlaying();
+            });
+        } else {
             updateEnrichmentBadge();
             initDrivingMode();
             checkSpotifyNowPlaying();
-        });
+        }
     </script>
 </body>
 </html>'''
@@ -13647,20 +13673,21 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 return
         elif artist_param and song_param:
             rec = database.get_search(artist_param, song_param)
-            has_cached_lyrics = bool(rec and rec.get('lyrics') and rec['lyrics'].strip())
-            if has_cached_lyrics:
-                artist = rec['artist']
-                song = rec['song']
+            cached_analysis_rec = database.get_analysis(artist_param, song_param, prompt_name=None)
+            has_cached_content = bool((rec and rec.get('lyrics') and rec['lyrics'].strip()) or (cached_analysis_rec and cached_analysis_rec.get('analysis')))
+            if has_cached_content:
+                artist = (rec and rec.get('artist')) or (cached_analysis_rec and cached_analysis_rec.get('artist')) or artist_param
+                song = (rec and rec.get('song')) or (cached_analysis_rec and cached_analysis_rec.get('song')) or song_param
                 try:
                     database.touch_search(artist, song)
                 except Exception as e:
                     print(f"Touch search error: {e}")
-                lyrics = rec['lyrics'] or ''
-                analysis = rec.get('analysis') or ''
-                source = rec.get('source') or 'Database'
-                model_name = rec.get('model_name') or DEFAULT_GEMINI_MODEL
-                song_url = rec.get('song_url')
-                track_tags = rec.get('track_tags') or []
+                lyrics = (rec and rec.get('lyrics')) or (cached_analysis_rec and cached_analysis_rec.get('lyrics')) or ''
+                analysis = (rec and rec.get('analysis')) or (cached_analysis_rec and cached_analysis_rec.get('analysis')) or ''
+                source = (rec and rec.get('source')) or 'Database'
+                model_name = (rec and rec.get('model_name')) or (cached_analysis_rec and cached_analysis_rec.get('model_name')) or DEFAULT_GEMINI_MODEL
+                song_url = rec.get('song_url') if rec else None
+                track_tags = (rec.get('track_tags') if rec else None) or []
                 if not track_tags and LASTFM_API_KEY:
                     try:
                         track_tags = lastfm.get_or_fetch_track_tags(artist, song, api_key=LASTFM_API_KEY)
@@ -20743,10 +20770,10 @@ def ensure_song_lyrics_and_analysis(artist: str, song: str, db_path: Optional[st
             except Exception as e:
                 print(f"ensure_song_lyrics_and_analysis: get_analysis error ({cand}): {e}")
 
-        if analysis and lyrics:
+        if analysis:
             break
 
-    if analysis and lyrics:
+    if analysis:
         return {
             'artist': artist,
             'song': song,
