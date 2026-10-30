@@ -7191,94 +7191,190 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
-        /* ── Driving Mode Styles ────────────────────────── */
+        /* ── Driving Mode Styles (Automotive-Optimized) ───────────── */
         .driving-dashboard-root {
             display: flex;
             flex-direction: column;
-            gap: 16px;
+            gap: 14px;
             width: 100%;
+            max-width: 680px;
+            margin: 0 auto;
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
         }
+
+        /* Top Control Bar */
         .driving-mode-banner {
-            background: linear-gradient(135deg, rgba(16, 44, 94, 0.95) 0%, rgba(8, 24, 56, 0.98) 100%);
-            border: 1px solid rgba(56, 189, 248, 0.5);
-            border-radius: 16px;
-            padding: 14px 20px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 20px rgba(56, 189, 248, 0.2);
+            background: linear-gradient(135deg, rgba(14, 34, 72, 0.96) 0%, rgba(7, 18, 42, 0.98) 100%);
+            border: 1px solid rgba(56, 189, 248, 0.4);
+            border-radius: 18px;
+            padding: 14px 18px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 20px rgba(56, 189, 248, 0.15);
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            backdrop-filter: blur(16px);
+            box-sizing: border-box;
+        }
+        .driving-header-top {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            gap: 16px;
+            gap: 12px;
+            width: 100%;
+        }
+        .driving-brand {
+            display: flex;
+            align-items: center;
+            gap: 8px;
             flex-wrap: wrap;
+            min-width: 0;
+        }
+        .driving-brand-title {
+            font-family: 'Montserrat', sans-serif;
+            font-size: 1.15rem;
+            font-weight: 900;
+            color: #FFFFFF;
+            letter-spacing: 0.02em;
+            white-space: nowrap;
         }
         .driving-status-pill {
             display: inline-flex;
             align-items: center;
-            gap: 6px;
+            gap: 5px;
             background: rgba(16, 185, 129, 0.18);
             border: 1px solid rgba(16, 185, 129, 0.45);
             color: #6EE7B7;
-            font-size: 0.8rem;
+            font-size: 0.78rem;
             font-weight: 700;
-            padding: 5px 12px;
+            padding: 4px 10px;
             border-radius: 20px;
-            letter-spacing: 0.03em;
+            letter-spacing: 0.02em;
+            white-space: nowrap;
         }
         .driving-status-pill.offline {
             background: rgba(239, 68, 68, 0.18);
             border-color: rgba(239, 68, 68, 0.45);
             color: #FCA5A5;
         }
+        .driving-header-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+        .driving-action-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 7px 14px;
+            border-radius: 14px;
+            font-family: 'Montserrat', sans-serif;
+            font-size: 0.82rem;
+            font-weight: 700;
+            cursor: pointer;
+            text-decoration: none;
+            transition: all 0.2s ease;
+            white-space: nowrap;
+            min-height: 36px;
+            box-sizing: border-box;
+        }
+        .driving-action-btn.refresh {
+            background: rgba(30, 58, 98, 0.7);
+            border: 1px solid rgba(56, 189, 248, 0.4);
+            color: #BAE6FD;
+        }
+        .driving-action-btn.refresh:hover {
+            background: rgba(56, 189, 248, 0.25);
+            color: #FFFFFF;
+            border-color: rgba(56, 189, 248, 0.7);
+        }
+        .driving-action-btn.exit {
+            background: rgba(239, 68, 68, 0.15);
+            border: 1px solid rgba(239, 68, 68, 0.45);
+            color: #FCA5A5;
+        }
+        .driving-action-btn.exit:hover {
+            background: rgba(239, 68, 68, 0.3);
+            color: #FFFFFF;
+            border-color: rgba(239, 68, 68, 0.7);
+        }
+
+        /* Slide Navigation Tabs (Equal 50/50 Full-Width Segmented Switch) */
         .driving-slide-tabs {
             display: flex;
-            gap: 6px;
-            background: rgba(8, 20, 42, 0.75);
+            width: 100%;
+            background: rgba(6, 16, 36, 0.85);
             padding: 4px;
-            border-radius: 24px;
-            border: 1px solid rgba(56, 189, 248, 0.35);
+            border-radius: 14px;
+            border: 1px solid rgba(56, 189, 248, 0.28);
+            box-sizing: border-box;
+            gap: 4px;
         }
         .driving-slide-tab {
-            padding: 7px 18px;
-            border-radius: 20px;
+            flex: 1 1 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 10px 14px;
+            border-radius: 10px;
             border: none;
             background: transparent;
-            color: #BAE6FD;
+            color: #94A3B8;
             font-family: 'Montserrat', sans-serif;
             font-weight: 700;
-            font-size: 0.88rem;
+            font-size: clamp(0.82rem, 3.2vw, 0.95rem);
             cursor: pointer;
-            transition: all 0.25s ease;
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
             white-space: nowrap;
+            text-align: center;
+            min-height: 42px;
+            box-sizing: border-box;
+        }
+        .driving-slide-tab:hover {
+            color: #BAE6FD;
         }
         .driving-slide-tab.active {
             background: #38BDF8;
             color: #020617;
-            font-weight: 800;
-            box-shadow: 0 0 14px rgba(56, 189, 248, 0.5);
+            font-weight: 900;
+            box-shadow: 0 2px 12px rgba(56, 189, 248, 0.45);
         }
+
+        /* Auto-Refresh Timer Bar */
         .driving-timer-wrap {
             display: flex;
             align-items: center;
-            gap: 10px;
+            justify-content: space-between;
+            gap: 12px;
+            width: 100%;
+            padding: 0 2px;
+            box-sizing: border-box;
         }
         .driving-timer-bar {
-            width: 90px;
-            height: 6px;
-            background: rgba(255, 255, 255, 0.12);
-            border-radius: 3px;
+            flex: 1;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 2px;
             overflow: hidden;
         }
         .driving-timer-progress {
             height: 100%;
             width: 100%;
-            background: #38BDF8;
+            background: linear-gradient(90deg, #38BDF8, #60A5FA);
+            border-radius: 2px;
             transition: width 1s linear;
         }
         .driving-timer-text {
-            font-size: 0.82rem;
-            color: #BAE6FD;
+            font-size: 0.78rem;
+            color: #7DD3FC;
             font-weight: 600;
             font-variant-numeric: tabular-nums;
-            min-width: 100px;
+            white-space: nowrap;
+            opacity: 0.85;
         }
 
         /* Swipeable Viewport and Carousel */
@@ -7286,7 +7382,7 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             width: 100%;
             overflow: hidden;
             position: relative;
-            border-radius: 18px;
+            border-radius: 20px;
             touch-action: pan-y;
         }
         .driving-slides-track {
@@ -7305,148 +7401,247 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
 
         /* Slide 1: Track Card */
         .driving-track-card {
-            background: linear-gradient(135deg, rgba(12, 34, 70, 0.96) 0%, rgba(6, 18, 40, 0.98) 100%);
-            border: 1px solid rgba(56, 189, 248, 0.5);
+            background: linear-gradient(135deg, rgba(12, 32, 68, 0.96) 0%, rgba(6, 16, 38, 0.98) 100%);
+            border: 1px solid rgba(56, 189, 248, 0.45);
             border-radius: 20px;
-            padding: 28px 32px;
-            box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6), 0 0 30px rgba(56, 189, 248, 0.16);
+            padding: 24px 24px 28px 24px;
+            box-shadow: 0 16px 48px rgba(0, 0, 0, 0.65), 0 0 32px rgba(56, 189, 248, 0.16);
             display: flex;
             flex-direction: column;
-            gap: 20px;
+            gap: 18px;
+            box-sizing: border-box;
+        }
+        .driving-card-meta-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            gap: 12px;
+        }
+        .driving-eq-wrap {
+            display: flex;
+            align-items: center;
+            gap: 10px;
         }
         .driving-badge-text {
             font-family: 'Montserrat', sans-serif;
-            font-size: 0.9rem;
+            font-size: 0.84rem;
             font-weight: 800;
             text-transform: uppercase;
             letter-spacing: 0.08em;
             color: #38BDF8;
         }
         .driving-track-time {
-            font-size: 1.05rem;
+            font-size: 0.98rem;
             color: #BAE6FD;
             font-weight: 700;
             font-variant-numeric: tabular-nums;
         }
+
+        /* Main Track Row (Stacked & Centered on mobile; side-by-side on wide screens) */
         .driving-track-main-row {
             display: flex;
+            flex-direction: column;
             align-items: center;
-            gap: 28px;
-            flex-wrap: wrap;
+            text-align: center;
+            gap: 18px;
+            width: 100%;
+            box-sizing: border-box;
         }
         .driving-album-art-wrap {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            width: 100%;
             flex-shrink: 0;
         }
         .driving-album-art {
-            width: 220px;
-            height: 220px;
+            width: min(220px, 54vw);
+            height: min(220px, 54vw);
             border-radius: 18px;
             object-fit: cover;
-            border: 3px solid rgba(56, 189, 248, 0.5);
-            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6);
+            border: 2px solid rgba(56, 189, 248, 0.5);
+            box-shadow: 0 14px 36px rgba(0, 0, 0, 0.65), 0 0 24px rgba(56, 189, 248, 0.22);
             display: block;
         }
         .driving-album-art-placeholder {
-            width: 220px;
-            height: 220px;
+            width: min(220px, 54vw);
+            height: min(220px, 54vw);
             border-radius: 18px;
             background: rgba(14, 38, 80, 0.7);
-            border: 3px solid rgba(56, 189, 248, 0.4);
+            border: 2px solid rgba(56, 189, 248, 0.4);
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 5rem;
+            font-size: 4rem;
+            box-shadow: 0 14px 36px rgba(0, 0, 0, 0.65);
         }
         .driving-track-details {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
             min-width: 0;
-            flex: 1;
+            box-sizing: border-box;
         }
         .driving-track-title {
             font-family: 'Montserrat', sans-serif;
-            font-size: 2.3rem;
+            font-size: clamp(1.45rem, 5.2vw, 2.2rem);
             font-weight: 900;
             color: #FFFFFF;
-            line-height: 1.22;
-            word-break: break-word;
-            margin: 0 0 10px 0;
+            line-height: 1.24;
+            margin: 0 0 8px 0;
+            text-align: center;
+            word-break: normal !important;
+            overflow-wrap: break-word !important;
+            hyphens: none !important;
+            text-wrap: balance;
+            width: 100%;
         }
         .driving-track-title a {
             color: #FFFFFF;
             text-decoration: none;
+            transition: color 0.15s ease;
+        }
+        .driving-track-title a:hover {
+            color: #38BDF8;
         }
         .driving-track-artist-row {
-            font-size: 1.5rem;
+            font-size: clamp(1.1rem, 3.8vw, 1.4rem);
             color: #93C5FD;
             font-weight: 700;
             display: flex;
             align-items: center;
-            gap: 8px;
+            justify-content: center;
+            gap: 6px;
             flex-wrap: wrap;
+            text-align: center;
+            width: 100%;
         }
         .driving-track-artist-row a {
             color: #93C5FD;
             text-decoration: none;
+            transition: color 0.15s ease;
+        }
+        .driving-track-artist-row a:hover {
+            color: #FFFFFF;
         }
         .driving-track-album {
             color: rgba(225, 232, 240, 0.65);
-            font-size: 1.15rem;
+            font-size: clamp(0.92rem, 3.2vw, 1.1rem);
             font-weight: 500;
         }
+
+        /* Progress Bar */
         .driving-progress-bar-wrap {
             width: 100%;
-            height: 10px;
+            height: 8px;
             background: rgba(255, 255, 255, 0.12);
-            border-radius: 5px;
+            border-radius: 4px;
             overflow: hidden;
             box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.5);
+            margin: 4px 0;
         }
         .driving-progress-bar-fill {
             height: 100%;
             background: linear-gradient(90deg, #38BDF8, #60A5FA);
-            border-radius: 5px;
+            border-radius: 4px;
             box-shadow: 0 0 10px rgba(56, 189, 248, 0.6);
             transition: width 0.4s ease;
         }
+
+        /* Primary CTA: Lyric Analysis Button */
         .driving-cta-section {
-            margin-top: 6px;
+            width: 100%;
+            margin-top: 2px;
         }
         .driving-swipe-cta-btn {
             width: 100%;
-            padding: 18px 24px;
-            font-size: 1.25rem;
+            padding: 15px 20px;
+            font-size: clamp(0.92rem, 3.4vw, 1.15rem);
             font-weight: 800;
             font-family: 'Montserrat', sans-serif;
             border-radius: 14px;
-            background: linear-gradient(135deg, rgba(56, 189, 248, 0.25) 0%, rgba(37, 99, 235, 0.35) 100%);
-            border: 2px solid rgba(56, 189, 248, 0.6);
+            background: linear-gradient(135deg, rgba(14, 42, 82, 0.85) 0%, rgba(10, 28, 58, 0.95) 100%);
+            border: 1px solid rgba(56, 189, 248, 0.45);
             color: #BAE6FD;
             cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
             gap: 10px;
-            transition: all 0.2s ease;
-            box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+            letter-spacing: 0.02em;
+            min-height: 52px;
+            box-sizing: border-box;
         }
         .driving-swipe-cta-btn.ready {
-            background: linear-gradient(135deg, #10B981 0%, #059669 100%);
-            border-color: #34D399;
-            color: #FFFFFF;
-            box-shadow: 0 8px 28px rgba(16, 185, 129, 0.38);
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.25) 0%, rgba(5, 150, 105, 0.38) 100%);
+            border: 1.5px solid rgba(52, 211, 153, 0.65);
+            color: #A7F3D0;
+            box-shadow: 0 6px 24px rgba(16, 185, 129, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+            text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
         }
         .driving-swipe-cta-btn:hover {
             transform: translateY(-2px);
-            filter: brightness(1.1);
+            filter: brightness(1.15);
+            box-shadow: 0 8px 28px rgba(56, 189, 248, 0.35);
         }
+        .driving-swipe-cta-btn.ready:hover {
+            box-shadow: 0 8px 30px rgba(16, 185, 129, 0.45);
+        }
+        .driving-swipe-cta-btn:active {
+            transform: translateY(1px);
+        }
+
+        /* Secondary Bottom Actions */
         .driving-secondary-links {
             display: flex;
             gap: 12px;
             align-items: center;
-            justify-content: flex-end;
-            flex-wrap: wrap;
+            width: 100%;
+        }
+        .driving-sub-btn {
+            flex: 1 1 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 12px 14px;
+            border-radius: 12px;
+            font-family: 'Montserrat', sans-serif;
+            font-size: 0.92rem;
+            font-weight: 700;
+            text-decoration: none;
+            transition: all 0.2s ease;
+            min-height: 44px;
+            box-sizing: border-box;
+            text-align: center;
+        }
+        .driving-sub-btn.workspace {
+            background: rgba(30, 64, 120, 0.45);
+            border: 1px solid rgba(56, 189, 248, 0.4);
+            color: #BAE6FD;
+        }
+        .driving-sub-btn.workspace:hover {
+            background: rgba(56, 189, 248, 0.25);
+            color: #FFFFFF;
+            border-color: rgba(56, 189, 248, 0.7);
+        }
+        .driving-sub-btn.spotify {
+            background: rgba(16, 185, 129, 0.15);
+            border: 1px solid rgba(29, 185, 84, 0.45);
+            color: #6EE7B7;
+        }
+        .driving-sub-btn.spotify:hover {
+            background: rgba(29, 185, 84, 0.28);
+            color: #A7F3D0;
+            border-color: rgba(29, 185, 84, 0.75);
         }
 
-        /* Slide 2: Analysis */
+        /* Slide 2: Analysis View */
         .driving-analysis-slide-inner {
             display: flex;
             flex-direction: column;
@@ -7456,47 +7651,75 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             position: sticky;
             top: 10px;
             z-index: 10;
-            background: rgba(8, 22, 46, 0.94);
-            backdrop-filter: blur(12px);
-            border: 1px solid rgba(165, 200, 255, 0.3);
+            background: rgba(8, 22, 46, 0.95);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(56, 189, 248, 0.35);
             border-radius: 16px;
-            padding: 14px 20px;
+            padding: 12px 16px;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            gap: 16px;
+            gap: 10px;
             flex-wrap: wrap;
             box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+        }
+        .driving-nav-back-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 14px;
+            font-size: 0.9rem;
+            font-weight: 800;
+            font-family: 'Montserrat', sans-serif;
+            color: #38BDF8;
+            background: rgba(14, 40, 80, 0.7);
+            border: 1px solid rgba(56, 189, 248, 0.5);
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            min-height: 38px;
+            box-sizing: border-box;
+        }
+        .driving-nav-back-btn:hover {
+            background: rgba(56, 189, 248, 0.25);
+            color: #FFFFFF;
         }
         .driving-analysis-header-info {
             min-width: 0;
             flex: 1;
         }
-        .driving-analysis-badge-track {
+        .driving-analysis-heading-title {
+            font-family: 'Montserrat', sans-serif;
             font-size: 1.1rem;
-            font-weight: 700;
+            font-weight: 800;
+            color: #FFFFFF;
+        }
+        .driving-analysis-badge-track {
+            font-size: 0.9rem;
+            font-weight: 600;
             color: #93C5FD;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+            max-width: 240px;
         }
         .driving-font-controls {
             display: inline-flex;
             align-items: center;
-            gap: 6px;
-            background: rgba(14, 38, 80, 0.8);
-            padding: 4px 10px;
-            border-radius: 20px;
-            border: 1px solid rgba(165, 200, 255, 0.3);
+            gap: 4px;
+            background: rgba(14, 38, 80, 0.85);
+            padding: 4px 8px;
+            border-radius: 16px;
+            border: 1px solid rgba(56, 189, 248, 0.35);
         }
         .driving-font-btn {
             background: transparent;
             border: none;
             color: #BAE6FD;
             font-weight: 800;
-            font-size: 1.05rem;
+            font-size: 1rem;
             cursor: pointer;
-            padding: 2px 8px;
+            padding: 3px 8px;
             border-radius: 6px;
             transition: background 0.15s ease;
         }
@@ -7505,10 +7728,10 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             color: #FFFFFF;
         }
         .driving-font-label {
-            font-size: 0.82rem;
+            font-size: 0.8rem;
             color: #A5C8FF;
             font-weight: 700;
-            min-width: 44px;
+            min-width: 40px;
             text-align: center;
         }
 
@@ -7519,49 +7742,49 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             font-family: 'Roboto Condensed', sans-serif;
             display: flex;
             flex-direction: column;
-            gap: 18px;
+            gap: 16px;
         }
         .driving-section-card {
             background: linear-gradient(135deg, rgba(14, 34, 70, 0.95) 0%, rgba(8, 20, 44, 0.98) 100%);
             border: 1px solid rgba(165, 200, 255, 0.28);
             border-radius: 18px;
-            padding: 28px 32px;
+            padding: 24px 26px;
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
         }
         .driving-section-header {
             display: flex;
             align-items: center;
             gap: 12px;
-            margin-bottom: 18px;
-            padding-bottom: 12px;
+            margin-bottom: 16px;
+            padding-bottom: 10px;
             border-bottom: 1px solid rgba(110, 231, 183, 0.25);
         }
         .driving-section-icon {
-            font-size: 1.5rem;
+            font-size: 1.4rem;
         }
         .driving-section-title {
             font-family: 'Montserrat', sans-serif;
-            font-size: 1.75rem;
+            font-size: 1.55rem;
             font-weight: 900;
             color: #6EE7B7;
             margin: 0;
             line-height: 1.25;
         }
         .driving-section-content p {
-            margin: 0 0 18px 0;
-            font-size: 1.35rem;
-            line-height: 1.75;
+            margin: 0 0 16px 0;
+            font-size: 1.28rem;
+            line-height: 1.7;
             color: #F1F5F9;
         }
         .driving-section-content ul,
         .driving-section-content ol {
-            margin: 0 0 20px 24px;
+            margin: 0 0 18px 22px;
             padding: 0;
         }
         .driving-section-content li {
-            margin-bottom: 14px;
-            font-size: 1.32rem;
-            line-height: 1.65;
+            margin-bottom: 12px;
+            font-size: 1.25rem;
+            line-height: 1.6;
             color: #F8FAFC;
         }
         .driving-section-content strong {
@@ -7575,54 +7798,86 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
         .driving-section-content blockquote {
             border-left: 5px solid #38BDF8;
             background: rgba(56, 189, 248, 0.12);
-            margin: 18px 0;
-            padding: 16px 24px;
+            margin: 16px 0;
+            padding: 14px 20px;
             border-radius: 0 14px 14px 0;
             font-style: italic;
             color: #E0F2FE;
-            font-size: 1.4rem;
-            line-height: 1.7;
+            font-size: 1.32rem;
+            line-height: 1.65;
         }
         .driving-loading-card {
             text-align: center;
-            padding: 48px 24px;
+            padding: 44px 20px;
             background: rgba(12, 30, 62, 0.8);
             border-radius: 18px;
             border: 1px dashed rgba(56, 189, 248, 0.4);
         }
 
-        @media (max-width: 768px) {
-            .driving-track-card {
-                padding: 20px 18px;
+        /* Responsive Layout Adjustments */
+        @media (min-width: 681px) {
+            .driving-track-main-row {
+                flex-direction: row;
+                align-items: center;
+                text-align: left;
+                gap: 24px;
             }
-            .driving-album-art {
-                width: 170px;
-                height: 170px;
+            .driving-album-art-wrap {
+                width: auto;
+                justify-content: flex-start;
             }
-            .driving-album-art-placeholder {
-                width: 170px;
-                height: 170px;
-                font-size: 3.5rem;
+            .driving-album-art, .driving-album-art-placeholder {
+                width: 180px;
+                height: 180px;
+            }
+            .driving-track-details {
+                align-items: flex-start;
+                text-align: left;
+                flex: 1;
             }
             .driving-track-title {
-                font-size: 1.75rem;
+                text-align: left;
+                font-size: 2rem;
             }
             .driving-track-artist-row {
-                font-size: 1.25rem;
+                justify-content: flex-start;
+                text-align: left;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .driving-mode-banner {
+                padding: 12px 14px;
+                border-radius: 16px;
+            }
+            .driving-track-card {
+                padding: 18px 16px 22px 16px;
+                border-radius: 18px;
+                gap: 16px;
+            }
+            .driving-album-art, .driving-album-art-placeholder {
+                width: min(190px, 52vw);
+                height: min(190px, 52vw);
+            }
+            .driving-track-title {
+                font-size: 1.6rem;
+            }
+            .driving-track-artist-row {
+                font-size: 1.15rem;
             }
             .driving-swipe-cta-btn {
-                font-size: 1.05rem;
-                padding: 15px 18px;
+                font-size: 0.95rem;
+                padding: 14px 16px;
             }
             .driving-section-card {
-                padding: 20px 18px;
+                padding: 18px 16px;
             }
             .driving-section-title {
-                font-size: 1.45rem;
+                font-size: 1.35rem;
             }
             .driving-section-content p,
             .driving-section-content li {
-                font-size: 1.2rem;
+                font-size: 1.15rem;
             }
         }
     </style>
@@ -17302,29 +17557,30 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             <div class="driving-dashboard-root">
                 <!-- Top Control Bar -->
                 <div class="driving-mode-banner">
-                    <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <span style="font-size: 1.5rem;">🚗</span>
-                            <span style="font-family: \'Montserrat\', sans-serif; font-size: 1.15rem; font-weight: 900; color: #FFFFFF; letter-spacing: 0.02em;">Driving Mode</span>
+                    <div class="driving-header-top">
+                        <div class="driving-brand">
+                            <span style="font-size: 1.4rem;">🚗</span>
+                            <span class="driving-brand-title">Driving Mode</span>
+                            <span id="driving-wakelock-status" class="driving-status-pill">☀️ Screen Awake Active</span>
                         </div>
-                        <span id="driving-wakelock-status" class="driving-status-pill">☀️ Screen Awake Active</span>
+                        <div class="driving-header-actions">
+                            <button type="button" id="btn-driving-refresh-now" class="driving-action-btn refresh" onclick="refreshDrivingStateNow()" title="Refresh track & lyrics analysis immediately">🔄 Refresh</button>
+                            <a href="{exit_driving_url}" class="driving-action-btn exit" title="Exit Driving Mode">🚪 Exit</a>
+                        </div>
                     </div>
 
-                    <!-- Slide Navigation Tabs -->
+                    <!-- Slide Navigation Tabs (Equal 50/50 Full-Width Segmented Switch) -->
                     <div class="driving-slide-tabs" role="tablist">
                         <button type="button" id="driving-tab-track" class="driving-slide-tab active" onclick="switchDrivingSlide(0)" role="tab" aria-selected="true">🎵 Current Track</button>
                         <button type="button" id="driving-tab-analysis" class="driving-slide-tab" onclick="switchDrivingSlide(1)" role="tab" aria-selected="false">✨ Lyric Analysis</button>
                     </div>
 
-                    <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-                        <div class="driving-timer-wrap">
-                            <div class="driving-timer-bar">
-                                <div id="driving-timer-progress" class="driving-timer-progress"></div>
-                            </div>
-                            <span id="driving-timer-text" class="driving-timer-text">Refreshes in 30s</span>
+                    <!-- Auto-Refresh Countdown Progress -->
+                    <div class="driving-timer-wrap">
+                        <div class="driving-timer-bar">
+                            <div id="driving-timer-progress" class="driving-timer-progress"></div>
                         </div>
-                        <button type="button" id="btn-driving-refresh-now" class="pill-btn secondary" onclick="refreshDrivingStateNow()" style="font-size: 0.82rem; padding: 6px 14px; cursor: pointer;" title="Refresh track & lyrics analysis immediately">🔄 Refresh</button>
-                        <a href="{exit_driving_url}" class="pill-btn secondary" style="font-size: 0.82rem; padding: 6px 14px; text-decoration: none; border-color: rgba(239, 68, 68, 0.4); color: #FCA5A5;">🚪 Exit</a>
+                        <span id="driving-timer-text" class="driving-timer-text">Refreshes in 30s</span>
                     </div>
                 </div>
 
@@ -17335,8 +17591,8 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                         <!-- Slide 1: Current Track Dashboard -->
                         <div class="driving-slide" id="driving-slide-track">
                             <div class="driving-track-card">
-                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                                    <div style="display: flex; align-items: center; gap: 10px;">
+                                <div class="driving-card-meta-row">
+                                    <div class="driving-eq-wrap">
                                         <div class="spotify-equalizer">
                                             <div class="eq-bar" style="background: #38BDF8;"></div>
                                             <div class="eq-bar" style="background: #38BDF8;"></div>
@@ -17374,8 +17630,8 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                                 </div>
 
                                 <div class="driving-secondary-links">
-                                    <a href="{f'/?artist={urllib.parse.quote(d_track.get("artist") or "")}&song={urllib.parse.quote(d_track.get("name") or "")}&auto_analyze=1' if d_track else '#'}" class="pill-btn primary" style="font-size: 0.9rem; padding: 8px 18px; text-decoration: none;" title="Open in Calling Hours Song Reader">📖 Full Workspace</a>
-                                    {f'<a href="{d_url}" target="_blank" rel="noopener noreferrer" class="pill-btn secondary" style="font-size: 0.9rem; padding: 8px 16px; text-decoration: none; border-color: rgba(29, 185, 84, 0.4); color: #6EE7B7;">🎧 Spotify</a>' if d_url else ''}
+                                    <a href="{f'/?artist={urllib.parse.quote(d_track.get("artist") or "")}&song={urllib.parse.quote(d_track.get("name") or "")}&auto_analyze=1' if d_track else '#'}" class="driving-sub-btn workspace" title="Open in Calling Hours Song Reader">📖 Full Workspace</a>
+                                    {f'<a href="{d_url}" target="_blank" rel="noopener noreferrer" class="driving-sub-btn spotify" title="Open in Spotify">🎧 Spotify</a>' if d_url else ''}
                                 </div>
                             </div>
                         </div>
@@ -17384,13 +17640,11 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                         <div class="driving-slide" id="driving-slide-analysis">
                             <div class="driving-analysis-slide-inner">
                                 <div class="driving-analysis-nav-header">
-                                    <button type="button" class="pill-btn secondary" onclick="switchDrivingSlide(0)" style="font-size: 0.95rem; padding: 8px 18px; font-weight: 800; cursor: pointer; border-color: rgba(56, 189, 248, 0.5); color: #38BDF8;">
+                                    <button type="button" class="driving-nav-back-btn" onclick="switchDrivingSlide(0)">
                                         ← 🎵 Current Track
                                     </button>
                                     <div class="driving-analysis-header-info">
-                                        <div style="font-family: \'Montserrat\', sans-serif; font-size: 1.2rem; font-weight: 800; color: #FFFFFF;">
-                                            ✨ Lyric Analysis
-                                        </div>
+                                        <div class="driving-analysis-heading-title">✨ Lyric Analysis</div>
                                         <div id="driving-analysis-track-badge" class="driving-analysis-badge-track">{d_artist} — {d_title}</div>
                                     </div>
                                     <div class="driving-font-controls">
@@ -17409,8 +17663,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
 
                     </div>
                 </div>
-            </div>
-            '''
+            </div>'''
 
         # Full Page Assembly
         if driving:
