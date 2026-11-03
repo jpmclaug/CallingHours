@@ -118,6 +118,68 @@ class TestDrivingMode(unittest.TestCase):
             self.assertEqual(data['status'], 'ready')
             self.assertIn('Recovered', data['analysis'])
 
+    def test_spotify_page_js_syntax_no_unescaped_newlines(self):
+        """Ensure SPOTIFY_PAGE_HTML script block has no unescaped literal newlines inside regexes or single/double-quoted strings."""
+        import re
+        html = calling_hours.SPOTIFY_PAGE_HTML
+        scripts = re.findall(r'<script[^>]*>(.*?)</script>', html, re.S)
+        self.assertTrue(len(scripts) >= 1)
+        main_script = scripts[-1]
+        # Verify regexes in parseDrivingMarkdown and parseDrivingMarkdownIntoSections are intact on single lines
+        self.assertIn(r"let text = md.replace(/\r\n/g, '\n');", main_script)
+        self.assertIn(r"const paras = text.split(/\n{2,}/);", main_script)
+        self.assertIn(r"return `<p>${p.replace(/\n/g, '<br>')}</p>`;", main_script)
+        self.assertIn(r"}).join('\n');", main_script)
+        self.assertIn(r"let text = md.replace(/\r\n/g, '\n').trim();", main_script)
+        self.assertIn(r"const headingRegex = /^##[ \t]+(.+)$/gm;", main_script)
+
+    def test_generate_gemini_text_fallback_to_generate_content(self):
+        """Ensure _generate_gemini_text falls back to client.models.generate_content if interactions.create fails."""
+        mock_client = MagicMock()
+        mock_client.interactions.create.side_effect = RuntimeError("Legacy Interactions API schema is no longer supported")
+        mock_resp = MagicMock()
+        mock_resp.text = "## Fallback Analysis\nGenerated via models.generate_content."
+        mock_client.models.generate_content.return_value = mock_resp
+
+        result = calling_hours._generate_gemini_text(mock_client, "gemini-2.5-flash", "Analyze this song")
+        self.assertEqual(result, "## Fallback Analysis\nGenerated via models.generate_content.")
+        mock_client.models.generate_content.assert_called_once_with(
+            model="gemini-2.5-flash", contents="Analyze this song"
+        )
+
+    def test_driving_state_force_bypasses_cache(self):
+        """Verify force=1 in /api/spotify/driving-state bypasses the 4-second player cache."""
+        handler = calling_hours.CallingHoursRequestHandler.__new__(calling_hours.CallingHoursRequestHandler)
+        handler.get_current_user = lambda: {'email': 'driver@example.com', 'name': 'Driver'}
+        sent_responses = []
+        written_data = []
+        handler.send_response = lambda code: sent_responses.append(code)
+        handler.send_header = lambda k, v: None
+        handler.end_headers = lambda: None
+        handler.wfile = MagicMock()
+        handler.wfile.write = lambda b: written_data.append(b)
+
+        calling_hours._spotify_driving_track_cache['driver@example.com'] = {
+            'time': time.time(),
+            'track': {'name': 'Cached Old Song', 'artist': 'Old Artist'},
+            'is_playing': True,
+            'is_connected': True
+        }
+
+        with patch('calling_hours.database.get_spotify_token', return_value={'access_token': 'tok'}), \
+             patch('calling_hours.spotify.get_valid_access_token', return_value='tok'), \
+             patch('calling_hours.spotify.fetch_currently_playing', return_value={'name': 'Fresh New Song', 'artist': 'New Artist'}), \
+             patch('calling_hours.ensure_song_lyrics_and_analysis', return_value={'analysis': '## Fresh\nAnalysis'}):
+            # Without force=1 -> returns cached
+            handler.handle_api_spotify_driving_state('')
+            data1 = json.loads(written_data[-1].decode('utf-8'))
+            self.assertEqual(data1['track']['name'], 'Cached Old Song')
+
+            # With force=1 -> bypasses cache and returns Fresh New Song
+            handler.handle_api_spotify_driving_state('force=1')
+            data2 = json.loads(written_data[-1].decode('utf-8'))
+            self.assertEqual(data2['track']['name'], 'Fresh New Song')
+
 
 if __name__ == '__main__':
     unittest.main()

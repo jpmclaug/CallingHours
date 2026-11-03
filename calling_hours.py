@@ -7205,6 +7205,29 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             user-select: none;
             -webkit-user-select: none;
         }
+        /* Reset global button, heading, and paragraph styles inside Driving Mode */
+        .driving-dashboard-root button {
+            width: auto;
+            margin: 0;
+            padding: 6px 12px;
+            text-transform: none;
+            letter-spacing: normal;
+            box-shadow: none;
+            line-height: 1.2;
+        }
+        .driving-dashboard-root h1,
+        .driving-dashboard-root h2,
+        .driving-dashboard-root h3,
+        .driving-dashboard-root h4 {
+            text-align: left;
+            text-transform: none;
+            letter-spacing: normal;
+            text-shadow: none;
+            margin: 0;
+        }
+        .driving-dashboard-root p {
+            text-align: left;
+        }
 
         /* Top Control Bar */
         .driving-mode-banner {
@@ -7223,8 +7246,9 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             display: flex;
             justify-content: space-between;
             align-items: center;
-            gap: 10px;
+            gap: 8px;
             width: 100%;
+            flex-wrap: wrap;
         }
         .driving-brand {
             display: flex;
@@ -7248,7 +7272,7 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             background: rgba(16, 185, 129, 0.18);
             border: 1px solid rgba(16, 185, 129, 0.45);
             color: #6EE7B7;
-            font-size: 0.74rem;
+            font-size: 0.72rem;
             font-weight: 700;
             padding: 3px 8px;
             border-radius: 20px;
@@ -7266,7 +7290,7 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             gap: 6px;
             flex-shrink: 0;
         }
-        .driving-action-btn {
+        .driving-dashboard-root .driving-action-btn {
             display: inline-flex;
             align-items: center;
             justify-content: center;
@@ -7281,24 +7305,26 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             transition: all 0.2s ease;
             white-space: nowrap;
             min-height: 34px;
+            width: auto;
+            margin: 0;
             box-sizing: border-box;
         }
-        .driving-action-btn.refresh {
+        .driving-dashboard-root .driving-action-btn.refresh {
             background: rgba(30, 58, 98, 0.75);
             border: 1px solid rgba(56, 189, 248, 0.45);
             color: #BAE6FD;
         }
-        .driving-action-btn.refresh:hover {
+        .driving-dashboard-root .driving-action-btn.refresh:hover {
             background: rgba(56, 189, 248, 0.25);
             color: #FFFFFF;
             border-color: rgba(56, 189, 248, 0.7);
         }
-        .driving-action-btn.exit {
+        .driving-dashboard-root .driving-action-btn.exit {
             background: rgba(239, 68, 68, 0.18);
             border: 1px solid rgba(239, 68, 68, 0.45);
             color: #FCA5A5;
         }
-        .driving-action-btn.exit:hover {
+        .driving-dashboard-root .driving-action-btn.exit:hover {
             background: rgba(239, 68, 68, 0.35);
             color: #FFFFFF;
             border-color: rgba(239, 68, 68, 0.7);
@@ -7418,13 +7444,17 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             flex-direction: column;
             gap: 3px;
         }
-        .driving-track-title {
+        .driving-dashboard-root .driving-track-title {
             font-family: 'Montserrat', sans-serif;
             font-size: clamp(1.15rem, 4.4vw, 1.45rem);
             font-weight: 900;
             color: #FFFFFF;
             line-height: 1.22;
             margin: 0;
+            text-align: left;
+            text-transform: none;
+            letter-spacing: -0.01em;
+            text-shadow: none;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -7537,11 +7567,11 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             align-items: center;
             gap: 10px;
             flex-wrap: wrap;
-            padding-bottom: 8px;
+            padding-bottom: 10px;
             border-bottom: 1px solid rgba(56, 189, 248, 0.25);
         }
         .driving-analysis-header-info {
-            min-width: 0;
+            min-width: 180px;
             flex: 1;
         }
         .driving-analysis-heading-title {
@@ -7549,6 +7579,7 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             font-size: 1.05rem;
             font-weight: 800;
             color: #FFFFFF;
+            white-space: nowrap;
         }
         .driving-analysis-badge-track {
             font-size: 0.84rem;
@@ -7557,7 +7588,8 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
-            max-width: 320px;
+            max-width: 100%;
+            margin-top: 2px;
         }
         .driving-header-tools {
             display: flex;
@@ -7565,18 +7597,22 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             gap: 8px;
             flex-shrink: 0;
         }
-        .driving-reanalyze-btn {
+        .driving-dashboard-root .driving-reanalyze-btn {
             background: rgba(14, 38, 80, 0.8);
             border: 1px solid rgba(56, 189, 248, 0.35);
             color: #BAE6FD;
+            font-family: 'Montserrat', sans-serif;
             font-size: 0.78rem;
             font-weight: 700;
-            padding: 4px 10px;
+            padding: 6px 11px;
             border-radius: 10px;
             cursor: pointer;
             transition: all 0.2s ease;
+            white-space: nowrap;
+            width: auto;
+            margin: 0;
         }
-        .driving-reanalyze-btn:hover {
+        .driving-dashboard-root .driving-reanalyze-btn:hover {
             background: rgba(56, 189, 248, 0.25);
             color: #FFFFFF;
         }
@@ -7585,22 +7621,24 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             align-items: center;
             gap: 2px;
             background: rgba(14, 38, 80, 0.85);
-            padding: 3px 6px;
-            border-radius: 12px;
+            padding: 2px 5px;
+            border-radius: 10px;
             border: 1px solid rgba(56, 189, 248, 0.35);
         }
-        .driving-font-btn {
+        .driving-dashboard-root .driving-font-btn {
             background: transparent;
             border: none;
             color: #BAE6FD;
             font-weight: 800;
-            font-size: 0.95rem;
+            font-size: 0.9rem;
             cursor: pointer;
-            padding: 2px 7px;
+            padding: 4px 8px;
             border-radius: 6px;
             transition: background 0.15s ease;
+            width: auto;
+            margin: 0;
         }
-        .driving-font-btn:hover {
+        .driving-dashboard-root .driving-font-btn:hover {
             background: rgba(56, 189, 248, 0.25);
             color: #FFFFFF;
         }
@@ -7639,19 +7677,22 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
         .driving-section-icon {
             font-size: 1.3rem;
         }
-        .driving-section-title {
+        .driving-dashboard-root .driving-section-title {
             font-family: 'Montserrat', sans-serif;
             font-size: 1.25rem;
             font-weight: 900;
             color: #6EE7B7;
             margin: 0;
             line-height: 1.25;
+            text-align: left;
+            text-transform: none;
         }
         .driving-section-content p {
             margin: 0 0 12px 0;
             font-size: 1.15rem;
             line-height: 1.62;
             color: #F1F5F9;
+            text-align: left;
         }
         .driving-section-content p:last-child {
             margin-bottom: 0;
@@ -7660,12 +7701,14 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
         .driving-section-content ol {
             margin: 0 0 14px 20px;
             padding: 0;
+            text-align: left;
         }
         .driving-section-content li {
             margin-bottom: 10px;
             font-size: 1.12rem;
             line-height: 1.55;
             color: #F8FAFC;
+            text-align: left;
         }
         .driving-section-content strong {
             color: #FDE047;
@@ -7685,6 +7728,7 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             color: #E0F2FE;
             font-size: 1.18rem;
             line-height: 1.6;
+            text-align: left;
         }
         .driving-loading-card {
             text-align: center;
@@ -7704,7 +7748,7 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             align-items: center;
             gap: 10px;
         }
-        .driving-retry-btn {
+        .driving-dashboard-root .driving-retry-btn {
             background: #38BDF8;
             color: #020617;
             font-family: 'Montserrat', sans-serif;
@@ -7716,8 +7760,10 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             cursor: pointer;
             transition: all 0.2s ease;
             box-shadow: 0 4px 14px rgba(56, 189, 248, 0.4);
+            width: auto;
+            margin: 4px 0 0 0;
         }
-        .driving-retry-btn:hover {
+        .driving-dashboard-root .driving-retry-btn:hover {
             filter: brightness(1.15);
             transform: translateY(-1px);
         }
@@ -8068,6 +8114,7 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
         const DRIVING_REFRESH_INTERVAL_MS = 15000;
         let isDrivingRefreshing = false;
         let isDrivingAnalyzing = false;
+        let hasDrivingAnalysis = false;
         let currentDrivingTrackKey = '';
         let currentDrivingTrackData = null;
         let drivingFontScale = 1.0;
@@ -8155,7 +8202,7 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
                     console.warn('Marked parse error in driving mode:', e);
                 }
             }
-            let text = md.replace(/\r\n/g, '\n');
+            let text = md.replace(/\\r\\n/g, '\\n');
             text = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
             text = text.replace(/^#### (.*$)/gim, '<h4>$1</h4>');
             text = text.replace(/^### (.*$)/gim, '<h3>$1</h3>');
@@ -8164,19 +8211,19 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             text = text.replace(/[*]{2}([^*]+)[*]{2}/g, '<strong>$1</strong>');
             text = text.replace(/[*]([^*]+)[*]/g, '<em>$1</em>');
             text = text.replace(/^> (.*$)/gim, '<blockquote>$1</blockquote>');
-            text = text.replace(/^[ \t]*[-*][ \t]+(.*$)/gim, '<li>$1</li>');
-            const paras = text.split(/\n{2,}/);
+            text = text.replace(/^[ \\t]*[-*][ \\t]+(.*$)/gim, '<li>$1</li>');
+            const paras = text.split(/\\n{2,}/);
             return paras.map(p => {
                 p = p.trim();
                 if (/^<(h[1-6]|ul|ol|blockquote|pre|li)/.test(p)) return p;
-                return `<p>${p.replace(/\n/g, '<br>')}</p>`;
-            }).join('\n');
+                return `<p>${p.replace(/\\n/g, '<br>')}</p>`;
+            }).join('\\n');
         }
 
         function parseDrivingMarkdownIntoSections(md) {
             if (!md || !md.trim()) return '';
-            let text = md.replace(/\r\n/g, '\n').trim();
-            const headingRegex = /^##[ \t]+(.+)$/gm;
+            let text = md.replace(/\\r\\n/g, '\\n').trim();
+            const headingRegex = /^##[ \\t]+(.+)$/gm;
             const indices = [];
             let match;
             while ((match = headingRegex.exec(text)) !== null) {
@@ -8227,6 +8274,7 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             }
 
             if (!rawMarkdown || !rawMarkdown.trim()) {
+                hasDrivingAnalysis = false;
                 const sName = trackInfo ? (trackInfo.name || trackInfo.song || 'current track') : 'current track';
                 container.innerHTML = `
                 <div class="driving-loading-card">
@@ -8238,10 +8286,12 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
                 return;
             }
 
+            hasDrivingAnalysis = true;
             container.innerHTML = parseDrivingMarkdownIntoSections(rawMarkdown);
         }
 
         function renderDrivingAnalysisError(errorMessage, trackInfo) {
+            hasDrivingAnalysis = false;
             const container = document.getElementById('driving-analysis-body');
             if (!container) return;
             const sName = trackInfo ? (trackInfo.name || trackInfo.song || 'current track') : 'current track';
@@ -8378,7 +8428,11 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
 
             try {
                 const isDemo = new URLSearchParams(window.location.search).get('demo') === '1';
-                const url = `/api/spotify/driving-state${isDemo ? '?demo=1' : ''}`;
+                const params = new URLSearchParams();
+                if (isDemo) params.set('demo', '1');
+                if (force) params.set('force', '1');
+                const qs = params.toString();
+                const url = `/api/spotify/driving-state${qs ? '?' + qs : ''}`;
                 const res = await fetch(url, { signal: controller.signal });
                 clearTimeout(timeoutId);
 
@@ -8398,15 +8452,19 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
                     const newKey = `${(data.track.artist || '').trim().toLowerCase()}:::${(data.track.name || '').trim().toLowerCase()}`;
                     const rawAnalysis = (data.analysis && data.analysis.analysis) ? data.analysis.analysis : (data.analysis || '');
 
-                    if (newKey !== currentDrivingTrackKey || force) {
+                    if (newKey !== currentDrivingTrackKey) {
                         currentDrivingTrackKey = newKey;
                         if (rawAnalysis && rawAnalysis.trim()) {
                             renderDrivingAnalysis(rawAnalysis, data.track);
                         } else {
                             triggerDrivingAnalysis(data.track.artist, data.track.name);
                         }
-                    } else if (!document.getElementById('driving-analysis-body').children.length && rawAnalysis) {
-                        renderDrivingAnalysis(rawAnalysis, data.track);
+                    } else if (!hasDrivingAnalysis) {
+                        if (rawAnalysis && rawAnalysis.trim()) {
+                            renderDrivingAnalysis(rawAnalysis, data.track);
+                        } else if (!isDrivingAnalyzing) {
+                            triggerDrivingAnalysis(data.track.artist, data.track.name, force);
+                        }
                     }
                 }
             } catch (err) {
@@ -8496,6 +8554,17 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             document.addEventListener('touchstart', async () => {
                 if (!drivingWakeLock) await requestDrivingWakeLock();
             }, { once: true, passive: true });
+
+            // Initialize playback progress and duration from server-rendered attributes
+            const cardEl = document.getElementById('driving-slide-track');
+            if (cardEl) {
+                const initProg = parseInt(cardEl.getAttribute('data-progress-ms') || '0', 10);
+                const initDur = parseInt(cardEl.getAttribute('data-duration-ms') || '0', 10);
+                const initPlaying = cardEl.getAttribute('data-is-playing') === '1';
+                if (!isNaN(initProg)) drivingTrackProgressMs = initProg;
+                if (!isNaN(initDur)) drivingTrackDurationMs = initDur;
+                drivingTrackIsPlaying = initPlaying;
+            }
 
             const rawEl = document.getElementById('driving-analysis-raw');
             const rawText = rawEl ? (rawEl.textContent || '') : '';
@@ -13569,8 +13638,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                             p_template = prompts[0]['text'] if prompts else "Analyze lyrics:\n{lyrics_text}"
                             p_text = p_template.replace('{song}', song).replace('{artist}', artist).replace('{lyrics_text}', html.unescape(lyrics))
                             client = get_gemini_client()
-                            inter = client.interactions.create(model=model_name, input=p_text)
-                            analysis = inter.output_text or ''
+                            analysis = _generate_gemini_text(client, model_name, p_text)
                             database.save_analysis(
                                 artist=artist,
                                 song=song,
@@ -13654,8 +13722,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                             p_template = prompts[0]['text'] if prompts else "Analyze lyrics:\n{lyrics_text}"
                             p_text = p_template.replace('{song}', song).replace('{artist}', artist).replace('{lyrics_text}', html.unescape(lyrics))
                             client = get_gemini_client()
-                            inter = client.interactions.create(model=model_name, input=p_text)
-                            analysis = inter.output_text or ''
+                            analysis = _generate_gemini_text(client, model_name, p_text)
                             database.save_analysis(
                                 artist=artist,
                                 song=song,
@@ -13783,8 +13850,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                                 p_template = prompts[0]['text'] if prompts else "Analyze lyrics:\n{lyrics_text}"
                                 p_text = p_template.replace('{song}', effective_song).replace('{artist}', effective_artist).replace('{lyrics_text}', html.unescape(lyrics))
                                 client = get_gemini_client()
-                                inter = client.interactions.create(model=DEFAULT_GEMINI_MODEL, input=p_text)
-                                analysis = inter.output_text or ''
+                                analysis = _generate_gemini_text(client, DEFAULT_GEMINI_MODEL, p_text)
                                 database.save_analysis(
                                     artist=effective_artist,
                                     song=effective_song,
@@ -14281,11 +14347,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 try:
                     client = get_gemini_client()
                     prompt = prompt_template.replace('{song}', song).replace('{artist}', artist).replace('{lyrics_text}', html.unescape(lyrics_text))
-                    interaction = client.interactions.create(
-                        model=model_name,
-                        input=prompt,
-                    )
-                    analysis_result = interaction.output_text or ''
+                    analysis_result = _generate_gemini_text(client, model_name, prompt)
                     model_display_name = next((m['name'] for m in AVAILABLE_GEMINI_MODELS if m['id'] == model_name), model_name)
                     message = f'<div class="message">Analysis complete using {html_escape(model_display_name)} with prompt "{html_escape(prompt_name)}".</div>'
 
@@ -16172,6 +16234,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
 
         params = urllib.parse.parse_qs(query_string)
         is_demo = params.get('demo', ['0'])[0] == '1'
+        force_refresh = params.get('force', ['0'])[0] == '1'
         check_analysis = params.get('check_analysis', ['0'])[0] == '1'
         req_artist = (params.get('artist', [''])[0] or '').strip()
         req_song = (params.get('song', [''])[0] or '').strip()
@@ -16207,7 +16270,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             cache_key = current_user['email'].lower()
             now_ts = time.time()
             cached_player = _spotify_driving_track_cache.get(cache_key)
-            if cached_player and (now_ts - cached_player.get('time', 0)) < 4.0:
+            if cached_player and not force_refresh and (now_ts - cached_player.get('time', 0)) < 4.0:
                 active_track = cached_player.get('track')
                 is_playing = cached_player.get('is_playing', False)
                 is_connected = cached_player.get('is_connected', False)
@@ -17758,7 +17821,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                 </div>
 
                 <!-- Compact Active Track Card -->
-                <div class="driving-track-card" id="driving-slide-track">
+                <div class="driving-track-card" id="driving-slide-track" data-progress-ms="{int(d_track.get('progress_ms') or 0) if d_track else 0}" data-duration-ms="{int(d_track.get('duration_ms') or 0) if d_track else 0}" data-is-playing="{'1' if (now_playing and (now_playing.get('is_playing') is not False)) else '0'}">
                     <div class="driving-card-meta-row">
                         <div class="driving-eq-wrap">
                             <div class="spotify-equalizer">
@@ -20844,6 +20907,43 @@ def clean_spotify_track_title(song: str) -> str:
     return cleaned.strip() or song
 
 
+def _generate_gemini_text(client, model_name: str, prompt_text: str) -> str:
+    """Generate text with Gemini using interactions.create first (with outputs fallback) and models.generate_content as fallback."""
+    if not client:
+        return ''
+    target_model = model_name or DEFAULT_GEMINI_MODEL
+    # 1. Try interactions.create first
+    try:
+        inter = client.interactions.create(model=target_model, input=prompt_text)
+        txt = getattr(inter, 'output_text', None)
+        if txt and str(txt).strip():
+            return str(txt)
+        outputs = getattr(inter, 'outputs', None)
+        if outputs:
+            parts = []
+            for out in outputs:
+                out_txt = getattr(out, 'text', None)
+                if out_txt:
+                    parts.append(str(out_txt))
+            if parts:
+                return '\n'.join(parts)
+    except Exception as ie:
+        print(f"_generate_gemini_text: interactions.create fallback to generate_content ({target_model}): {ie}")
+
+    # 2. Fallback to models.generate_content
+    try:
+        if hasattr(client, 'models') and hasattr(client.models, 'generate_content'):
+            res = client.models.generate_content(model=target_model, contents=prompt_text)
+            txt = getattr(res, 'text', None)
+            if txt and str(txt).strip():
+                return str(txt)
+    except Exception as me:
+        print(f"_generate_gemini_text: models.generate_content error ({target_model}): {me}")
+        raise
+
+    return ''
+
+
 def ensure_song_lyrics_and_analysis(artist: str, song: str, db_path: Optional[str] = None, only_cached: bool = False, spawn_worker: bool = True) -> Dict[str, Any]:
     """Ensure lyrics and Gemini lyric analysis exist for the given track, fetching and analyzing if necessary."""
     artist = (artist or '').strip()
@@ -21059,8 +21159,7 @@ def ensure_song_lyrics_and_analysis(artist: str, song: str, db_path: Optional[st
                         )
                         p_text = p_template
 
-                    inter = client.interactions.create(model=model_name or DEFAULT_GEMINI_MODEL, input=p_text)
-                    analysis = inter.output_text or ''
+                    analysis = _generate_gemini_text(client, model_name or DEFAULT_GEMINI_MODEL, p_text)
                     if analysis:
                         if not lyrics:
                             source = 'Gemini AI Intelligence'
