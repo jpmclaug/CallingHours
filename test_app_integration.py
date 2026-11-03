@@ -1085,18 +1085,15 @@ class TestAppIntegration(unittest.TestCase):
             self.assertIn('navigator.wakeLock', html)
             self.assertIn('id="driving-timer-progress"', html)
             self.assertIn('id="driving-timer-text"', html)
-            self.assertIn('Refreshes in 30s', html)
+            self.assertIn('Refreshes in 15s', html)
             self.assertIn('id="driving-viewport"', html)
-            self.assertIn('id="driving-slides-track"', html)
             self.assertIn('id="driving-slide-track"', html)
             self.assertIn('id="driving-slide-analysis"', html)
-            self.assertIn('id="driving-tab-track"', html)
-            self.assertIn('id="driving-tab-analysis"', html)
             self.assertIn('switchDrivingSlide', html)
-            self.assertIn('id="driving-swipe-cta"', html)
             self.assertIn('id="driving-analysis-body"', html)
             self.assertIn('adjustDrivingFontSize', html)
             self.assertIn('Exit', html)
+            self.assertIn('btn-driving-refresh-now', html)
 
         # 3c. Verify /api/spotify/driving-state in demo mode
         with self.authed_get("/api/spotify/driving-state?demo=1") as resp:
@@ -1108,6 +1105,25 @@ class TestAppIntegration(unittest.TestCase):
             self.assertEqual(data['track']['name'], 'Bleed American')
             self.assertEqual(data['track']['artist'], 'Jimmy Eat World')
             self.assertIn('analysis', data)
+
+        # 3d. Verify /api/spotify/driving-analyze endpoint
+        # Unauthenticated returns 401
+        with self.assertRaises(urllib.error.HTTPError) as ctx:
+            urllib.request.urlopen(f"{self.base_url}/api/spotify/driving-analyze")
+        self.assertEqual(ctx.exception.code, 401)
+
+        # Missing params returns 400
+        with self.assertRaises(urllib.error.HTTPError) as ctx:
+            with self.authed_get("/api/spotify/driving-analyze"):
+                pass
+        self.assertEqual(ctx.exception.code, 400)
+
+        # Call with artist and song
+        with self.authed_get("/api/spotify/driving-analyze?artist=Jimmy%20Eat%20World&song=Bleed%20American") as resp:
+            self.assertEqual(resp.status, 200)
+            data = json.loads(resp.read().decode('utf-8'))
+            self.assertIn('status', data)
+            self.assertIn(data['status'], ('ready', 'failed', 'no_key'))
 
         # 4. Verify API status endpoint
         with self.authed_get("/api/spotify/status") as resp:

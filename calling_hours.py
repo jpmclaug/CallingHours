@@ -7192,14 +7192,15 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
-        /* ── Driving Mode Styles (Automotive-Optimized) ───────────── */
+        /* ── Driving Mode Styles (Automotive Single-Screen Optimized) ── */
         .driving-dashboard-root {
             display: flex;
             flex-direction: column;
-            gap: 14px;
+            gap: 12px;
             width: 100%;
-            max-width: 680px;
+            max-width: 720px;
             margin: 0 auto;
+            padding: 4px 6px 40px;
             box-sizing: border-box;
             user-select: none;
             -webkit-user-select: none;
@@ -7209,20 +7210,20 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
         .driving-mode-banner {
             background: linear-gradient(135deg, rgba(14, 34, 72, 0.96) 0%, rgba(7, 18, 42, 0.98) 100%);
             border: 1px solid rgba(56, 189, 248, 0.4);
-            border-radius: 18px;
-            padding: 14px 18px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 20px rgba(56, 189, 248, 0.15);
+            border-radius: 14px;
+            padding: 10px 14px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45);
             display: flex;
             flex-direction: column;
-            gap: 12px;
-            backdrop-filter: blur(16px);
+            gap: 8px;
+            backdrop-filter: blur(14px);
             box-sizing: border-box;
         }
         .driving-header-top {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            gap: 12px;
+            gap: 10px;
             width: 100%;
         }
         .driving-brand {
@@ -7234,7 +7235,7 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
         }
         .driving-brand-title {
             font-family: 'Montserrat', sans-serif;
-            font-size: 1.15rem;
+            font-size: 1.05rem;
             font-weight: 900;
             color: #FFFFFF;
             letter-spacing: 0.02em;
@@ -7247,9 +7248,9 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             background: rgba(16, 185, 129, 0.18);
             border: 1px solid rgba(16, 185, 129, 0.45);
             color: #6EE7B7;
-            font-size: 0.78rem;
+            font-size: 0.74rem;
             font-weight: 700;
-            padding: 4px 10px;
+            padding: 3px 8px;
             border-radius: 20px;
             letter-spacing: 0.02em;
             white-space: nowrap;
@@ -7262,29 +7263,29 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
         .driving-header-actions {
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 6px;
             flex-shrink: 0;
         }
         .driving-action-btn {
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            gap: 6px;
-            padding: 7px 14px;
-            border-radius: 14px;
+            gap: 5px;
+            padding: 6px 12px;
+            border-radius: 10px;
             font-family: 'Montserrat', sans-serif;
-            font-size: 0.82rem;
+            font-size: 0.8rem;
             font-weight: 700;
             cursor: pointer;
             text-decoration: none;
             transition: all 0.2s ease;
             white-space: nowrap;
-            min-height: 36px;
+            min-height: 34px;
             box-sizing: border-box;
         }
         .driving-action-btn.refresh {
-            background: rgba(30, 58, 98, 0.7);
-            border: 1px solid rgba(56, 189, 248, 0.4);
+            background: rgba(30, 58, 98, 0.75);
+            border: 1px solid rgba(56, 189, 248, 0.45);
             color: #BAE6FD;
         }
         .driving-action-btn.refresh:hover {
@@ -7293,89 +7294,14 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             border-color: rgba(56, 189, 248, 0.7);
         }
         .driving-action-btn.exit {
-            background: rgba(239, 68, 68, 0.15);
+            background: rgba(239, 68, 68, 0.18);
             border: 1px solid rgba(239, 68, 68, 0.45);
             color: #FCA5A5;
         }
         .driving-action-btn.exit:hover {
-            background: rgba(239, 68, 68, 0.3);
+            background: rgba(239, 68, 68, 0.35);
             color: #FFFFFF;
             border-color: rgba(239, 68, 68, 0.7);
-        }
-
-        /* Slide Navigation Tabs (Equal 50/50 Full-Width Segmented Switch) */
-        @keyframes drivingPulse {
-            0%, 100% { transform: scale(1); opacity: 1; }
-            50% { transform: scale(1.14); opacity: 0.85; }
-        }
-        .driving-slide-tabs {
-            display: flex;
-            width: 100%;
-            max-width: 100%;
-            background: rgba(6, 16, 36, 0.9);
-            padding: 4px;
-            border-radius: 14px;
-            border: 1px solid rgba(56, 189, 248, 0.35);
-            box-sizing: border-box;
-            gap: 6px;
-            overflow: hidden;
-        }
-        .driving-slide-tab {
-            flex: 1 1 0%;
-            min-width: 0;
-            width: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 6px;
-            padding: 10px 6px;
-            border-radius: 10px;
-            border: none;
-            background: transparent;
-            color: #94A3B8;
-            font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            font-weight: 700;
-            font-size: clamp(0.78rem, 3.4vw, 0.95rem);
-            cursor: pointer;
-            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            text-align: center;
-            min-height: 44px;
-            box-sizing: border-box;
-        }
-        .driving-slide-tab:hover {
-            color: #BAE6FD;
-        }
-        .driving-slide-tab.active {
-            background: #38BDF8;
-            color: #020617;
-            font-weight: 900;
-            box-shadow: 0 2px 12px rgba(56, 189, 248, 0.45);
-        }
-        .driving-tab-label-short {
-            display: none;
-        }
-        .driving-tab-label-full {
-            display: inline;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-        @media (max-width: 440px) {
-            .driving-tab-label-full {
-                display: none;
-            }
-            .driving-tab-label-short {
-                display: inline;
-                font-weight: 800;
-                letter-spacing: 0.3px;
-            }
-            .driving-slide-tab {
-                padding: 10px 4px;
-                font-size: 0.88rem;
-            }
         }
 
         /* Auto-Refresh Timer Bar */
@@ -7383,15 +7309,15 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             display: flex;
             align-items: center;
             justify-content: space-between;
-            gap: 12px;
+            gap: 10px;
             width: 100%;
-            padding: 0 2px;
+            padding: 0 1px;
             box-sizing: border-box;
         }
         .driving-timer-bar {
             flex: 1;
             height: 4px;
-            background: rgba(255, 255, 255, 0.1);
+            background: rgba(255, 255, 255, 0.12);
             border-radius: 2px;
             overflow: hidden;
         }
@@ -7403,46 +7329,24 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             transition: width 1s linear;
         }
         .driving-timer-text {
-            font-size: 0.78rem;
+            font-size: 0.74rem;
             color: #7DD3FC;
             font-weight: 600;
             font-variant-numeric: tabular-nums;
             white-space: nowrap;
-            opacity: 0.85;
+            opacity: 0.9;
         }
 
-        /* Swipeable Viewport and Carousel */
-        .driving-viewport {
-            width: 100%;
-            overflow: hidden;
-            position: relative;
-            border-radius: 20px;
-            touch-action: pan-y;
-        }
-        .driving-slides-track {
-            display: flex;
-            width: 200%;
-            transform: translateX(0%);
-            transition: transform 0.35s cubic-bezier(0.25, 1, 0.5, 1);
-            will-change: transform;
-        }
-        .driving-slide {
-            width: 50%;
-            min-width: 50%;
-            box-sizing: border-box;
-            padding: 0 2px;
-        }
-
-        /* Slide 1: Track Card */
+        /* Compact Active Track Card */
         .driving-track-card {
             background: linear-gradient(135deg, rgba(12, 32, 68, 0.96) 0%, rgba(6, 16, 38, 0.98) 100%);
             border: 1px solid rgba(56, 189, 248, 0.45);
-            border-radius: 20px;
-            padding: 24px 24px 28px 24px;
-            box-shadow: 0 16px 48px rgba(0, 0, 0, 0.65), 0 0 32px rgba(56, 189, 248, 0.16);
+            border-radius: 16px;
+            padding: 14px 16px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
             display: flex;
             flex-direction: column;
-            gap: 18px;
+            gap: 12px;
             box-sizing: border-box;
         }
         .driving-card-meta-row {
@@ -7450,87 +7354,80 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             justify-content: space-between;
             align-items: center;
             width: 100%;
-            gap: 12px;
+            gap: 10px;
         }
         .driving-eq-wrap {
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 8px;
         }
         .driving-badge-text {
             font-family: 'Montserrat', sans-serif;
-            font-size: 0.84rem;
+            font-size: 0.78rem;
             font-weight: 800;
             text-transform: uppercase;
             letter-spacing: 0.08em;
             color: #38BDF8;
         }
         .driving-track-time {
-            font-size: 0.98rem;
+            font-size: 0.88rem;
             color: #BAE6FD;
             font-weight: 700;
             font-variant-numeric: tabular-nums;
         }
 
-        /* Main Track Row (Stacked & Centered on mobile; side-by-side on wide screens) */
-        .driving-track-main-row {
+        /* Compact Horizontal Row for Track Info */
+        .driving-track-compact-row {
             display: flex;
-            flex-direction: column;
             align-items: center;
-            text-align: center;
-            gap: 18px;
+            gap: 14px;
             width: 100%;
             box-sizing: border-box;
         }
         .driving-album-art-wrap {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            width: 100%;
             flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
         .driving-album-art {
-            width: min(220px, 54vw);
-            height: min(220px, 54vw);
-            border-radius: 18px;
+            width: 78px;
+            height: 78px;
+            border-radius: 12px;
             object-fit: cover;
-            border: 2px solid rgba(56, 189, 248, 0.5);
-            box-shadow: 0 14px 36px rgba(0, 0, 0, 0.65), 0 0 24px rgba(56, 189, 248, 0.22);
+            border: 1.5px solid rgba(56, 189, 248, 0.5);
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
             display: block;
         }
         .driving-album-art-placeholder {
-            width: min(220px, 54vw);
-            height: min(220px, 54vw);
-            border-radius: 18px;
+            width: 78px;
+            height: 78px;
+            border-radius: 12px;
             background: rgba(14, 38, 80, 0.7);
-            border: 2px solid rgba(56, 189, 248, 0.4);
+            border: 1.5px solid rgba(56, 189, 248, 0.4);
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 4rem;
-            box-shadow: 0 14px 36px rgba(0, 0, 0, 0.65);
+            font-size: 2rem;
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
         }
         .driving-track-details {
-            width: 100%;
+            flex: 1;
+            min-width: 0;
             display: flex;
             flex-direction: column;
-            align-items: center;
-            text-align: center;
-            min-width: 0;
-            box-sizing: border-box;
+            gap: 3px;
         }
         .driving-track-title {
             font-family: 'Montserrat', sans-serif;
-            font-size: clamp(1.45rem, 5.2vw, 2.2rem);
+            font-size: clamp(1.15rem, 4.4vw, 1.45rem);
             font-weight: 900;
             color: #FFFFFF;
-            line-height: 1.24;
-            margin: 0 0 8px 0;
-            text-align: center;
-            word-break: normal !important;
-            overflow-wrap: break-word !important;
-            hyphens: none !important;
-            text-wrap: balance;
+            line-height: 1.22;
+            margin: 0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
             width: 100%;
         }
         .driving-track-title a {
@@ -7542,15 +7439,12 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             color: #38BDF8;
         }
         .driving-track-artist-row {
-            font-size: clamp(1.1rem, 3.8vw, 1.4rem);
+            font-size: clamp(0.92rem, 3.2vw, 1.05rem);
             color: #93C5FD;
             font-weight: 700;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 6px;
-            flex-wrap: wrap;
-            text-align: center;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
             width: 100%;
         }
         .driving-track-artist-row a {
@@ -7562,97 +7456,30 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             color: #FFFFFF;
         }
         .driving-track-album {
-            color: rgba(225, 232, 240, 0.65);
-            font-size: clamp(0.92rem, 3.2vw, 1.1rem);
+            color: rgba(225, 232, 240, 0.6);
             font-weight: 500;
         }
-
-        /* Progress Bar */
-        .driving-progress-bar-wrap {
-            width: 100%;
-            height: 8px;
-            background: rgba(255, 255, 255, 0.12);
-            border-radius: 4px;
-            overflow: hidden;
-            box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.5);
-            margin: 4px 0;
-        }
-        .driving-progress-bar-fill {
-            height: 100%;
-            background: linear-gradient(90deg, #38BDF8, #60A5FA);
-            border-radius: 4px;
-            box-shadow: 0 0 10px rgba(56, 189, 248, 0.6);
-            transition: width 0.4s ease;
-        }
-
-        /* Primary CTA: Lyric Analysis Button */
-        .driving-cta-section {
-            width: 100%;
-            margin-top: 2px;
-        }
-        .driving-swipe-cta-btn {
-            width: 100%;
-            padding: 15px 20px;
-            font-size: clamp(0.92rem, 3.4vw, 1.15rem);
-            font-weight: 800;
-            font-family: 'Montserrat', sans-serif;
-            border-radius: 14px;
-            background: linear-gradient(135deg, rgba(14, 42, 82, 0.85) 0%, rgba(10, 28, 58, 0.95) 100%);
-            border: 1px solid rgba(56, 189, 248, 0.45);
-            color: #BAE6FD;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
-            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
-            letter-spacing: 0.02em;
-            min-height: 52px;
-            box-sizing: border-box;
-        }
-        .driving-swipe-cta-btn.ready {
-            background: linear-gradient(135deg, rgba(16, 185, 129, 0.25) 0%, rgba(5, 150, 105, 0.38) 100%);
-            border: 1.5px solid rgba(52, 211, 153, 0.65);
-            color: #A7F3D0;
-            box-shadow: 0 6px 24px rgba(16, 185, 129, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.15);
-            text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
-        }
-        .driving-swipe-cta-btn:hover {
-            transform: translateY(-2px);
-            filter: brightness(1.15);
-            box-shadow: 0 8px 28px rgba(56, 189, 248, 0.35);
-        }
-        .driving-swipe-cta-btn.ready:hover {
-            box-shadow: 0 8px 30px rgba(16, 185, 129, 0.45);
-        }
-        .driving-swipe-cta-btn:active {
-            transform: translateY(1px);
-        }
-
-        /* Secondary Bottom Actions */
         .driving-secondary-links {
             display: flex;
-            gap: 12px;
+            gap: 8px;
             align-items: center;
-            width: 100%;
+            margin-top: 4px;
+            flex-wrap: wrap;
         }
         .driving-sub-btn {
-            flex: 1 1 50%;
-            display: flex;
+            display: inline-flex;
             align-items: center;
             justify-content: center;
-            gap: 8px;
-            padding: 12px 14px;
-            border-radius: 12px;
+            gap: 5px;
+            padding: 5px 10px;
+            border-radius: 8px;
             font-family: 'Montserrat', sans-serif;
-            font-size: 0.92rem;
+            font-size: 0.78rem;
             font-weight: 700;
             text-decoration: none;
             transition: all 0.2s ease;
-            min-height: 44px;
             box-sizing: border-box;
-            text-align: center;
+            white-space: nowrap;
         }
         .driving-sub-btn.workspace {
             background: rgba(30, 64, 120, 0.45);
@@ -7675,48 +7502,43 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             border-color: rgba(29, 185, 84, 0.75);
         }
 
-        /* Slide 2: Analysis View */
-        .driving-analysis-slide-inner {
-            display: flex;
-            flex-direction: column;
-            gap: 16px;
+        /* Progress Bar */
+        .driving-progress-bar-wrap {
+            width: 100%;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.12);
+            border-radius: 3px;
+            overflow: hidden;
+            box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.4);
         }
-        .driving-analysis-nav-header {
-            position: sticky;
-            top: 10px;
-            z-index: 10;
-            background: rgba(8, 22, 46, 0.95);
-            backdrop-filter: blur(16px);
+        .driving-progress-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #38BDF8, #60A5FA);
+            border-radius: 3px;
+            box-shadow: 0 0 8px rgba(56, 189, 248, 0.6);
+            transition: width 0.4s ease;
+        }
+
+        /* Single-Screen Integrated Analysis Section */
+        .driving-analysis-card {
+            background: linear-gradient(135deg, rgba(10, 26, 56, 0.95) 0%, rgba(5, 14, 32, 0.98) 100%);
             border: 1px solid rgba(56, 189, 248, 0.35);
             border-radius: 16px;
-            padding: 12px 16px;
+            padding: 14px 16px 20px;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            box-sizing: border-box;
+        }
+        .driving-analysis-nav-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
             gap: 10px;
             flex-wrap: wrap;
-            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
-        }
-        .driving-nav-back-btn {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            padding: 8px 14px;
-            font-size: 0.9rem;
-            font-weight: 800;
-            font-family: 'Montserrat', sans-serif;
-            color: #38BDF8;
-            background: rgba(14, 40, 80, 0.7);
-            border: 1px solid rgba(56, 189, 248, 0.5);
-            border-radius: 12px;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            min-height: 38px;
-            box-sizing: border-box;
-        }
-        .driving-nav-back-btn:hover {
-            background: rgba(56, 189, 248, 0.25);
-            color: #FFFFFF;
+            padding-bottom: 8px;
+            border-bottom: 1px solid rgba(56, 189, 248, 0.25);
         }
         .driving-analysis-header-info {
             min-width: 0;
@@ -7724,26 +7546,47 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
         }
         .driving-analysis-heading-title {
             font-family: 'Montserrat', sans-serif;
-            font-size: 1.1rem;
+            font-size: 1.05rem;
             font-weight: 800;
             color: #FFFFFF;
         }
         .driving-analysis-badge-track {
-            font-size: 0.9rem;
+            font-size: 0.84rem;
             font-weight: 600;
             color: #93C5FD;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
-            max-width: 240px;
+            max-width: 320px;
+        }
+        .driving-header-tools {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+        .driving-reanalyze-btn {
+            background: rgba(14, 38, 80, 0.8);
+            border: 1px solid rgba(56, 189, 248, 0.35);
+            color: #BAE6FD;
+            font-size: 0.78rem;
+            font-weight: 700;
+            padding: 4px 10px;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .driving-reanalyze-btn:hover {
+            background: rgba(56, 189, 248, 0.25);
+            color: #FFFFFF;
         }
         .driving-font-controls {
             display: inline-flex;
             align-items: center;
-            gap: 4px;
+            gap: 2px;
             background: rgba(14, 38, 80, 0.85);
-            padding: 4px 8px;
-            border-radius: 16px;
+            padding: 3px 6px;
+            border-radius: 12px;
             border: 1px solid rgba(56, 189, 248, 0.35);
         }
         .driving-font-btn {
@@ -7751,9 +7594,9 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             border: none;
             color: #BAE6FD;
             font-weight: 800;
-            font-size: 1rem;
+            font-size: 0.95rem;
             cursor: pointer;
-            padding: 3px 8px;
+            padding: 2px 7px;
             border-radius: 6px;
             transition: background 0.15s ease;
         }
@@ -7762,63 +7605,66 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             color: #FFFFFF;
         }
         .driving-font-label {
-            font-size: 0.8rem;
+            font-size: 0.76rem;
             color: #A5C8FF;
             font-weight: 700;
-            min-width: 40px;
+            min-width: 36px;
             text-align: center;
         }
 
         .driving-analysis-body-container {
-            font-size: 1.35rem;
-            line-height: 1.75;
+            font-size: 1.22rem;
+            line-height: 1.68;
             color: #F8FAFC;
-            font-family: 'Roboto Condensed', sans-serif;
+            font-family: 'Roboto Condensed', -apple-system, BlinkMacSystemFont, sans-serif;
             display: flex;
             flex-direction: column;
-            gap: 16px;
+            gap: 14px;
         }
         .driving-section-card {
             background: linear-gradient(135deg, rgba(14, 34, 70, 0.95) 0%, rgba(8, 20, 44, 0.98) 100%);
             border: 1px solid rgba(165, 200, 255, 0.28);
-            border-radius: 18px;
-            padding: 24px 26px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+            border-radius: 14px;
+            padding: 16px 18px;
+            box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
         }
         .driving-section-header {
             display: flex;
             align-items: center;
-            gap: 12px;
-            margin-bottom: 16px;
-            padding-bottom: 10px;
+            gap: 10px;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
             border-bottom: 1px solid rgba(110, 231, 183, 0.25);
         }
         .driving-section-icon {
-            font-size: 1.4rem;
+            font-size: 1.3rem;
         }
         .driving-section-title {
             font-family: 'Montserrat', sans-serif;
-            font-size: 1.55rem;
+            font-size: 1.25rem;
             font-weight: 900;
             color: #6EE7B7;
             margin: 0;
             line-height: 1.25;
         }
         .driving-section-content p {
-            margin: 0 0 16px 0;
-            font-size: 1.28rem;
-            line-height: 1.7;
+            margin: 0 0 12px 0;
+            font-size: 1.15rem;
+            line-height: 1.62;
             color: #F1F5F9;
+        }
+        .driving-section-content p:last-child {
+            margin-bottom: 0;
         }
         .driving-section-content ul,
         .driving-section-content ol {
-            margin: 0 0 18px 22px;
+            margin: 0 0 14px 20px;
             padding: 0;
         }
         .driving-section-content li {
-            margin-bottom: 12px;
-            font-size: 1.25rem;
-            line-height: 1.6;
+            margin-bottom: 10px;
+            font-size: 1.12rem;
+            line-height: 1.55;
             color: #F8FAFC;
         }
         .driving-section-content strong {
@@ -7830,89 +7676,50 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             font-style: italic;
         }
         .driving-section-content blockquote {
-            border-left: 5px solid #38BDF8;
+            border-left: 4px solid #38BDF8;
             background: rgba(56, 189, 248, 0.12);
-            margin: 16px 0;
-            padding: 14px 20px;
-            border-radius: 0 14px 14px 0;
+            margin: 12px 0;
+            padding: 10px 16px;
+            border-radius: 0 10px 10px 0;
             font-style: italic;
             color: #E0F2FE;
-            font-size: 1.32rem;
-            line-height: 1.65;
+            font-size: 1.18rem;
+            line-height: 1.6;
         }
         .driving-loading-card {
             text-align: center;
-            padding: 44px 20px;
+            padding: 36px 16px;
             background: rgba(12, 30, 62, 0.8);
-            border-radius: 18px;
+            border-radius: 14px;
             border: 1px dashed rgba(56, 189, 248, 0.4);
         }
-
-        /* Responsive Layout Adjustments */
-        @media (min-width: 681px) {
-            .driving-track-main-row {
-                flex-direction: row;
-                align-items: center;
-                text-align: left;
-                gap: 24px;
-            }
-            .driving-album-art-wrap {
-                width: auto;
-                justify-content: flex-start;
-            }
-            .driving-album-art, .driving-album-art-placeholder {
-                width: 180px;
-                height: 180px;
-            }
-            .driving-track-details {
-                align-items: flex-start;
-                text-align: left;
-                flex: 1;
-            }
-            .driving-track-title {
-                text-align: left;
-                font-size: 2rem;
-            }
-            .driving-track-artist-row {
-                justify-content: flex-start;
-                text-align: left;
-            }
+        .driving-error-card {
+            text-align: center;
+            padding: 28px 16px;
+            background: rgba(40, 16, 24, 0.8);
+            border-radius: 14px;
+            border: 1px solid rgba(239, 68, 68, 0.4);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
         }
-
-        @media (max-width: 480px) {
-            .driving-mode-banner {
-                padding: 12px 14px;
-                border-radius: 16px;
-            }
-            .driving-track-card {
-                padding: 18px 16px 22px 16px;
-                border-radius: 18px;
-                gap: 16px;
-            }
-            .driving-album-art, .driving-album-art-placeholder {
-                width: min(190px, 52vw);
-                height: min(190px, 52vw);
-            }
-            .driving-track-title {
-                font-size: 1.6rem;
-            }
-            .driving-track-artist-row {
-                font-size: 1.15rem;
-            }
-            .driving-swipe-cta-btn {
-                font-size: 0.95rem;
-                padding: 14px 16px;
-            }
-            .driving-section-card {
-                padding: 18px 16px;
-            }
-            .driving-section-title {
-                font-size: 1.35rem;
-            }
-            .driving-section-content p,
-            .driving-section-content li {
-                font-size: 1.15rem;
-            }
+        .driving-retry-btn {
+            background: #38BDF8;
+            color: #020617;
+            font-family: 'Montserrat', sans-serif;
+            font-size: 0.95rem;
+            font-weight: 800;
+            padding: 10px 20px;
+            border-radius: 12px;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 14px rgba(56, 189, 248, 0.4);
+        }
+        .driving-retry-btn:hover {
+            filter: brightness(1.15);
+            transform: translateY(-1px);
         }
     </style>
 
@@ -8252,16 +8059,24 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
         }
 
 
-        // ── Driving Mode: Screen Wake Lock, Swipe Carousel & Auto-Refresh ──
+        // ── Driving Mode: Single-Screen, Robust Auto-Refresh & Synchronous Lyric Analysis ──
         let drivingWakeLock = null;
-        let drivingCountdown = 30;
+        let drivingWakeLockVideo = null;
+        let drivingCountdown = 15;
         let drivingTimerInterval = null;
+        let lastDrivingRefreshTime = Date.now();
+        const DRIVING_REFRESH_INTERVAL_MS = 15000;
         let isDrivingRefreshing = false;
+        let isDrivingAnalyzing = false;
         let currentDrivingTrackKey = '';
-        let currentDrivingSlide = 0;
-        let hasDrivingAnalysis = false;
+        let currentDrivingTrackData = null;
         let drivingFontScale = 1.0;
+        let drivingTrackProgressMs = 0;
+        let drivingTrackDurationMs = 0;
+        let drivingTrackIsPlaying = false;
+        let drivingAnalysisAbortController = null;
 
+        // Screen Wake Lock with silent video fallback for mobile/iOS
         async function requestDrivingWakeLock() {
             if ('wakeLock' in navigator) {
                 try {
@@ -8270,12 +8085,40 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
                     drivingWakeLock.addEventListener('release', () => {
                         updateDrivingWakeLockBadge(false);
                     });
+                    return;
                 } catch (err) {
                     console.log('Wake Lock request error:', err);
-                    updateDrivingWakeLockBadge(false);
                 }
-            } else {
-                updateDrivingWakeLockBadge(false, '☀️ Wake Lock Active (Fallback)');
+            }
+            // Fallback: create or play inline muted looping video
+            try {
+                if (!drivingWakeLockVideo) {
+                    const vid = document.createElement('video');
+                    vid.setAttribute('playsinline', '');
+                    vid.setAttribute('muted', '');
+                    vid.muted = true;
+                    vid.loop = true;
+                    vid.style.position = 'fixed';
+                    vid.style.top = '-9999px';
+                    vid.style.left = '-9999px';
+                    vid.style.width = '1px';
+                    vid.style.height = '1px';
+                    vid.style.opacity = '0.01';
+                    // 1-pixel transparent webm data url
+                    vid.src = 'data:video/webm;base64,GkXfo0AgQoaBAUL3gQFC8oEEQvOBCEKCQAR3ZWJtQoeBAkKFgQIYUkoAkExBak1laW5pdGlhbGl6ZXIAAAAA';
+                    document.body.appendChild(vid);
+                    drivingWakeLockVideo = vid;
+                }
+                const playPromise = drivingWakeLockVideo.play();
+                if (playPromise !== undefined) {
+                    playPromise.then(() => {
+                        updateDrivingWakeLockBadge(true, '☀️ Screen Awake Active');
+                    }).catch(() => {
+                        updateDrivingWakeLockBadge(false);
+                    });
+                }
+            } catch (ve) {
+                updateDrivingWakeLockBadge(false);
             }
         }
 
@@ -8284,46 +8127,10 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             if (!badge) return;
             if (active) {
                 badge.className = 'driving-status-pill';
-                badge.innerHTML = '☀️ Screen Awake Locked';
-            } else if (customText) {
-                badge.className = 'driving-status-pill';
-                badge.innerHTML = customText;
+                badge.innerHTML = customText || '☀️ Screen Awake Active';
             } else {
                 badge.className = 'driving-status-pill offline';
                 badge.innerHTML = '⚠️ Screen Awake Inactive';
-            }
-        }
-
-        function switchDrivingSlide(idx) {
-            currentDrivingSlide = idx;
-            const trackEl = document.getElementById('driving-slides-track');
-            const tabTrack = document.getElementById('driving-tab-track');
-            const tabAnalysis = document.getElementById('driving-tab-analysis');
-            if (trackEl) {
-                trackEl.style.transform = idx === 0 ? 'translateX(0%)' : 'translateX(-50%)';
-            }
-            if (tabTrack) {
-                if (idx === 0) {
-                    tabTrack.classList.add('active');
-                    tabTrack.setAttribute('aria-selected', 'true');
-                } else {
-                    tabTrack.classList.remove('active');
-                    tabTrack.setAttribute('aria-selected', 'false');
-                }
-            }
-            if (tabAnalysis) {
-                if (idx === 1) {
-                    tabAnalysis.classList.add('active');
-                    tabAnalysis.setAttribute('aria-selected', 'true');
-                } else {
-                    tabAnalysis.classList.remove('active');
-                    tabAnalysis.setAttribute('aria-selected', 'false');
-                }
-            }
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-
-            if (idx === 1 && !hasDrivingAnalysis) {
-                refreshDrivingState();
             }
         }
 
@@ -8332,50 +8139,11 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             const body = document.getElementById('driving-analysis-body');
             const label = document.getElementById('driving-font-size-label');
             if (body) {
-                body.style.fontSize = `${drivingFontScale * 1.35}rem`;
+                body.style.fontSize = `${drivingFontScale * 1.22}rem`;
             }
             if (label) {
                 label.textContent = `${Math.round(drivingFontScale * 100)}%`;
             }
-        }
-
-        function initDrivingSwipeGestures() {
-            const viewport = document.getElementById('driving-viewport');
-            if (!viewport) return;
-
-            let touchStartX = 0;
-            let touchStartY = 0;
-
-            viewport.addEventListener('touchstart', (e) => {
-                if (e.touches && e.touches.length > 0) {
-                    touchStartX = e.touches[0].clientX;
-                    touchStartY = e.touches[0].clientY;
-                }
-            }, { passive: true });
-
-            viewport.addEventListener('touchend', (e) => {
-                if (!e.changedTouches || e.changedTouches.length === 0) return;
-                const touchEndX = e.changedTouches[0].clientX;
-                const touchEndY = e.changedTouches[0].clientY;
-                const dx = touchEndX - touchStartX;
-                const dy = touchEndY - touchStartY;
-                if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy) * 1.25) {
-                    if (dx < 0 && currentDrivingSlide === 0) {
-                        switchDrivingSlide(1);
-                    } else if (dx > 0 && currentDrivingSlide === 1) {
-                        switchDrivingSlide(0);
-                    }
-                }
-            }, { passive: true });
-
-            document.addEventListener('keydown', (e) => {
-                if (!document.getElementById('driving-viewport')) return;
-                if (e.key === 'ArrowRight' && currentDrivingSlide === 0) {
-                    switchDrivingSlide(1);
-                } else if (e.key === 'ArrowLeft' && currentDrivingSlide === 1) {
-                    switchDrivingSlide(0);
-                }
-            });
         }
 
         function parseDrivingMarkdown(md) {
@@ -8452,7 +8220,6 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
         function renderDrivingAnalysis(rawMarkdown, trackInfo) {
             const container = document.getElementById('driving-analysis-body');
             const badge = document.getElementById('driving-analysis-track-badge');
-            const ctaBtn = document.getElementById('driving-swipe-cta');
             if (!container) return;
 
             if (badge && trackInfo) {
@@ -8460,32 +8227,48 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             }
 
             if (!rawMarkdown || !rawMarkdown.trim()) {
-                hasDrivingAnalysis = false;
                 const sName = trackInfo ? (trackInfo.name || trackInfo.song || 'current track') : 'current track';
                 container.innerHTML = `
                 <div class="driving-loading-card">
-                    <div style="font-size: 2.5rem; margin-bottom: 12px;">⏳</div>
-                    <div style="font-size: 1.45rem; font-weight: 800; color: #BAE6FD;">Analyzing Lyrics & Themes...</div>
-                    <div style="color: rgba(225, 232, 240, 0.7); font-size: 1.15rem; margin-top: 8px;">Generating Gemini poetic breakdown for <strong>${spotifyTimelineEscape(sName)}</strong></div>
+                    <div style="font-size: 2.2rem; margin-bottom: 10px;">⏳</div>
+                    <div style="font-size: 1.35rem; font-weight: 800; color: #BAE6FD;">Analyzing Lyrics & Themes...</div>
+                    <div style="color: rgba(225, 232, 240, 0.7); font-size: 1.05rem; margin-top: 6px;">Generating Gemini poetic breakdown for <strong>${spotifyTimelineEscape(sName)}</strong></div>
                 </div>
                 `;
-                if (ctaBtn) {
-                    ctaBtn.innerHTML = '⏳ Generating Lyrical Analysis... (Tap to Check) →';
-                    ctaBtn.classList.remove('ready');
-                }
                 return;
             }
 
-            hasDrivingAnalysis = true;
             container.innerHTML = parseDrivingMarkdownIntoSections(rawMarkdown);
-            if (ctaBtn) {
-                ctaBtn.innerHTML = '👉 Lyric Analysis Ready — Swipe Left or Tap to Read ✨';
-                ctaBtn.classList.add('ready');
-            }
+        }
+
+        function renderDrivingAnalysisError(errorMessage, trackInfo) {
+            const container = document.getElementById('driving-analysis-body');
+            if (!container) return;
+            const sName = trackInfo ? (trackInfo.name || trackInfo.song || 'current track') : 'current track';
+            container.innerHTML = `
+            <div class="driving-error-card">
+                <div style="font-size: 2rem;">⚠️</div>
+                <div style="font-size: 1.25rem; font-weight: 800; color: #FCA5A5;">Analysis Unavailable</div>
+                <div style="color: rgba(254, 226, 226, 0.8); font-size: 1rem;">${spotifyTimelineEscape(errorMessage || 'Could not fetch lyrics or generate analysis for ' + sName)}</div>
+                <button type="button" class="driving-retry-btn" onclick="retryDrivingAnalysisNow()">🔄 Retry Analysis</button>
+            </div>
+            `;
+        }
+
+        function formatDrivingMs(ms) {
+            const totalSec = Math.max(0, Math.floor(ms / 1000));
+            const m = Math.floor(totalSec / 60);
+            const s = totalSec % 60;
+            return `${m}:${s < 10 ? '0' : ''}${s}`;
         }
 
         function updateDrivingTrackUI(track, isPlaying) {
             if (!track) return;
+            currentDrivingTrackData = track;
+            drivingTrackIsPlaying = Boolean(isPlaying);
+            if (typeof track.progress_ms === 'number') drivingTrackProgressMs = track.progress_ms;
+            if (typeof track.duration_ms === 'number') drivingTrackDurationMs = track.duration_ms;
+
             const titleEl = document.getElementById('driving-track-title');
             const artistEl = document.getElementById('driving-track-artist');
             const albumEl = document.getElementById('driving-track-album');
@@ -8493,6 +8276,8 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             const progressEl = document.getElementById('driving-track-progress');
             const timeEl = document.getElementById('driving-track-time');
             const statusEl = document.getElementById('driving-track-status-text');
+            const spotLink = document.getElementById('driving-spotify-link');
+            const wsLink = document.getElementById('driving-workspace-link');
 
             if (titleEl) {
                 titleEl.textContent = track.name || 'Unknown Track';
@@ -8509,66 +8294,135 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
                 imgEl.src = track.album_image;
                 imgEl.alt = track.name || 'Track';
             }
+            if (spotLink) {
+                if (track.spotify_url) {
+                    spotLink.href = track.spotify_url;
+                    spotLink.style.display = 'inline-flex';
+                } else {
+                    spotLink.style.display = 'none';
+                }
+            }
+            if (wsLink) {
+                wsLink.href = `/?artist=${encodeURIComponent(track.artist || '')}&song=${encodeURIComponent(track.name || '')}&auto_analyze=1`;
+            }
             if (progressEl && track.progress_percent !== undefined) {
                 progressEl.style.width = `${track.progress_percent}%`;
             }
-            if (timeEl && track.progress_formatted) {
-                timeEl.textContent = `${track.progress_formatted} / ${track.duration_formatted || '0:00'}`;
+            if (timeEl) {
+                const progFmt = track.progress_formatted || formatDrivingMs(drivingTrackProgressMs);
+                const durFmt = track.duration_formatted || formatDrivingMs(drivingTrackDurationMs);
+                timeEl.textContent = `${progFmt} / ${durFmt}`;
             }
             if (statusEl) {
                 statusEl.textContent = isPlaying ? 'Currently Playing' : 'Latest Track';
             }
         }
 
-        let drivingFastPollTimer = null;
+        // Trigger synchronous Cloud Run-friendly analysis
+        async function triggerDrivingAnalysis(artist, song, force = false) {
+            if (!artist || !song) return;
+            if (isDrivingAnalyzing && !force) return;
 
-        async function refreshDrivingState() {
+            if (drivingAnalysisAbortController) {
+                drivingAnalysisAbortController.abort();
+            }
+            drivingAnalysisAbortController = new AbortController();
+            isDrivingAnalyzing = true;
+
+            const isDemo = new URLSearchParams(window.location.search).get('demo') === '1';
+            const url = `/api/spotify/driving-analyze?artist=${encodeURIComponent(artist)}&song=${encodeURIComponent(song)}${force ? '&force=1' : ''}${isDemo ? '&demo=1' : ''}`;
+
+            renderDrivingAnalysis('', { artist, name: song });
+
+            try {
+                const timeoutId = setTimeout(() => drivingAnalysisAbortController.abort(), 65000);
+                const res = await fetch(url, { signal: drivingAnalysisAbortController.signal });
+                clearTimeout(timeoutId);
+
+                if (!res.ok) {
+                    throw new Error(`Server returned HTTP ${res.status}`);
+                }
+                const data = await res.json();
+
+                if (data && data.status === 'ready' && data.analysis) {
+                    renderDrivingAnalysis(data.analysis, { artist, name: song });
+                } else if (data && data.status === 'no_key') {
+                    renderDrivingAnalysisError('Gemini API key is not configured on this server.', { artist, name: song });
+                } else {
+                    renderDrivingAnalysisError((data && data.error) ? data.error : 'Analysis generation failed.', { artist, name: song });
+                }
+            } catch (err) {
+                if (err.name !== 'AbortError') {
+                    console.error('Driving analysis error:', err);
+                    renderDrivingAnalysisError(err.message || 'Network error fetching analysis.', { artist, name: song });
+                }
+            } finally {
+                isDrivingAnalyzing = false;
+            }
+        }
+
+        function retryDrivingAnalysisNow() {
+            if (currentDrivingTrackData && currentDrivingTrackData.artist && currentDrivingTrackData.name) {
+                triggerDrivingAnalysis(currentDrivingTrackData.artist, currentDrivingTrackData.name, true);
+            }
+        }
+
+        async function refreshDrivingState(force = false) {
             if (isDrivingRefreshing) return;
             isDrivingRefreshing = true;
             const btn = document.getElementById('btn-driving-refresh-now');
             if (btn) btn.innerHTML = '⏳ Refreshing...';
 
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 12000);
+
             try {
                 const isDemo = new URLSearchParams(window.location.search).get('demo') === '1';
                 const url = `/api/spotify/driving-state${isDemo ? '?demo=1' : ''}`;
-                const res = await fetch(url);
+                const res = await fetch(url, { signal: controller.signal });
+                clearTimeout(timeoutId);
+
+                if (res.status === 401) {
+                    const badge = document.getElementById('driving-wakelock-status');
+                    if (badge) {
+                        badge.className = 'driving-status-pill offline';
+                        badge.innerHTML = '<a href="/login" style="color:inherit;text-decoration:underline;">Session Expired - Re-login</a>';
+                    }
+                    return;
+                }
+
                 const data = await res.json();
 
                 if (data && data.track) {
                     updateDrivingTrackUI(data.track, data.playing);
-                    const newKey = `${data.track.artist || ''}:::${data.track.name || ''}`;
+                    const newKey = `${(data.track.artist || '').trim().toLowerCase()}:::${(data.track.name || '').trim().toLowerCase()}`;
                     const rawAnalysis = (data.analysis && data.analysis.analysis) ? data.analysis.analysis : (data.analysis || '');
-                    
-                    if (newKey !== currentDrivingTrackKey || !hasDrivingAnalysis || rawAnalysis) {
-                        currentDrivingTrackKey = newKey;
-                        renderDrivingAnalysis(rawAnalysis, data.track);
-                    }
 
-                    // If analysis is still pending, poll every 2.5s instead of waiting 30s
-                    if (!hasDrivingAnalysis && (!data.analysis || data.analysis.pending || !rawAnalysis)) {
-                        if (!drivingFastPollTimer) {
-                            drivingFastPollTimer = setTimeout(() => {
-                                drivingFastPollTimer = null;
-                                refreshDrivingState();
-                            }, 2500);
+                    if (newKey !== currentDrivingTrackKey || force) {
+                        currentDrivingTrackKey = newKey;
+                        if (rawAnalysis && rawAnalysis.trim()) {
+                            renderDrivingAnalysis(rawAnalysis, data.track);
+                        } else {
+                            triggerDrivingAnalysis(data.track.artist, data.track.name);
                         }
-                    } else if (drivingFastPollTimer) {
-                        clearTimeout(drivingFastPollTimer);
-                        drivingFastPollTimer = null;
+                    } else if (!document.getElementById('driving-analysis-body').children.length && rawAnalysis) {
+                        renderDrivingAnalysis(rawAnalysis, data.track);
                     }
                 }
             } catch (err) {
                 console.error('Driving state refresh error:', err);
             } finally {
+                clearTimeout(timeoutId);
                 isDrivingRefreshing = false;
+                lastDrivingRefreshTime = Date.now();
+                drivingCountdown = 15;
+                updateDrivingTimerUI();
                 if (btn) btn.innerHTML = '🔄 Refresh';
             }
         }
 
         function refreshDrivingStateNow() {
-            drivingCountdown = 30;
-            updateDrivingTimerUI();
-            refreshDrivingState();
+            refreshDrivingState(true);
         }
 
         function updateDrivingTimerUI() {
@@ -8576,53 +8430,94 @@ SPOTIFY_PAGE_HTML = PAGE_HTML.split('<body>')[0] + '''<body>
             const barEl = document.getElementById('driving-timer-progress');
             if (textEl) textEl.textContent = `Refreshes in ${drivingCountdown}s`;
             if (barEl) {
-                const pct = Math.max(0, Math.min(100, (drivingCountdown / 30) * 100));
+                const pct = Math.max(0, Math.min(100, (drivingCountdown / 15) * 100));
                 barEl.style.width = `${pct}%`;
             }
         }
 
         function startDrivingRefreshLoop() {
-            drivingCountdown = 30;
+            lastDrivingRefreshTime = Date.now();
+            drivingCountdown = 15;
             updateDrivingTimerUI();
             if (drivingTimerInterval) clearInterval(drivingTimerInterval);
+
             drivingTimerInterval = setInterval(() => {
-                drivingCountdown--;
-                if (drivingCountdown <= 0) {
-                    drivingCountdown = 30;
+                const now = Date.now();
+                const elapsed = now - lastDrivingRefreshTime;
+                drivingCountdown = Math.max(0, Math.ceil((DRIVING_REFRESH_INTERVAL_MS - elapsed) / 1000));
+                updateDrivingTimerUI();
+
+                // Local smooth progress bar advancement when playing
+                if (drivingTrackIsPlaying && drivingTrackDurationMs > 0) {
+                    drivingTrackProgressMs = Math.min(drivingTrackDurationMs, drivingTrackProgressMs + 1000);
+                    const progressEl = document.getElementById('driving-track-progress');
+                    const timeEl = document.getElementById('driving-track-time');
+                    if (progressEl) {
+                        const pct = Math.min(100, (drivingTrackProgressMs / drivingTrackDurationMs) * 100);
+                        progressEl.style.width = `${pct.toFixed(1)}%`;
+                    }
+                    if (timeEl) {
+                        timeEl.textContent = `${formatDrivingMs(drivingTrackProgressMs)} / ${formatDrivingMs(drivingTrackDurationMs)}`;
+                    }
+                }
+
+                if (elapsed >= DRIVING_REFRESH_INTERVAL_MS) {
                     refreshDrivingState();
                 }
-                updateDrivingTimerUI();
             }, 1000);
         }
 
+        function switchDrivingSlide(idx) {
+            // Backward-compatible helper: smooth scroll to analysis or top
+            if (idx === 1) {
+                const el = document.getElementById('driving-slide-analysis');
+                if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            } else {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+        }
+
         function initDrivingMode() {
-            const drivingViewport = document.getElementById('driving-viewport');
-            if (!drivingViewport) return;
+            const root = document.getElementById('driving-viewport') || document.getElementById('driving-dashboard-root');
+            if (!root) return;
 
             requestDrivingWakeLock();
-            initDrivingSwipeGestures();
 
+            // Mobile wakeup / visibility handlers
             document.addEventListener('visibilitychange', async () => {
                 if (document.visibilityState === 'visible') {
                     await requestDrivingWakeLock();
+                    refreshDrivingState();
                 }
             });
+            window.addEventListener('pageshow', () => { refreshDrivingState(); });
+            window.addEventListener('focus', () => { refreshDrivingState(); });
+            window.addEventListener('online', () => { refreshDrivingState(true); });
             document.addEventListener('touchstart', async () => {
                 if (!drivingWakeLock) await requestDrivingWakeLock();
             }, { once: true, passive: true });
 
             const rawEl = document.getElementById('driving-analysis-raw');
             const rawText = rawEl ? (rawEl.textContent || '') : '';
-            renderDrivingAnalysis(rawText, null);
+            const titleEl = document.getElementById('driving-track-title');
+            const artistEl = document.getElementById('driving-track-artist');
+            const initTrack = {
+                name: titleEl ? titleEl.textContent : '',
+                artist: artistEl ? artistEl.textContent : ''
+            };
+            currentDrivingTrackData = initTrack;
+            currentDrivingTrackKey = `${(initTrack.artist || '').trim().toLowerCase()}:::${(initTrack.name || '').trim().toLowerCase()}`;
+
+            if (rawText && rawText.trim()) {
+                renderDrivingAnalysis(rawText, initTrack);
+            } else if (initTrack.artist && initTrack.name && initTrack.name !== 'No Track Active') {
+                triggerDrivingAnalysis(initTrack.artist, initTrack.name);
+            } else {
+                renderDrivingAnalysis('', initTrack);
+            }
 
             startDrivingRefreshLoop();
-
-            // Guaranteed automatic analysis generation if not ready immediately
-            if (!hasDrivingAnalysis) {
-                refreshDrivingState();
-            }
         }
-
         async function checkSpotifyNowPlaying() {
             const slot = document.getElementById('spotify-now-playing-slot');
             if (!slot) return;
@@ -12541,6 +12436,9 @@ _syncing_spotify_users: Set[str] = set()
 _user_top_artists_cache: Dict[str, Tuple[float, List[Dict[str, Any]]]] = {}
 _active_analysis_workers: Set[str] = set()
 _spotify_driving_track_cache: Dict[str, Dict[str, Any]] = {}
+_driving_analysis_in_flight: Dict[str, threading.Event] = {}
+_driving_analysis_in_flight_lock = threading.Lock()
+_driving_analysis_failure_cache: Dict[str, Tuple[float, str]] = {}
 _analysis_worker_lock = threading.Lock()
 _spotify_sync_lock = threading.Lock()
 
@@ -13128,6 +13026,10 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
 
         if parsed.path == '/api/spotify/driving-state':
             self.handle_api_spotify_driving_state(parsed.query)
+            return
+
+        if parsed.path == '/api/spotify/driving-analyze':
+            self.handle_api_spotify_driving_analyze(parsed.query)
             return
 
         if parsed.path == '/api/spotify/now-playing':
@@ -16276,7 +16178,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
 
         # If client specifically requested analysis check for a known track, bypass Spotify API check
         if check_analysis and req_artist and req_song:
-            analysis_payload = ensure_song_lyrics_and_analysis(req_artist, req_song, only_cached=True)
+            analysis_payload = ensure_song_lyrics_and_analysis(req_artist, req_song, only_cached=True, spawn_worker=False)
             has_res = bool(analysis_payload and analysis_payload.get('analysis'))
             payload = {
                 'success': True,
@@ -16344,7 +16246,7 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             artist = active_track.get('artist', '')
             name = active_track.get('name', '')
             if artist and name:
-                analysis_payload = ensure_song_lyrics_and_analysis(artist, name, only_cached=True)
+                analysis_payload = ensure_song_lyrics_and_analysis(artist, name, only_cached=True, spawn_worker=False)
 
         payload = {
             'success': True,
@@ -16354,6 +16256,172 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             'track': active_track,
             'analysis': analysis_payload
         }
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/json; charset=utf-8')
+        self.end_headers()
+        self.wfile.write(json.dumps(payload).encode('utf-8'))
+
+    def handle_api_spotify_driving_analyze(self, query_string: str = ''):
+        current_user = self.get_current_user()
+        if not current_user:
+            self.send_response(401)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(json.dumps({'error': 'Unauthorized'}).encode('utf-8'))
+            return
+
+        params = urllib.parse.parse_qs(query_string)
+        artist = (params.get('artist', [''])[0] or '').strip()
+        song = (params.get('song', [''])[0] or '').strip()
+        force = params.get('force', ['0'])[0] == '1'
+        is_demo = params.get('demo', ['0'])[0] == '1'
+
+        if not artist or not song:
+            self.send_response(400)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(json.dumps({'success': False, 'status': 'failed', 'error': 'Artist and song parameters are required'}).encode('utf-8'))
+            return
+
+        cache_key = f"{artist.lower()}:::{song.lower()}"
+
+        # 1. Check if cached analysis exists (unless force is requested)
+        if not force:
+            cached_res = ensure_song_lyrics_and_analysis(artist, song, only_cached=True, spawn_worker=False)
+            if cached_res and cached_res.get('analysis') and cached_res.get('analysis').strip():
+                payload = {
+                    'success': True,
+                    'status': 'ready',
+                    'analysis': cached_res.get('analysis'),
+                    'lyrics': cached_res.get('lyrics') or '',
+                    'artist': artist,
+                    'song': song,
+                    'cached': True
+                }
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json; charset=utf-8')
+                self.end_headers()
+                self.wfile.write(json.dumps(payload).encode('utf-8'))
+                return
+
+        # 2. Check failure cooldown cache (avoid hammering failing external APIs)
+        now_ts = time.time()
+        with _driving_analysis_in_flight_lock:
+            cached_failure = _driving_analysis_failure_cache.get(cache_key)
+            if cached_failure and (now_ts - cached_failure[0] < 60.0) and not force:
+                payload = {
+                    'success': False,
+                    'status': 'failed',
+                    'error': cached_failure[1],
+                    'artist': artist,
+                    'song': song,
+                    'cached_failure': True
+                }
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json; charset=utf-8')
+                self.end_headers()
+                self.wfile.write(json.dumps(payload).encode('utf-8'))
+                return
+
+        # 3. Check if Gemini API key is configured
+        if not GEMINI_API_KEY:
+            payload = {
+                'success': False,
+                'status': 'no_key',
+                'error': 'Gemini API key is not configured on this server.',
+                'artist': artist,
+                'song': song
+            }
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(json.dumps(payload).encode('utf-8'))
+            return
+
+        # 4. In-flight dedup: if another request is analyzing this track, wait for it
+        event = None
+        is_initiator = False
+        with _driving_analysis_in_flight_lock:
+            if cache_key in _driving_analysis_in_flight:
+                event = _driving_analysis_in_flight[cache_key]
+            else:
+                event = threading.Event()
+                _driving_analysis_in_flight[cache_key] = event
+                is_initiator = True
+
+        if not is_initiator:
+            # Wait up to 55 seconds for initiator to finish
+            event.wait(timeout=55.0)
+            cached_res = ensure_song_lyrics_and_analysis(artist, song, only_cached=True, spawn_worker=False)
+            if cached_res and cached_res.get('analysis') and cached_res.get('analysis').strip():
+                payload = {
+                    'success': True,
+                    'status': 'ready',
+                    'analysis': cached_res.get('analysis'),
+                    'lyrics': cached_res.get('lyrics') or '',
+                    'artist': artist,
+                    'song': song,
+                    'cached': True
+                }
+            else:
+                err_msg = 'Analysis generation timed out or failed in concurrent worker.'
+                payload = {
+                    'success': False,
+                    'status': 'failed',
+                    'error': err_msg,
+                    'artist': artist,
+                    'song': song
+                }
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(json.dumps(payload).encode('utf-8'))
+            return
+
+        # Initiator executes analysis synchronously within HTTP request context (Cloud Run keeps CPU active)
+        try:
+            res = ensure_song_lyrics_and_analysis(artist, song, only_cached=False)
+            raw_analysis = res.get('analysis') if res else ''
+            if raw_analysis and raw_analysis.strip():
+                # Success: clear failure cache if any
+                with _driving_analysis_in_flight_lock:
+                    _driving_analysis_failure_cache.pop(cache_key, None)
+                payload = {
+                    'success': True,
+                    'status': 'ready',
+                    'analysis': raw_analysis,
+                    'lyrics': res.get('lyrics') or '',
+                    'artist': artist,
+                    'song': song,
+                    'cached': False
+                }
+            else:
+                err_msg = 'Unable to find lyrics or generate analysis.'
+                with _driving_analysis_in_flight_lock:
+                    _driving_analysis_failure_cache[cache_key] = (time.time(), err_msg)
+                payload = {
+                    'success': False,
+                    'status': 'failed',
+                    'error': err_msg,
+                    'artist': artist,
+                    'song': song
+                }
+        except Exception as e:
+            err_msg = f"Analysis error: {e}"
+            with _driving_analysis_in_flight_lock:
+                _driving_analysis_failure_cache[cache_key] = (time.time(), err_msg)
+            payload = {
+                'success': False,
+                'status': 'failed',
+                'error': err_msg,
+                'artist': artist,
+                'song': song
+            }
+        finally:
+            with _driving_analysis_in_flight_lock:
+                _driving_analysis_in_flight.pop(cache_key, None)
+                event.set()
+
         self.send_response(200)
         self.send_header('Content-Type', 'application/json; charset=utf-8')
         self.end_headers()
@@ -16720,10 +16788,24 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                         'spotify_url': token_rec.get('spotify_profile_url') or '',
                     }
                     if driving:
-                        saved = database.get_spotify_history(current_user['email'], limit=1)
-                        if saved:
-                            history_tracks = saved
-                            now_playing = saved[0]
+                        try:
+                            now_playing = spotify.fetch_currently_playing(access_token)
+                        except Exception as e:
+                            print(f"Driving initial fetch currently playing error: {e}")
+                        if not now_playing:
+                            try:
+                                recent = spotify.fetch_recently_played(access_token, limit=1)
+                                if recent:
+                                    now_playing = recent[0]
+                            except Exception as e:
+                                print(f"Driving initial fetch recently played error: {e}")
+                        if not now_playing:
+                            saved = database.get_spotify_history(current_user['email'], limit=1)
+                            if saved:
+                                history_tracks = saved
+                                now_playing = saved[0]
+                        else:
+                            history_tracks = [now_playing]
                     else:
                         # Instant page render: run background sync without holding the HTTP response
                         trigger_auto_spotify_sync(current_user['email'], force=refresh)
@@ -17638,46 +17720,32 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
             d_pct = d_track.get('progress_percent') or 0 if d_track else 0
             d_artist_link = f'/artist?artist={urllib.parse.quote(d_track.get("artist") or "")}' if d_track else '#'
 
-            d_img_el = f'<img id="driving-track-img" src="{d_img}" alt="{d_title}" class="driving-album-art">' if d_img else '<div class="driving-album-art-placeholder">🎵</div>'
+            d_img_el = f'<img id="driving-track-img" src="{d_img}" alt="{d_title}" class="driving-album-art">' if d_img else '<div class="driving-album-art-placeholder" id="driving-track-img-placeholder">🎵</div>'
 
-            # Auto-analyze lyrics for current driving track
+            # Cached analysis check for current driving track
             raw_analysis = ''
             if d_track and d_track.get('artist') and d_track.get('name'):
-                analysis_info = ensure_song_lyrics_and_analysis(d_track.get('artist'), d_track.get('name'), only_cached=True)
+                analysis_info = ensure_song_lyrics_and_analysis(d_track.get('artist'), d_track.get('name'), only_cached=True, spawn_worker=False)
                 raw_analysis = analysis_info.get('analysis') or ''
 
             exit_driving_url = f"/spotify{'?demo=1' if is_demo else ''}"
-            playing_badge_text = 'Currently Playing' if now_playing else 'Latest Track'
+            playing_badge_text = 'Currently Playing' if (now_playing and (now_playing.get('is_playing') is not False)) else 'Latest Track'
             has_analysis = bool(raw_analysis and raw_analysis.strip())
 
             driving_mode_html = f'''
-            <div class="driving-dashboard-root">
+            <div class="driving-dashboard-root" id="driving-viewport">
                 <!-- Top Control Bar -->
-                <div class="driving-mode-banner">
+                <div class="driving-mode-banner" id="driving-mode-banner">
                     <div class="driving-header-top">
                         <div class="driving-brand">
-                            <span style="font-size: 1.4rem;">🚗</span>
+                            <span style="font-size: 1.35rem; line-height: 1;">🚗</span>
                             <span class="driving-brand-title">Driving Mode</span>
                             <span id="driving-wakelock-status" class="driving-status-pill">☀️ Screen Awake Active</span>
                         </div>
                         <div class="driving-header-actions">
-                            <button type="button" id="btn-driving-refresh-now" class="driving-action-btn refresh" onclick="refreshDrivingStateNow()" title="Refresh track & lyrics analysis immediately">🔄 Refresh</button>
+                            <button type="button" id="btn-driving-refresh-now" class="driving-action-btn refresh" onclick="refreshDrivingStateNow()" title="Refresh track & lyrics immediately">🔄 Refresh</button>
                             <a href="{exit_driving_url}" class="driving-action-btn exit" title="Exit Driving Mode">🚪 Exit</a>
                         </div>
-                    </div>
-
-                    <!-- Slide Navigation Tabs (Equal 50/50 Full-Width Segmented Switch) -->
-                    <div class="driving-slide-tabs" role="tablist">
-                        <button type="button" id="driving-tab-track" class="driving-slide-tab active" onclick="switchDrivingSlide(0)" role="tab" aria-selected="true">
-                            <span class="driving-tab-icon">🎵</span>
-                            <span class="driving-tab-label-full">Current Track</span>
-                            <span class="driving-tab-label-short">Track</span>
-                        </button>
-                        <button type="button" id="driving-tab-analysis" class="driving-slide-tab" onclick="switchDrivingSlide(1)" role="tab" aria-selected="false">
-                            <span class="driving-tab-icon">✨</span>
-                            <span class="driving-tab-label-full">Lyric Analysis</span>
-                            <span class="driving-tab-label-short">Analysis</span>
-                        </button>
                     </div>
 
                     <!-- Auto-Refresh Countdown Progress -->
@@ -17685,87 +17753,69 @@ class CallingHoursRequestHandler(http.server.BaseHTTPRequestHandler):
                         <div class="driving-timer-bar">
                             <div id="driving-timer-progress" class="driving-timer-progress"></div>
                         </div>
-                        <span id="driving-timer-text" class="driving-timer-text">Refreshes in 30s</span>
+                        <span id="driving-timer-text" class="driving-timer-text">Refreshes in 15s</span>
                     </div>
                 </div>
 
-                <!-- Swipeable Slides Viewport -->
-                <div class="driving-viewport" id="driving-viewport">
-                    <div class="driving-slides-track" id="driving-slides-track">
+                <!-- Compact Active Track Card -->
+                <div class="driving-track-card" id="driving-slide-track">
+                    <div class="driving-card-meta-row">
+                        <div class="driving-eq-wrap">
+                            <div class="spotify-equalizer">
+                                <div class="eq-bar" style="background: #38BDF8;"></div>
+                                <div class="eq-bar" style="background: #38BDF8;"></div>
+                                <div class="eq-bar" style="background: #38BDF8;"></div>
+                                <div class="eq-bar" style="background: #38BDF8;"></div>
+                            </div>
+                            <span id="driving-track-status-text" class="driving-badge-text">{playing_badge_text}</span>
+                        </div>
+                        <div id="driving-track-time" class="driving-track-time">{d_prog_fmt} / {d_dur_fmt}</div>
+                    </div>
 
-                        <!-- Slide 1: Current Track Dashboard -->
-                        <div class="driving-slide" id="driving-slide-track">
-                            <div class="driving-track-card">
-                                <div class="driving-card-meta-row">
-                                    <div class="driving-eq-wrap">
-                                        <div class="spotify-equalizer">
-                                            <div class="eq-bar" style="background: #38BDF8;"></div>
-                                            <div class="eq-bar" style="background: #38BDF8;"></div>
-                                            <div class="eq-bar" style="background: #38BDF8;"></div>
-                                            <div class="eq-bar" style="background: #38BDF8;"></div>
-                                        </div>
-                                        <span id="driving-track-status-text" class="driving-badge-text">{playing_badge_text}</span>
-                                    </div>
-                                    <div id="driving-track-time" class="driving-track-time">{d_prog_fmt} / {d_dur_fmt}</div>
-                                </div>
-
-                                <div class="driving-track-main-row">
-                                    <div class="driving-album-art-wrap">
-                                        {d_img_el}
-                                    </div>
-                                    <div class="driving-track-details">
-                                        <h1 class="driving-track-title">
-                                            <a id="driving-track-title" href="{d_url or '#'}" target="_blank" rel="noopener noreferrer">{d_title}</a>
-                                        </h1>
-                                        <div class="driving-track-artist-row">
-                                            <a id="driving-track-artist" href="{d_artist_link}">{d_artist}</a>
-                                            <span id="driving-track-album" class="driving-track-album">{f' • {d_album}' if d_album else ''}</span>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div class="driving-progress-bar-wrap">
-                                    <div id="driving-track-progress" class="driving-progress-bar-fill" style="width: {d_pct}%;"></div>
-                                </div>
-
-                                <div class="driving-cta-section">
-                                    <button type="button" id="driving-swipe-cta" class="driving-swipe-cta-btn {'ready' if has_analysis else ''}" onclick="switchDrivingSlide(1)">
-                                        {'👉 Lyric Analysis Ready — Swipe Left or Tap to Read ✨' if has_analysis else '⏳ Generating Lyrical Analysis... (Tap to Check) →'}
-                                    </button>
-                                </div>
-
-                                <div class="driving-secondary-links">
-                                    <a href="{f'/?artist={urllib.parse.quote(d_track.get("artist") or "")}&song={urllib.parse.quote(d_track.get("name") or "")}&auto_analyze=1' if d_track else '#'}" class="driving-sub-btn workspace" title="Open in Calling Hours Song Reader">📖 Full Workspace</a>
-                                    {f'<a href="{d_url}" target="_blank" rel="noopener noreferrer" class="driving-sub-btn spotify" title="Open in Spotify">🎧 Spotify</a>' if d_url else ''}
-                                </div>
+                    <div class="driving-track-compact-row">
+                        <div class="driving-album-art-wrap">
+                            {d_img_el}
+                        </div>
+                        <div class="driving-track-details">
+                            <h1 class="driving-track-title">
+                                <a id="driving-track-title" href="{d_url or '#'}" target="_blank" rel="noopener noreferrer">{d_title}</a>
+                            </h1>
+                            <div class="driving-track-artist-row">
+                                <a id="driving-track-artist" href="{d_artist_link}">{d_artist}</a>
+                                <span id="driving-track-album" class="driving-track-album">{f' • {d_album}' if d_album else ''}</span>
+                            </div>
+                            <div class="driving-secondary-links">
+                                <a id="driving-workspace-link" href="{f'/?artist={urllib.parse.quote(d_track.get("artist") or "")}&song={urllib.parse.quote(d_track.get("name") or "")}&auto_analyze=1' if d_track else '#'}" class="driving-sub-btn workspace" title="Open in Calling Hours Song Reader">📖 Full Workspace</a>
+                                <a id="driving-spotify-link" href="{d_url or '#'}" target="_blank" rel="noopener noreferrer" class="driving-sub-btn spotify" style="{'' if d_url else 'display:none;'}" title="Open in Spotify">🎧 Spotify</a>
                             </div>
                         </div>
+                    </div>
 
-                        <!-- Slide 2: Large-Font Lyric Analysis -->
-                        <div class="driving-slide" id="driving-slide-analysis">
-                            <div class="driving-analysis-slide-inner">
-                                <div class="driving-analysis-nav-header">
-                                    <button type="button" class="driving-nav-back-btn" onclick="switchDrivingSlide(0)">
-                                        ← 🎵 Current Track
-                                    </button>
-                                    <div class="driving-analysis-header-info">
-                                        <div class="driving-analysis-heading-title">✨ Lyric Analysis</div>
-                                        <div id="driving-analysis-track-badge" class="driving-analysis-badge-track">{d_artist} — {d_title}</div>
-                                    </div>
-                                    <div class="driving-font-controls">
-                                        <button type="button" onclick="adjustDrivingFontSize(-1)" class="driving-font-btn" title="Decrease font size">A−</button>
-                                        <span id="driving-font-size-label" class="driving-font-label">100%</span>
-                                        <button type="button" onclick="adjustDrivingFontSize(1)" class="driving-font-btn" title="Increase font size">A+</button>
-                                    </div>
-                                </div>
+                    <div class="driving-progress-bar-wrap">
+                        <div id="driving-track-progress" class="driving-progress-bar-fill" style="width: {d_pct}%;"></div>
+                    </div>
+                </div>
 
-                                <pre id="driving-analysis-raw" style="display: none;">{html_escape(raw_analysis)}</pre>
-                                <div id="driving-analysis-body" class="driving-analysis-body-container">
-                                    <!-- Populated dynamically by renderDrivingAnalysis() -->
-                                </div>
+                <!-- Integrated Single-Screen Lyric Analysis Section -->
+                <div class="driving-analysis-card" id="driving-slide-analysis">
+                    <div class="driving-analysis-nav-header">
+                        <div class="driving-analysis-header-info">
+                            <div class="driving-analysis-heading-title">✨ Lyric Analysis & Themes</div>
+                            <div id="driving-analysis-track-badge" class="driving-analysis-badge-track">{d_artist} — {d_title}</div>
+                        </div>
+                        <div class="driving-header-tools">
+                            <button type="button" id="btn-driving-reanalyze" class="driving-reanalyze-btn" onclick="retryDrivingAnalysisNow()" title="Re-run analysis with Gemini">🔄 Re-analyze</button>
+                            <div class="driving-font-controls">
+                                <button type="button" onclick="adjustDrivingFontSize(-1)" class="driving-font-btn" title="Decrease font size">A−</button>
+                                <span id="driving-font-size-label" class="driving-font-label">100%</span>
+                                <button type="button" onclick="adjustDrivingFontSize(1)" class="driving-font-btn" title="Increase font size">A+</button>
                             </div>
                         </div>
+                    </div>
 
+                    <pre id="driving-analysis-raw" style="display: none;">{html_escape(raw_analysis)}</pre>
+                    <div id="driving-analysis-body" class="driving-analysis-body-container">
+                        <!-- Populated dynamically by renderDrivingAnalysis() -->
                     </div>
                 </div>
             </div>'''
@@ -20794,7 +20844,7 @@ def clean_spotify_track_title(song: str) -> str:
     return cleaned.strip() or song
 
 
-def ensure_song_lyrics_and_analysis(artist: str, song: str, db_path: Optional[str] = None, only_cached: bool = False) -> Dict[str, Any]:
+def ensure_song_lyrics_and_analysis(artist: str, song: str, db_path: Optional[str] = None, only_cached: bool = False, spawn_worker: bool = True) -> Dict[str, Any]:
     """Ensure lyrics and Gemini lyric analysis exist for the given track, fetching and analyzing if necessary."""
     artist = (artist or '').strip()
     song = (song or '').strip()
@@ -20904,17 +20954,18 @@ def ensure_song_lyrics_and_analysis(artist: str, song: str, db_path: Optional[st
         }
 
     if only_cached:
-        _dedup_key = f"{artist.lower()}:::{song.lower()}"
-        with _analysis_worker_lock:
-            if _dedup_key not in _active_analysis_workers:
-                _active_analysis_workers.add(_dedup_key)
-                def _bg_analyze():
-                    try:
-                        ensure_song_lyrics_and_analysis(artist, song, db_path=db_path, only_cached=False)
-                    finally:
-                        with _analysis_worker_lock:
-                            _active_analysis_workers.discard(_dedup_key)
-                threading.Thread(target=_bg_analyze, daemon=True).start()
+        if spawn_worker:
+            _dedup_key = f"{artist.lower()}:::{song.lower()}"
+            with _analysis_worker_lock:
+                if _dedup_key not in _active_analysis_workers:
+                    _active_analysis_workers.add(_dedup_key)
+                    def _bg_analyze():
+                        try:
+                            ensure_song_lyrics_and_analysis(artist, song, db_path=db_path, only_cached=False)
+                        finally:
+                            with _analysis_worker_lock:
+                                _active_analysis_workers.discard(_dedup_key)
+                    threading.Thread(target=_bg_analyze, daemon=True).start()
         return {
             'artist': artist,
             'song': song,
@@ -20926,7 +20977,7 @@ def ensure_song_lyrics_and_analysis(artist: str, song: str, db_path: Optional[st
             'track_tags': track_tags,
             'theaudiodb_data': theaudiodb_data,
             'cached': False,
-            'pending': True
+            'pending': spawn_worker
         }
 
     # 2. If lyrics still missing, fetch online
